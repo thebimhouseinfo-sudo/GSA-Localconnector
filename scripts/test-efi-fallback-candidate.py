@@ -81,7 +81,7 @@ class CandidateTests(unittest.TestCase):
                     f.seek(datastart+(6-2+i)*512)
                     f.write(grub[i*512:(i+1)*512].ljust(512,b"\x00"))
                 f.seek(datastart+(11-2)*512)
-                f.write(cfg.ljust(512,b"\\x00"))
+                f.write(cfg.ljust(512,bytes((0,))))
             base_digest=tool.sha256(base)
             shutil.copyfile(base,clone)
             fd=os.open(clone,os.O_RDWR)
