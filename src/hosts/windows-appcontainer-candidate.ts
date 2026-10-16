@@ -12,7 +12,7 @@ function safeWindowsDirectory(value:string):string{
  if(typeof value!=="string"||!path.win32.isAbsolute(value)||!/^([a-zA-Z]:\\)/.test(value)
   ||value.includes("\0")||value.includes("\n")||value.includes("\r"))
   throw new WindowsSandboxPolicyError("INVALID_WINDOWS_ROOT");
- if(value.replace(/\\//g,"\\\\").split("\\\\").some(s=>s==="."||s===".."))
+ if(value.split(/[\\\\/]/).some(s=>s==="."||s===".."))
   throw new WindowsSandboxPolicyError("DOT_SEGMENT_FORBIDDEN");
  const cleaned=path.win32.normalize(value);
  if(cleaned.length<=3||cleaned.split("\\").some((s,i)=>i>0&&(s==="."||s==="..")))
