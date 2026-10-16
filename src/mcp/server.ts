@@ -160,7 +160,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            const start=Number(args.start_line??1),count=Number(args.max_lines??lines.length);
            result={path:args.path,text:lines.slice(start-1,start-1+count).join("\n"),start_line:start,end_line:Math.min(lines.length,start-1+count),total_lines:lines.length,truncated:start-1+count<lines.length};
           }break;
-        case "create_file":case "update_file":case "edit_file":case "create_directory":case "delete_file":case "copy_file":case "move_file":
+        case "create_file":case "update_file":case "edit_file":case "apply_patch":case "create_directory":case "delete_file":case "copy_file":case "move_file":
           result=await dispatchFileMutation(call.name,args,registry,nativeFiles);break;
         case "git_status":case "git_diff":case "git_log":case "git_show":case "compare_commits":
         case "git_add":case "git_commit":case "create_branch":case "git_checkout":case "git_fetch":case "git_pull":case "git_push":
