@@ -11,6 +11,8 @@ test("native macOS Workspace policy probe never self-certifies security",{
  const report=JSON.parse(run.stdout);
  assert.equal(report.platform,"macos");
  assert.equal(report.security_verified,false);
+ assert.deepEqual(report.policy_ladder.map((p:{id:string})=>p.id),["allow_default_cat","deny_default_exec_read","deny_default_workspace_write","restricted_read_no_write","restricted_read_with_write","restricted_read_write_network_deny"]);
+ assert.ok(report.policy_ladder.every((p:{exit_code:number|null;signal:string|null;allowed:boolean})=>typeof p.allowed==="boolean"&&(p.exit_code===null||typeof p.exit_code==="number")));
  assert.equal(typeof report.temp_path_canonicalized,"boolean");
  assert.ok(report.positive_probe&&Object.hasOwn(report.positive_probe,"exit_code"));
  assert.ok(!JSON.stringify(report).includes("not-for-output"),"probe must not disclose outside fixture contents");
