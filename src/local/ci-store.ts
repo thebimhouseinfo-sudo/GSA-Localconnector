@@ -47,7 +47,7 @@ export class CiJournalStore {
    if(previous.revision!==expectedRevision||record.revision!==expectedRevision+1)throw new CiStoreError("RUN_REVISION_CONFLICT","Stale revision");
    const tmp=path.join(this.root,".run-"+randomBytes(12).toString("hex"));
    try{
-    await fs.writeFile(tmp,JSON.stringify(record)+"\\n",{flag:"wx",mode:0o600});
+    await fs.writeFile(tmp,JSON.stringify(record)+"\n",{flag:"wx",mode:0o600});
     await fs.rename(tmp,this.recordPath(record.run_id));
    }finally{await fs.rm(tmp,{force:true});}
   }finally{await handle.close();await fs.rm(lock,{force:true});}
