@@ -22,24 +22,44 @@ export async function loadTrustedRegistry(dir=identityDirectory()):Promise<Works
  for(const e of await readEntries(dir))await registry.enrollTrusted(e.id,e.root,e.permissions);
  return registry;
 }
-export async function enrollReadOnly(id:string,root:string,dir=identityDirectory()):Promise<void>{
- const registry=await loadTrustedRegistry(dir);
- await registry.enrollTrusted(id,root,["read"]);
- const entries=(await readEntries(dir)).filter(e=>e.id!==id);
- entries.push({id,root:registry.requireGrant(id,"read").canonicalRoot,permissions:["read"]});
+/** Cross-process serialization for grant changes. A failed/restarted owner leaves an
+ * exclusive lock behind: fail closed rather than overwriting another writer.
+ * Local repair of a stale lock requires explicit operator action.
+ */
+async function withGrantLock<T>(dir:string,fn:()=>Promise<T>):Promise<T>{
  await fs.mkdir(dir,{recursive:true,mode:0o700});
+ const lock=path.join(dir,".trusted-workspaces.lock");
+ let handle:Awaited<ReturnType<typeof fs.open>>;
+ try{handle=await fs.open(lock,"wx",0o600);}
+ catch(e){
+  if((e as NodeJS.ErrnoException).code==="EEXIST")throw Error("GRANT_STORE_BUSY");
+  throw e;
+ }
+ try{return await fn();}
+ finally{await handle.close();await fs.rm(lock,{force:true});}
+}
+async function persistEntries(dir:string,entries:Entry[]):Promise<void>{
  const tmp=path.join(dir,".workspaces-"+randomBytes(8).toString("hex"));
  try{
-  await fs.writeFile(tmp,JSON.stringify(entries,null,2)+"\n",{flag:"wx",mode:0o600});
+  await fs.writeFile(tmp,JSON.stringify(entries,null,2)+"\\n",{flag:"wx",mode:0o600});
   await fs.rename(tmp,grantPath(dir));
  }finally{await fs.rm(tmp,{force:true});}
 }
+export async function enrollReadOnly(id:string,root:string,dir=identityDirectory()):Promise<void>{
+ await withGrantLock(dir,async()=>{
+  const registry=await loadTrustedRegistry(dir);
+  await registry.enrollTrusted(id,root,["read"]);
+  const canonical=registry.requireGrant(id,"read").canonicalRoot;
+  const existing=await readEntries(dir);
+  const duplicate=existing.find(e=>e.root===canonical&&e.id!==id);
+  if(duplicate)throw Error("WORKSPACE_DUPLICATE_ROOT");
+  await persistEntries(dir,[...existing.filter(e=>e.id!==id),{id,root:canonical,permissions:["read"]}]);
+ });
+}
 export async function revokeTrusted(id:string,dir=identityDirectory()):Promise<void>{
- const entries=await readEntries(dir);
- if(!entries.some(e=>e.id===id))throw Error("WORKSPACE_NOT_FOUND");
- const tmp=path.join(dir,".workspaces-"+randomBytes(8).toString("hex"));
- try{
-  await fs.writeFile(tmp,JSON.stringify(entries.filter(e=>e.id!==id),null,2)+"\n",{flag:"wx",mode:0o600});
-  await fs.rename(tmp,grantPath(dir));
- }finally{await fs.rm(tmp,{force:true});}
+ await withGrantLock(dir,async()=>{
+  const entries=await readEntries(dir);
+  if(!entries.some(e=>e.id===id))throw Error("WORKSPACE_NOT_FOUND");
+  await persistEntries(dir,entries.filter(e=>e.id!==id));
+ });
 }
