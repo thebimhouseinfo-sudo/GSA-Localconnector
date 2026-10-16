@@ -133,3 +133,11 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - **MAC-TOOLS-LIST PASS**. Together with previously recorded Windows tests, both platforms have now passed `/health`, unauthenticated `/mcp` rejection (401), authenticated `initialize`, authenticated `tools/list`: **8/8 platform-gates PASS**, user-provided native outputs.
 - Next checkpoint: dedicated Cloudflare Tunnel install on each target host, unique hostname(s), external TLS and authenticated MCP verification. No tunnel or ChatGPT plugin is claimed READY. Never expose bearer secret in chat or GitHub.
 - Security reminder: the current published tools remain read-only; source/file write, shell and local CI not exposed.
+
+## Transport switch — OpenAI Secure MCP Tunnel primary (2026-10-16)
+- User explicitly reversed Cloudflare-first decision: **OpenAI Secure MCP Tunnel is primary**; Cloudflare postponed, optional for multi-provider support.
+- Official reference: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels . Updated `docs/tunnel/SETUP.md` with separate Windows/macOS stdio-first install/human runbook and added transport decision to `docs/plans/GSA-LOCALCONNECTOR-IMPLEMENTATION-PLAN.md`.
+- Target topology: ChatGPT private custom MCP plugin -> OpenAI tunnel -> tunnel-client on selected host -> `node dist/src/mcp/cli.js` stdio. Existing HTTP loopback and 8/8 Windows/macOS test evidence remain valid; **do not expose local HTTP publicly**.
+- Human blockers: OpenAI Platform Tunnels Read+Manage/Use permission, per-host tunnel_id and scoped runtime API key, installation of official tunnel-client on each machine, `doctor` + `run` live evidence, plugin creation and actual `connector_status` invocation.
+- **Not yet PASS:** OpenAI tunnel setup on either host, native tunnel-client and private ChatGPT plugin. Current connector tools remain read-only; write/shell/CI sandbox blocked. Secure tunnel default request deadline 120s, so implement durable async runs for long jobs.
+- Next resume: user chooses first host; obtain nonsecret tunnel ID and doctor/ready observations from user's machine; never collect API key in chat. Validate one private plugin end-to-end before configuring second host.
