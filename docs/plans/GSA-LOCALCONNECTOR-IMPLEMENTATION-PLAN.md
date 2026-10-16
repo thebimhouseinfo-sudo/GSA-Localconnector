@@ -416,3 +416,48 @@ Real runner must define a strict schema, shell selection, execution isolation an
 - CI12: Offline/no-Git build/test works provided dependencies/toolchains are already installed locally.
 
 **Status:** Architecture addendum and proposed contracts only; implementation and verification are not yet complete.
+
+
+## 12. IMPLEMENTATION CONTRACT — Reviewed readiness gates (2026-10-16)
+
+### 12.1 Architecture baseline and ownership
+- Source of truth for implementation: this plan, pinned by Git blob SHA at task kickoff. Record the GPTWorker source commit, GSA source commit, and connector baseline commit in P0 evidence. Never silently port newer upstream modules mid-phase.
+- GSA owns approvals, reviews and execution policy. Connector owns truthful local I/O, process/CI evidence and host-side authorization. Local CI run state is not GSA Job state.
+- Project target registration alone never authorizes filesystem access. Initial enrollment/revocation must be a trusted Windows user/admin action with auditable local ACL-protected registry. A regular MCP request may inspect but never enroll or elevate authority.
+
+### 12.2 Mandatory Windows security feasibility spike (before general shell release)
+- First build a minimal prototype with a restricted Windows execution identity, explicitly scoped NTFS permissions and isolated writable temp/cache. Verify command execution, child-process inheritance, network shares, junction changes, environment leakage, inherited handles, and cleanup.
+- Read-only OS/toolchain paths (Windows, SDK, compiler, package caches) must be separately declared; writable outputs limited to authorized Workspace plus runner-private scratch/artifacts. No assumption that path string analysis equals kernel-enforced file security.
+- Test direct PowerShell, nested `cmd /c`, Python filesystem operations and spawned children against a forbidden sentinel file and a forbidden sibling directory. Both reading and writing forbidden locations must fail at the OS boundary. Positive npm, Python, dotnet and cargo tests should be run only for toolchains actually installed.
+- If an adequate Windows isolation mechanism cannot support the required toolchains, mark **SECURITY BLOCKED** and do not release arbitrary shell/CI under the strict confinement claim. Do not compensate by silently granting the interactive user's full filesystem token.
+- Decide network policy independently (deny/allow destination policy); filesystem isolation does not prevent credential disclosure via network.
+- Prevent trust confusion between trusted enrollment config and untrusted Workspace-controlled scripts/workflow definitions.
+
+### 12.3 Local CI protocol and reproducibility
+- CI workflow parser must version its manifest schema and deterministically reject unsupported features. `needs` graph cycles, missing dependencies and duplicate IDs fail validation.
+- `ci_run` snapshots a reproducible source-input set *and the exact workflow definition* before scheduling; lock or copy validated inputs to a runner-private read-only snapshot whenever feasible. A timestamp-only fingerprint is insufficient.
+- Rebuilds must distinguish ordinary build/test output mutations from unauthorized source drift; output path declarations are checked and source revisions revalidated before evidence becomes eligible.
+- Step exit codes decide outcome, not log text. Job DAG fail-fast/continue-on-error policy must be explicit. Runner crash, reboot or disconnected transport must never become PASS.
+- Each run's evidence includes runner version, OS/toolchain versions where available, effective permissions, source snapshot hash, workflow hash, step commands (redacted), exit codes, timestamps, logs/artifact hashes and terminal status.
+- Artifacts and logs live in trusted runner-owned state (or authorized Workspace paths); enforce quotas, pagination, retention, crash-consistent journaling and tamper checks. A test-generated artifact cannot become a new authority root.
+- Default local CI needs no Git. Git SHA is only additional metadata when a Git repo exists. Offline workflows are supported only with available toolchain/dependencies and explicitly allowed environment inputs.
+- Parallel CI runs are independent with per-run temp/caches and process ownership, with resource caps and cancellation of descendants. A long-running run must remain independently queryable by ID after an MCP request ends.
+
+### 12.4 Delivery tickets and exit evidence
+| Ticket | Deliverable | Required evidence |
+| --- | --- | --- |
+| P0-01 | Pin source SHAs, threat model and tool/CI schemas | Versioned baseline + Reviewer report |
+| P1-01 | Isolated Windows tray, scheduled startup, tunnel, MCP health | Native Windows reboot + reconnect smoke |
+| P2-01 | Trusted multi-root registry and filesystem guards | Path/junction/TOCTOU negative tests |
+| P2-02 | Restricted execution identity feasibility | OS-level forbidden read/write and positive compile smoke |
+| P3-01 | Typed file/search/patch tools and conflict detection | Concurrent edit, recovery and binary-file tests |
+| P4A-01 | CI YAML parser, DAG, runner journal, artifact store | Non-Git workflow CI01/CI02/CI07 |
+| P4A-02 | Async runner lifecycle, cancellation, logs and quotas | CI03/CI05/CI06/CI08 |
+| P4B-01 | Shell/process toolchain and local Git tools | Build/test and dirty-worktree isolation |
+| P5-01 | GSA LOCAL/HYBRID target routing and evidence consumption | Online regression + local E2E |
+| P6-01 | Installer/uninstall and compatibility regression | Windows startup + full acceptance matrix |
+
+- Each ticket has a reproducible test command, PASS/FAIL evidence path, known blockers and exact source revision. A code review PASS does not stand in for host tests.
+- P2-02 is a **hard gate** before arbitrary shell/CI execution is advertised; feasibility can be tested in a disposable fixture in parallel with P1/P2, but full source edit/build/test release depends on it.
+- Review loop per ticket: Planner checks scope → implement → local tests → independent Reviewer → fix findings → rerun tests → record revision-bound outcome. Repeat until PASS or explicit BLOCKED; never invent a green status.
+- No code implementation, Windows sandbox validation, CI runner execution or live connector regression is claimed by this document.
