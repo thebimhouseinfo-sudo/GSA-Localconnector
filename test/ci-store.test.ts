@@ -43,3 +43,21 @@ test("CI tool history isolates Workspace IDs",async()=>{
   assert.equal(status.result.state,"QUEUED");
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
+
+test("crash reconciliation marks unfinished runs UNKNOWN, not PASSED",async()=>{
+ const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-recovery-"));
+ try{
+  const store=new CiJournalStore(path.join(tmp,"journal"));
+  const started=createQueuedRun("w","compile","a".repeat(64));
+  await store.save(started,null);
+  const preparing=transitionRun(started,"PREPARING",1);
+  await store.save(preparing,1);
+  const active=transitionRun(preparing,"RUNNING",2);
+  await store.save(active,2);
+  const report=await store.reconcileInterrupted();
+  assert.deepEqual(report.recovered,[started.run_id]);
+  const recovered=await store.load(started.run_id);
+  assert.equal(recovered.state,"UNKNOWN");assert.equal(recovered.revision,4);
+  assert.deepEqual((await store.reconcileInterrupted()).recovered,[]);
+ }finally{await fs.rm(tmp,{recursive:true,force:true});}
+});
