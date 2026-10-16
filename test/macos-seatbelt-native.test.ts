@@ -42,5 +42,19 @@ test("Seatbelt native candidate permits own workspace and denies sibling read/wr
   const write=run("/usr/bin/touch",[path.join(outside,"created.txt")]);
   assert.notEqual(write.status,0,"forbidden sibling write succeeded");
   await assert.rejects(fs.stat(path.join(outside,"created.txt")));
+  // A symlink inside the Workspace must not expose an outside file.
+  const link=path.join(work,"outside-link");
+  await fs.symlink(path.join(outside,"private.txt"),link);
+  const escaped=run("/bin/cat",[link]);
+  assert.notEqual(escaped.status,0,"Workspace symlink escaped host sandbox");
+  assert.ok(!escaped.stdout.includes("DENIED"),"symlink leaked outside content");
+  // Nested commands inherit the sandbox, not only the first executable.
+  const nested=run("/bin/sh",["-c","/bin/cat \"$1\"","gsa-nested",path.join(outside,"private.txt")]);
+  assert.notEqual(nested.status,0,"nested child escaped host sandbox");
+  assert.ok(!nested.stdout.includes("DENIED"),"nested child leaked outside content");
+  const writable=run("/usr/bin/touch",[path.join(work,"inside-created.txt")]);
+  assert.equal(writable.status,0,"allowed workspace write was denied");
+  assert.ok((await fs.stat(path.join(work,"inside-created.txt"))).isFile());
+
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
