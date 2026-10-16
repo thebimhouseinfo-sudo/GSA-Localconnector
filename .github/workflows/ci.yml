@@ -105,3 +105,7 @@ jobs:
 
       - name: Regress FAT32 EFI file-chain traversal (no real image access)
         run: python3 scripts/test-efi-fat32-inspector.py
+
+      - name: Hermetic synthetic FAT32 EFI fallback clone patch test (never touch guest disk)
+        if: runner.os != 'Windows'
+        run: python3 scripts/test-efi-fallback-candidate.py
