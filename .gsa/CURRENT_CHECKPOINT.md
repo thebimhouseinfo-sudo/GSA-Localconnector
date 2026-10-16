@@ -155,3 +155,10 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - **Important NOT YET VERIFIED:** script launched on actual Windows, existing GPTWorker binary detection, doctor with real GSA tunnel ID/key, real OpenAI tunnel, plugin registration. Do not mark PASS until user evidence.
 - Human still must create ONE GSA-Localconnector-specific OpenAI tunnel and authorize runtime key; **never use GPTWorker's tunnel ID or API key** for this connector. The stable GSA plugin is independent of GPTWorker.
 - Mac: do not attempt to run Windows .exe; evaluate already-present Mac tunnel-client separately. Native read-only MCP tests remain 8/8 PASS across Windows/macOS.
+
+## Windows GPTWorker binary reuse — LIVE PASS (2026-10-16)
+- User executed `git pull --ff-only origin main` to `d7f1d85` in `D:\00 Other Works\Vibecode\GSA-Localconnector`.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\reuse-gptworker-tunnel.ps1 -Action check` returned `PASS: existing tunnel-client binary found; GPTWorker unchanged.`
+- Found existing `D:\00 Other Works\Vibecode\chatgpt-local-worker\bin\tunnel-client.exe`, version `0.0.14+0f870e50a973fa820d4c409000059e181e8d242b`.
+- **WIN-TUNNEL-BINARY-REUSE PASS**, no new installation needed. This is executable discovery, not a tunnel connection, doctor or plugin PASS.
+- Next: provision distinct GSA OpenAI Tunnel ID and scoped runtime key; verify dedicated profile/doctor/run without disturbing GPTWorker; validate macOS existing client separately.
