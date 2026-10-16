@@ -168,3 +168,9 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Root cause: GSA launcher generated stdio command containing Windows `C:\Program Files\nodejs\node.exe`; tunnel-client 0.0.14 command parser removes backslashes as escapes, leaving invalid `C:Program Filesnodejsnode.exe`.
 - Fix commit `c4a124407d312f4c27b718e3e65b9fba9c75744d`: normalize Windows node executable and MCP script paths to forward-slash form while quoting whitespace-sensitive arguments in dedicated YAML profile.
 - **FIX NOT LIVE VERIFIED YET.** User must pull updated main and rerun `-Action doctor` then `-Action run` only if doctor PASS. Avoid claiming tunnel READY or plugin LIVE before ready confirmation. The runtime stopped after failed spawn; GPTWorker was not modified.
+
+## Windows OpenAI tunnel READY — user live evidence (2026-10-16)
+- User ran `Invoke-WebRequest http://127.0.0.1:58348/readyz -UseBasicParsing` on Windows; result `StatusCode: 200`, `Content: ready`, timestamp `2026-10-16 03:56:11 GMT`.
+- **WIN-OPENAI-TUNNEL-READY PASS** based on live native /readyz endpoint. The earlier Windows path parser fix has not been independently re-run through doctor output in this turn, but tunnel runtime now reports ready.
+- Still pending: proof of ChatGPT private plugin connection, remote tool discovery/`connector_status`, explicit GSA host identity, macOS tunnel handoff. Do not claim plugin LIVE or read/write/shell/CI enabled.
+- Next human action: in ChatGPT Plugins create ONE custom MCP server plugin `GSA-Localconnector`, Connection=Tunnel and select the existing GSA OpenAI tunnel, then invoke `connector_status`. Keep macOS tunnel-client stopped during Windows testing.
