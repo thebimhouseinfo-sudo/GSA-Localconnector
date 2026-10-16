@@ -7,6 +7,7 @@ import {createHash} from "node:crypto";
 import {enrollReadOnly,revokeTrusted} from "../local/grants.js";
 import {plannedTools,plannedToolNames} from "./catalog.js";
 import {validateWorkflow} from "../core/ci-dag.js";
+import {parseCiManifest} from "../core/ci-manifest.js";
 import {dispatchFileMutation} from "./write-dispatch.js";
 import {batchFileOperations} from "./batch-dispatch.js";
 import {CiJournalStore} from "../local/ci-store.js";
@@ -119,11 +120,11 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
              const stat=await fs.stat(target);
              if(!stat.isFile())continue;
              if(stat.size>65536)throw Error("CI_MANIFEST_TOO_LARGE");
-             if(relative.endsWith(".yaml")){workflows.push({path:relative,format:"yaml",validation:"UNSUPPORTED_FORMAT"});continue;}
+
              try{
-               const parsed=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(await fs.readFile(target))) as unknown;
-               workflows.push({path:relative,format:"json",...validateWorkflow(parsed)});
-             }catch(e){workflows.push({path:relative,format:"json",validation:"INVALID",reason:e instanceof Error?e.message:"UNKNOWN_ERROR"});}
+               const parsed=parseCiManifest(new TextDecoder("utf-8",{fatal:true}).decode(await fs.readFile(target)));
+               workflows.push({path:relative,format:relative.endsWith(".yaml")?"yaml":"json",...validateWorkflow(parsed)});
+             }catch(e){workflows.push({path:relative,format:relative.endsWith(".yaml")?"yaml":"json",validation:"INVALID",reason:e instanceof Error?e.message:"UNKNOWN_ERROR"});}
            }
            result={workflows,execution_allowed:false};
           }break;
@@ -134,8 +135,8 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            if(!stat.isFile()||stat.size>65536)throw Error("CI_MANIFEST_TOO_LARGE");
            const text=new TextDecoder("utf-8",{fatal:true}).decode(await fs.readFile(file));
            let parsed:unknown;
-           try{parsed=JSON.parse(text);}catch{throw Error("CI_MANIFEST_REQUIRES_JSON_SUBSET");}
-           result={...validateWorkflow(parsed),execution_allowed:false,format:"JSON-compatible YAML subset"};
+           try{parsed=parseCiManifest(text);}catch{throw Error("CI_MANIFEST_INVALID");}
+           result={...validateWorkflow(parsed),execution_allowed:false,format:"Strict YAML subset or JSON"};
           }break;
         case "list_capabilities":
           if(Object.keys(args).some(k=>k!=="workspace_id")||(args.workspace_id!==undefined&&typeof args.workspace_id!=="string"))throw Error("INVALID_ARGUMENTS");
