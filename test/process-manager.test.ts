@@ -46,3 +46,31 @@ test("unverified process start never invokes host process",()=>{
  const manager=new ProcessManager(null);
  assert.throws(()=>manager.start(req),(e:any)=>e.code==="SECURITY_BLOCKED");
 });
+
+test("native cancellation never assumes confirmed termination and denies cross-workspace stop",async()=>{
+ let complete!: (x:{exit_code:null;signal:null;stdout:string;stderr:string;cancelled:true;timed_out:false})=>void;
+ const pending=new Promise<{exit_code:null;signal:null;stdout:string;stderr:string;cancelled:true;timed_out:false}>(resolve=>{complete=resolve;});
+ const stopped:string[]=[];
+ const native:VerifiedNativeSandbox={platform:"windows",verified:true,policy_fingerprint:"fake",
+  execute:async request=>{assert.ok(request.process_id);return pending;},
+  cancel:async (id,workspace)=>{stopped.push(workspace+":"+id);return true;}
+ };
+ const manager=new ProcessManager(native);
+ const started=manager.start(req);
+ await assert.rejects(manager.stop("different",started.process_id),(e:any)=>e.code==="PROCESS_NOT_FOUND");
+ const acknowledged=await manager.stop("a",started.process_id);
+ assert.equal(acknowledged.requested,true);
+ assert.equal(manager.get("a",started.process_id).state,"RUNNING");
+ assert.equal(stopped.length,1);
+ complete({exit_code:null,signal:null,stdout:"",stderr:"",cancelled:true,timed_out:false});
+ assert.equal((await manager.settle("a",started.process_id)).state,"CANCELLED");
+});
+test("missing host cancellation capability returns SECURITY_BLOCKED",async()=>{
+ let finish!:()=>void;
+ const pending=new Promise<void>(resolve=>{finish=resolve;});
+ const native:VerifiedNativeSandbox={platform:"macos",verified:true,policy_fingerprint:"fake",execute:async()=>{await pending;return {exit_code:0,signal:null,stdout:"",stderr:"",cancelled:false,timed_out:false};}};
+ const manager=new ProcessManager(native);
+ const started=manager.start(req);
+ await assert.rejects(manager.stop("a",started.process_id),(e:any)=>e.code==="SECURITY_BLOCKED");
+ finish();await manager.settle("a",started.process_id);
+});
