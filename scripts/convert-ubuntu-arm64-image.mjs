@@ -22,6 +22,21 @@ if(m.image_path!==source||m.format!=="gsa-linux-arm64-cloudimg-qcow2-candidate-v
  m.bytes!==620224512||m.arch!=="arm64"||m.boot_ready!==false)fail("SOURCE_MANIFEST_MISMATCH");
 const stat=await fs.lstat(source);
 if(!stat.isFile()||stat.isSymbolicLink()||stat.size!==m.bytes)fail("SOURCE_IDENTITY_MISMATCH");
+// Reverify source bytes before passing it to the converter.
+const sourceHandle=await fs.open(source,"r");
+try{
+ const s=await sourceHandle.stat();
+ if(s.dev!==stat.dev||s.ino!==stat.ino||s.size!==stat.size)fail("SOURCE_CHANGED");
+ const digest=createHash("sha256"),block=Buffer.allocUnsafe(1024*1024);
+ for(let pos=0;pos<s.size;){
+  const {bytesRead}=await sourceHandle.read(block,0,Math.min(block.length,s.size-pos),pos);
+  if(!bytesRead)fail("SOURCE_UNEXPECTED_EOF");
+  digest.update(block.subarray(0,bytesRead));pos+=bytesRead;
+ }
+ const after=await sourceHandle.stat();
+ if(after.size!==s.size||after.mtimeMs!==s.mtimeMs||after.ino!==s.ino)fail("SOURCE_MUTATED");
+ if(digest.digest("hex")!==m.sha256)fail("SOURCE_SHA256_MISMATCH");
+}finally{await sourceHandle.close();}
 const format=await inspectGuestDiskHeader(source);
 if(format.disk_format!=="qcow2"||format.qcow_version!==3||
  format.virtual_size_bytes!==3758096384||format.backing_file_declared||format.external_data_declared)
