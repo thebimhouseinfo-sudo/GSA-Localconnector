@@ -61,21 +61,7 @@ export class ProcessManager {
   return this.get(workspaceId,processId);
  }
  async run(request:SandboxedProcessRequest):Promise<ProcessRecord>{
-  if(!this.native?.verified)throw new ProcessError("SECURITY_BLOCKED","Native sandbox unavailable");
-  if(!request.workspace_id||!request.executable||!Array.isArray(request.argv)||request.argv.some(a=>typeof a!=="string"||a.includes("\\0"))||request.cwd_relative!=="."||!Number.isSafeInteger(request.time_limit_ms)||request.time_limit_ms<1||request.time_limit_ms>120000||!Number.isSafeInteger(request.max_output_bytes)||request.max_output_bytes<1||request.max_output_bytes>2097152||request.network_allowed)throw new ProcessError("INVALID_PROCESS","Invalid process request");
-  const now=new Date().toISOString(),id=randomUUID();
-  const init:ProcessRecord={process_id:id,workspace_id:request.workspace_id,state:"RUNNING",created_at:now,updated_at:now};
-  this.records.set(id,init);
-  try{
-   const receipt=await this.native.execute(request);
-   if(Buffer.byteLength(receipt.stdout,"utf8")+Buffer.byteLength(receipt.stderr,"utf8")>request.max_output_bytes)
-     throw new ProcessError("INVALID_PROCESS","Native backend exceeded output quota");
-   const state:ProcessState=receipt.cancelled?"CANCELLED":receipt.timed_out?"FAILED":receipt.exit_code===0?"SUCCEEDED":receipt.exit_code===null?"UNKNOWN":"FAILED";
-   const done:ProcessRecord={...init,state,receipt,updated_at:new Date().toISOString()};
-   this.records.set(id,done);return done;
-  }catch{
-   const unknown:ProcessRecord={...init,state:"UNKNOWN",updated_at:new Date().toISOString()};
-   this.records.set(id,unknown);return unknown;
-  }
+  const started=this.start(request);
+  return this.settle(request.workspace_id,started.process_id);
  }
 }
