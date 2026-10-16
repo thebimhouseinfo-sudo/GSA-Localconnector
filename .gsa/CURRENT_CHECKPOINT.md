@@ -524,3 +524,8 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - **PASS scope:** graphics device/window construction, VM framework lifecycle and clean reported stop. No visual screenshot/description of guest display was provided; no EFI menu, Linux kernel or userspace boot may be claimed. Serial remains silent.
 - GitHub Actions [38889983952](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/38889983952) completed success for `d30d01e` (source/compile CI, NOT VM guest boot).
 - NEXT evidence: obtain user observation or image of contents of short-lived guest graphics window; if blank/EFI shell, investigate Canonical cloud disk partition/EFI boot support and consider separately verified boot mechanism. Do not rerun RAW conversion, and do not enable shell/Git/CI or SEC01.
+
+## Guest graphical boot failure reported — 2026-10-16
+- User reports graphics window appears but boot displays failures ("cửa sổ xuất hiện nhưng chạy lên toàn fail"). Exact guest screen messages not yet available. This invalidates any assumption that Ubuntu userspace booted. VM lifecycle/GPU construction PASS unchanged; Ubuntu boot still BLOCKED.
+- New read-only offline image GPT/EFI partition diagnostic `scripts/inspect-arm64-efi-image.py`, commit `88562023`. This does NOT mount or mutate RAW; does not certify EFI bootloader files; reports GPT/ESP GUID, FAT boot sector, partition boundaries only. Requires actual Mac execution to know outcome.
+- NEXT: run local `python3 scripts/inspect-arm64-efi-image.py` after pull, and capture the exact error text/photo from graphical VM window if possible. Distinguish missing bootable EFI media vs Linux boot failure; keep execution/SEC01 BLOCKED.
