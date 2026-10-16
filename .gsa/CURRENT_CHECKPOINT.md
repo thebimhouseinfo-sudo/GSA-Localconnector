@@ -97,3 +97,9 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Windows PowerShell `Invoke-RestMethod http://127.0.0.1:58347/health` returned `status=alive`, `name=gsa-localconnector`, `exposedTools=read-only`.
 - **WIN-HEALTH PASS** (user-supplied live machine evidence). This does **not** prove `npm test`, bearer enforcement, MCP initialize, tunnel connectivity or startup persistence.
 - Windows next: anonymous POST `/mcp` must return 401, then authorized MCP handshake and `npm test` evidence. macOS native installation/health test pending. Cloudflare plugin must not be created yet.
+
+## Windows authentication gate — user-provided live evidence (2026-10-16)
+- PowerShell unauthenticated POST `http://127.0.0.1:58347/mcp` with JSON-RPC initialize returned `HTTP Status: 401` and `PASS - Authentication protection works`.
+- **WIN-AUTH-NEGATIVE PASS**: anonymous MCP access rejected on the user's Windows host.
+- Combined Windows evidence: `/health` alive and anonymous `/mcp` POST 401. Authenticated tool handshake and native `npm test` output have NOT been supplied.
+- macOS native `/health` and anonymous 401 remain PENDING. No tunnel or ChatGPT plugin has been created.
