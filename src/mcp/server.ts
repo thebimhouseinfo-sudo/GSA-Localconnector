@@ -7,6 +7,8 @@ import {createHash} from "node:crypto";
 import {enrollReadOnly} from "../local/grants.js";
 import {plannedTools,plannedToolNames} from "./catalog.js";
 import {validateWorkflow} from "../core/ci-dag.js";
+import {dispatchFileMutation} from "./write-dispatch.js";
+import type {NativeScopedFiles} from "../core/native-io.js";
 
 /** Read-only file surface with explicit caller-authorized absolute-root binding; no shell or CI. */
 export interface ToolCall { name: string; arguments?: Record<string, unknown> }
@@ -22,7 +24,7 @@ const definitions = [
   {name:"fetch_file",description:"Read UTF-8 text from an enrolled read-only workspace (maximum 64 KiB)",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},start_line:{type:"integer",minimum:1},max_lines:{type:"integer",minimum:1,maximum:500}},required:["workspace_id","path"],additionalProperties:false}}
 ] as const;
 export function toolDefinitions() {return [...definitions,...plannedTools];}
-export function createReadOnlyTools(registry: WorkspaceRegistry) {
+export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null) {
   return async (call:ToolCall):Promise<ToolResult> => {
     try {
       const args=call.arguments??{};
@@ -155,6 +157,8 @@ export function createReadOnlyTools(registry: WorkspaceRegistry) {
            const start=Number(args.start_line??1),count=Number(args.max_lines??lines.length);
            result={path:args.path,text:lines.slice(start-1,start-1+count).join("\n"),start_line:start,end_line:Math.min(lines.length,start-1+count),total_lines:lines.length,truncated:start-1+count<lines.length};
           }break;
+        case "create_file":case "update_file":case "edit_file":case "create_directory":case "delete_file":case "copy_file":case "move_file":
+          result=await dispatchFileMutation(call.name,args,registry,nativeFiles);break;
         default: if(plannedToolNames.has(call.name))throw Error("SECURITY_BLOCKED"); else throw Error("UNKNOWN_TOOL");
       }
       return {content:[{type:"text",text:JSON.stringify({ok:true,result})}]};
