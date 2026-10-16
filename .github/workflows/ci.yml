@@ -46,3 +46,17 @@ jobs:
         run: node --check scripts/prepare-ubuntu-arm64-image.mjs
       - name: Syntax-check opt-in QCOW2 converter (no conversions on CI)
         run: node --check scripts/convert-ubuntu-arm64-image.mjs
+      - name: Compile and test Swift RAW disk attachment preflight without VM boot
+        if: runner.os == 'macOS'
+        run: |
+          swiftc -framework Virtualization native/macos-vm/RawDiskPreflight.swift -o "$RUNNER_TEMP/gsa-raw-preflight"
+          export IMAGE="$RUNNER_TEMP/gsa-raw-fixture.img"
+          dd if=/dev/zero of="$IMAGE" bs=4096 count=1
+          export DIGEST="$(shasum -a 256 "$IMAGE" | awk '{print $1}')"
+          printf '{"protocolVersion":"gsa-vm-raw-preflight-v1","imagePath":"%s","expectedSHA256":"%s","expectedBytes":4096}' "$IMAGE" "$DIGEST" | "$RUNNER_TEMP/gsa-raw-preflight"
+          set +e
+          printf '{"protocolVersion":"gsa-vm-raw-preflight-v1","imagePath":"%s","expectedSHA256":"%s","expectedBytes":4096}' "$IMAGE" "$(printf '%064d' 0)" | "$RUNNER_TEMP/gsa-raw-preflight" > "$RUNNER_TEMP/gsa-raw-denied.json"
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          grep -q '"errorCode":"DIGEST_MISMATCH"' "$RUNNER_TEMP/gsa-raw-denied.json"
