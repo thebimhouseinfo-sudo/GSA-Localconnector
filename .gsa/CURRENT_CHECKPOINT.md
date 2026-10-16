@@ -180,3 +180,10 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Direct `mcp__gsa_lc__list_workspaces({})` returned `ok=true`, `result=[]`.
 - **WINDOWS CHATGPT -> OPENAI TUNNEL -> LOCAL MCP TOOLS E2E PASS.** Plugin connection real and tool calls succeeded. Workspace registry is currently empty; shell/write/CI are not enabled and are not certified.
 - Next: implement secure local workspace enrollment and native containment before exposing coding operations. macOS handoff using the SAME plugin/tunnel still pending; do not launch both hosts simultaneously.
+
+## Approved two-plugin concurrent Windows/macOS design (2026-10-16)
+- User requests two separate plugins because Windows and Mac must be able to serve distinct projects **at the same time**. **Supersedes** earlier shared plugin/tunnel and exclusive handoff guidance.
+- Windows existing ChatGPT plugin and its OpenAI tunnel **remain unchanged and verified E2E**. Optional UI rename `gsa-lc-win`, but do not disrupt a functioning connection.
+- macOS needs a distinct OpenAI tunnel ID and a second private ChatGPT plugin (suggested `gsa-lc-mac`). Different tunnel-client profiles and per-host secrets. Same source/runtime protocol; permissions/session/workspace root registries scoped to each host.
+- Both may run concurrently because **tunnel IDs differ**; never reuse same stdio tunnel ID on two machines. GSA routes each project explicitly through its corresponding plugin; no cluster/failover implemented.
+- Updated docs/tunnel/SETUP.md and implementation plan. macOS tunnel/plugin provision and dual-host parallel test **NOT YET PASS**.
