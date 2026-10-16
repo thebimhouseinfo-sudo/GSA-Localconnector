@@ -5,6 +5,7 @@ import Foundation
 import Virtualization
 import CryptoKit
 import Darwin
+import AppKit
 
 struct Request: Decodable {
     let protocolVersion: String
@@ -106,6 +107,10 @@ do {
     serial.attachment = VZFileHandleSerialPortAttachment(
         fileHandleForReading:nullInput,fileHandleForWriting:serialFile)
     config.serialPorts = [serial]
+    let graphics = VZVirtioGraphicsDeviceConfiguration()
+    graphics.scanouts = [VZVirtioGraphicsScanoutConfiguration(widthInPixels: 1024, heightInPixels: 768)]
+    config.graphicsDevices = [graphics]
+    phase("GRAPHICS_CONFIGURED")
     config.networkDevices = []
     config.directorySharingDevices = []
     phase("CONFIG_VALIDATE")
@@ -114,6 +119,20 @@ do {
     phase("VM_CONSTRUCT")
     let vm = VZVirtualMachine(configuration:config)
     phase("VM_CONSTRUCTED")
+    // Visible diagnostic display; window visibility is not proof of OS boot.
+    let app = NSApplication.shared
+    app.setActivationPolicy(.regular)
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1024, height: 768),
+                          styleMask: [.titled, .closable, .miniaturizable],
+                          backing: .buffered, defer: false)
+    window.title = "GSA Linux ARM64 - guest boot observation only"
+    let view = VZVirtualMachineView(frame: NSRect(x: 0, y: 0, width: 1024, height: 768))
+    view.virtualMachine = vm
+    window.contentView = view
+    window.center()
+    window.makeKeyAndOrderFront(nil)
+    app.activate(ignoringOtherApps: true)
+    phase("GRAPHICS_WINDOW_READY")
     var started = false
     var completed = false
     var failure: String? = nil
@@ -155,6 +174,7 @@ do {
             RunLoop.main.run(mode:.default,before:Date().addingTimeInterval(0.1))
         }
     }
+    window.orderOut(nil)
     let safelyStopped = vm.state == .stopped
     phase(safelyStopped ? "VM_STOPPED" : "VM_STOP_UNCONFIRMED")
     try? serialFile.synchronize()
