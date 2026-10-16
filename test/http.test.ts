@@ -22,7 +22,7 @@ test("stateless authenticated local MCP HTTP protocol", async()=>{
   assert.equal(init.body.result.serverInfo.name,"gsa-localconnector");
   const ts=await rpc(4,"tools/list",{},{"mcp-protocol-version":"2025-03-26"});
   assert.equal(ts.status,200);
-  assert.deepEqual(ts.body.result.tools.map((t:any)=>t.name),["connector_status","list_workspaces","get_workspace","list_directory","bind_workspaces","fetch_file"]);
+  assert.deepEqual(ts.body.result.tools.map((t:any)=>t.name),["connector_status","list_workspaces","get_workspace","list_directory","bind_workspaces","get_file_info","search","fetch_file"]);
   const bad=await rpc(5,"tools/call",{name:"run_command",arguments:{}},{"mcp-protocol-version":"2025-03-26"});
   assert.equal(bad.body.result.isError,true);
   const missing=await rpc(6,"tools/call",{name:"get_workspace",arguments:{workspace_id:"none"}},{"mcp-protocol-version":"2025-03-26"});
