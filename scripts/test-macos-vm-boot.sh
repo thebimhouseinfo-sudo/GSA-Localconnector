@@ -7,7 +7,7 @@ fi
 temp_dir="$(mktemp -d)"
 trap 'rm -rf "$temp_dir"' EXIT
 binary="$temp_dir/gsa-vm-boot-probe"
-swiftc -g -framework Virtualization native/macos-vm/BootProbe.swift -o "$binary"
+swiftc -g -framework Virtualization -framework AppKit native/macos-vm/BootProbe.swift -o "$binary"
 codesign --force --sign - --entitlements native/macos-vm/Virtualization.entitlements "$binary"
 codesign --verify --strict "$binary"
 image="$HOME/Library/Application Support/GSA-Localconnector/images/ubuntu-24.04-arm64-converted.raw"
