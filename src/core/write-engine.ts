@@ -1,12 +1,15 @@
 import {TextDecoder} from "node:util";
 import {applyUnifiedTextPatch} from "./unified-patch.js";
+import {validateWorkspaceRelative} from "./workspace-path.js";
 import {exactTextEdit,planExactEdit,requireExpectedHash,sha256} from "./edit-guards.js";
 import type {NativeScopedFiles,ScopedFileRef,MutationReceipt} from "./native-io.js";
 const MAX_BYTES=8*1024*1024;
 export class MutationError extends Error {constructor(public readonly code:"INVALID_ARGUMENTS"|"FILE_TOO_LARGE",message:string){super(message);}}
 function validate(ref:ScopedFileRef):void{
- if(!ref.workspace_id||!ref.path||ref.path==="."||ref.path.startsWith("/")||ref.path.startsWith("-")||ref.path.includes("\\")||ref.path.split("/").some(p=>p==="."||p===".."||!p)||ref.path.includes("\0"))throw new MutationError("INVALID_ARGUMENTS","Expected clean Workspace-relative path");
+ if(!ref.workspace_id)throw new MutationError("INVALID_ARGUMENTS","Missing Workspace");
+ validateWorkspaceRelative(ref.path);
 }
+
 function body(value:string):Uint8Array{
  const b=Buffer.from(value,"utf8");
  if(b.byteLength>MAX_BYTES)throw new MutationError("FILE_TOO_LARGE","Mutation exceeds 8 MiB");
