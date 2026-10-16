@@ -27,9 +27,9 @@ if(-not (Test-Path -LiteralPath $McpScript)){throw 'Missing compiled MCP. Run np
 $ProfileDir=Join-Path $env:LOCALAPPDATA 'GSA-Localconnector\tunnel'
 New-Item -ItemType Directory -Path $ProfileDir -Force | Out-Null
 $Profile=Join-Path $ProfileDir 'gsa-localconnector.yaml'
-# YAML JSON string encoding safely quotes the argument as a single command value.
+# tunnel-client 0.0.14 parses stdio command with POSIX-like backslash escaping. Use Windows-compatible forward slashes in absolute paths so C:\\ does not become C:; keep quotes for spaces.
 $node=(Get-Command node -ErrorAction Stop).Source
-$command='"'+$node.Replace('"','\"')+'" "'+$McpScript.Replace('"','\"')+'"'
+$command='"'+$node.Replace('\','/').Replace('"','\"')+'" "'+$McpScript.Replace('\','/').Replace('"','\"')+'"'
 $yaml=@"
 config_version: 1
 control_plane:
