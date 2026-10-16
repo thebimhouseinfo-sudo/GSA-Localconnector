@@ -114,3 +114,18 @@ OpenAI Secure MCP Tunnel is for private MCP connections, **not public plugin sub
 - Design is intentionally **manual handoff initially**. Cross-host automated election/fencing is outside MVP and MUST NOT be fabricated as an existing feature.
 
 OpenAI stdio concurrency limitation: https://github.com/openai/tunnel-client/blob/master/docs/configuration.md#stdio-deployment-limits
+
+## CURRENT DECISION — two simultaneous hosts, two private plugins (2026-10-16)
+
+This section supersedes every older single-plugin/single-tunnel instruction above.
+
+| Host | Private ChatGPT plugin | OpenAI tunnel | Local runtime |
+| --- | --- | --- | --- |
+| Windows | `gsa-lc-win` (existing plugin may be renamed if UI allows) | **existing Windows GSA tunnel ID** | `D:\\00 Other Works\\Vibecode\\GSA-Localconnector` |
+| macOS | `gsa-lc-mac` (create second plugin) | **NEW separate macOS GSA tunnel ID** | `~/GSA-Localconnector` |
+
+Both connections may remain active simultaneously, allowing GSA to run separate projects on the two machines. Never run two tunnel-client instances with the **same** tunnel ID. Do not reuse GPTWorker credentials/tunnel. Keep individual Workspace registries and approvals per host; an authorization on one host does not authorize the other. One active controller lease is **per host**, not globally across both.
+
+Windows already demonstrated live ChatGPT tool calls via the existing plugin. **Do not delete/recreate the functioning Windows tunnel or plugin just to rename it.** macOS requires its own new tunnel ID and separate private plugin, independently tested through `connector_status` returning `platform=darwin`.
+
+macOS setup instructions earlier in this file must use `<MACOS_TUNNEL_ID>`, **NOT** the Windows or shared tunnel ID. Key may be scoped separately; a key with correct permissions can be provisioned locally without sharing its value. This is a concurrency architecture revision, not evidence that the macOS tunnel or plugin exists.
