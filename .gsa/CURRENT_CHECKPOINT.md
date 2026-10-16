@@ -216,3 +216,10 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - User ran `npm run workspace -- enroll-read gsa-source "$HOME/GSA-Localconnector"`: success. Local `npm run workspace -- list` returned `workspace_id=gsa-source`, canonical root `/Users/nam/GSA-Localconnector`, permissions `[read]`.
 - Direct **live** `mcp__gsa_lc_mac__list_workspaces({})` still returns `[]`: existing tunnel MCP process has not reloaded host grants. **MAC LOCAL ENROLL PASS; MAC REMOTE GRANT VISIBILITY PENDING**.
 - NEXT HUMAN: restart ONLY macOS GSA-Localconnector tunnel-client (not GPTWorker/Windows tunnel), preserving Mac runtime credentials in the new process environment; then call `list_workspaces`, `list_directory` and `fetch_file` via Mac plugin. Do not mark remote file tools PASS prematurely.
+
+## Windows native Workspace enrollment — verified local, remote validation blocked (2026-10-16)
+- Windows repo `D:\00 Other Works\Vibecode\GSA-Localconnector` pulled main through `e897a62`; `npm test` **10/10 PASS**, zero failures.
+- Local `npm run workspace -- enroll-read gsa-source "D:\00 Other Works\Vibecode\GSA-Localconnector"` succeeded. `npm run workspace -- list` returned read-only grant `gsa-source` with canonical Windows root.
+- **WIN LOCAL ENROLL PASS**; runtime must restart the GSA Windows MCP tunnel to reload local grant store.
+- Live attempt `mcp__gsa_lc__list_workspaces({})` returned connector error `Session terminated` instead of a tool result; **remote workspace visibility remains UNVERIFIED**. Do not claim it has loaded grants or that remote file calls pass.
+- Next: verify Windows GSA-only tunnel runtime running and `/readyz` port 58348; restart GSA tunnel if required (do not touch GPTWorker), then retry plugin `list_workspaces`, `list_directory`, `fetch_file`. Mac remote visibility was also pending restart in previous checkpoint.
