@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { connectorStatus } from "../index.js";
 import { WorkspaceRegistry } from "../core/workspace.js";
+import fs from "node:fs/promises";
 
 /** Strict read-only bootstrap surface. No shell, CI, or enrollment tools. */
 export interface ToolCall { name: string; arguments?: Record<string, unknown> }
@@ -8,7 +9,9 @@ export interface ToolResult { content: Array<{type:"text";text:string}>; isError
 const definitions = [
   {name:"connector_status",description:"Return host capabilities; shell and CI remain blocked",inputSchema:{type:"object",properties:{},additionalProperties:false}},
   {name:"list_workspaces",description:"List explicitly trusted workspaces; does not enroll new ones",inputSchema:{type:"object",properties:{},additionalProperties:false}},
-  {name:"get_workspace",description:"Inspect trusted workspace metadata",inputSchema:{type:"object",properties:{workspace_id:{type:"string"}},required:["workspace_id"],additionalProperties:false}}
+  {name:"get_workspace",description:"Inspect trusted workspace metadata",inputSchema:{type:"object",properties:{workspace_id:{type:"string"}},required:["workspace_id"],additionalProperties:false}},
+  {name:"list_directory",description:"Read immediate directory entries in an enrolled read-only workspace",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"}},required:["workspace_id","path"],additionalProperties:false}},
+  {name:"fetch_file",description:"Read UTF-8 text from an enrolled read-only workspace (maximum 64 KiB)",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"}},required:["workspace_id","path"],additionalProperties:false}}
 ] as const;
 export function toolDefinitions() {return definitions;}
 export function createReadOnlyTools(registry: WorkspaceRegistry) {
@@ -27,6 +30,21 @@ export function createReadOnlyTools(registry: WorkspaceRegistry) {
           if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1) throw Error("INVALID_ARGUMENTS");
           {const g=registry.get(args.workspace_id);if(!g) throw Error("WORKSPACE_NOT_FOUND");
           result={workspace_id:g.id,permissions:g.permissions,revision:g.revision};}break;
+        case "list_directory":
+          if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
+          {const target=await registry.resolveExistingRead(args.workspace_id,args.path);
+           const entries=await fs.readdir(target,{withFileTypes:true});
+           result=entries.slice(0,500).map(e=>({name:e.name,kind:e.isDirectory()?"directory":e.isFile()?"file":"other"}));
+          }break;
+        case "fetch_file":
+          if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
+          {const target=await registry.resolveExistingRead(args.workspace_id,args.path);
+           const stat=await fs.stat(target);
+           if(!stat.isFile()||stat.size>65536)throw Error("READ_LIMIT_EXCEEDED");
+           const data=await fs.readFile(target);
+           const value=new TextDecoder("utf-8",{fatal:true}).decode(data);
+           result={path:args.path,text:value};
+          }break;
         default: throw Error("UNKNOWN_TOOL");
       }
       return {content:[{type:"text",text:JSON.stringify({ok:true,result})}]};
