@@ -5,8 +5,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import {createHash} from "node:crypto";
-import {createWriteStream} from "node:fs";
-import {pipeline} from "node:stream/promises";
 import {Readable} from "node:stream";
 
 const BASE="https://cloud-images.ubuntu.com/releases/noble/release/";
@@ -32,6 +30,8 @@ const realDir=await fs.realpath(targetDir);
 if(realDir!==targetDir)fail("Target directory must be canonical (no symlink parents)");
 const dest=path.join(realDir,FILE);
 const part=dest+".partial";
+const manifestPath=path.join(realDir,"ubuntu-arm64-image-manifest.json");
+try{await fs.lstat(manifestPath);fail("Manifest exists: refusing overwrite");}catch(e){if(e.code!=="ENOENT")throw e;}
 try{await fs.lstat(dest);fail("Destination exists: refusing overwrite");}catch(e){if(e.code!=="ENOENT")throw e;}
 try{await fs.lstat(part);fail("Partial download already exists: refusing overwrite");}catch(e){if(e.code!=="ENOENT")throw e;}
 const response=await fetch(BASE+FILE,{signal:AbortSignal.timeout(900000),redirect:"error"});
@@ -56,5 +56,5 @@ await handle.close();
 if(hash.digest("hex")!==sha){await fs.rm(part,{force:true});fail("SHA256 mismatch");}
 await fs.rename(part,dest);
 const manifest={format:"gsa-linux-arm64-cloudimg-qcow2-candidate-v1",image_path:dest,sha256:sha,bytes,arch:"arm64",provenance:BASE+FILE,boot_ready:false,security_verified:false,execution_authorized:false};
-await fs.writeFile(path.join(realDir,"ubuntu-arm64-image-manifest.json"),JSON.stringify(manifest,null,2)+"\n",{flag:"wx",mode:0o600});
+await fs.writeFile(manifestPath,JSON.stringify(manifest,null,2)+"\n",{flag:"wx",mode:0o600});
 console.log(JSON.stringify({status:"DOWNLOADED_AND_SHA256_VERIFIED",file:dest,bytes,sha256:sha,boot_ready:false,security_verified:false,execution_authorized:false}));
