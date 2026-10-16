@@ -223,6 +223,11 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,"execute");
           result=await processes.run({workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:false});break;
+        case "start_process":
+          if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string")||Object.keys(args).length!==3)throw Error("INVALID_ARGUMENTS");
+          requireNativeBackend(sandbox);
+          registry.requireGrant(args.workspace_id,"execute");
+          result=processes.start({workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:false});break;
         case "list_processes":
           if(typeof args.workspace_id!=="string")throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"execute");
