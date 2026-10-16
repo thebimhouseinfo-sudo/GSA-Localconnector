@@ -127,3 +127,9 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Exact three tools returned: `connector_status`, `list_workspaces`, `get_workspace`; descriptions reflect read-only scope.
 - **WIN-TOOLS-LIST PASS**. The MCP catalog exposes no shell/write/CI tools.
 - macOS authenticated tools/list still PENDING. Tunnel and ChatGPT plugin not created. Next: macOS authenticated tools/list; then install dedicated tunnel and confirm external HTTPS authentication.
+
+## Native MCP read-only validation complete — Windows + macOS (2026-10-16)
+- macOS authenticated `tools/list` returned exactly `connector_status`, `list_workspaces`, `get_workspace`, including expected read-only descriptions and inputSchema.
+- **MAC-TOOLS-LIST PASS**. Together with previously recorded Windows tests, both platforms have now passed `/health`, unauthenticated `/mcp` rejection (401), authenticated `initialize`, authenticated `tools/list`: **8/8 platform-gates PASS**, user-provided native outputs.
+- Next checkpoint: dedicated Cloudflare Tunnel install on each target host, unique hostname(s), external TLS and authenticated MCP verification. No tunnel or ChatGPT plugin is claimed READY. Never expose bearer secret in chat or GitHub.
+- Security reminder: the current published tools remain read-only; source/file write, shell and local CI not exposed.
