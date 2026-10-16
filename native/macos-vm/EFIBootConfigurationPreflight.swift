@@ -49,7 +49,14 @@ do {
     let attachment = try VZDiskImageStorageDeviceAttachment(url: url, readOnly: true)
     let config = VZVirtualMachineConfiguration()
     config.platform = VZGenericPlatformConfiguration()
-    config.bootLoader = VZEFIBootLoader()
+    // Disposable NVRAM, configuration validation only; no VM starts.
+    let efiDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: efiDirectory, withIntermediateDirectories: false)
+    defer { try? FileManager.default.removeItem(at: efiDirectory) }
+    let variableStoreURL = efiDirectory.appendingPathComponent("efi-variables")
+    let efi = VZEFIBootLoader()
+    efi.variableStore = try VZEFIVariableStore(creatingVariableStoreAt: variableStoreURL, options: [])
+    config.bootLoader = efi
     config.cpuCount = 2
     config.memorySize = 2 * 1024 * 1024 * 1024
     config.storageDevices = [VZVirtioBlockDeviceConfiguration(attachment: attachment)]
