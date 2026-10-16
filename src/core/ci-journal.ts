@@ -32,3 +32,12 @@ export function transitionRun(run:CiRunRecord,next:RunState,expectedRevision:num
  if(next==="FAILED"&&evidence&&evidence.exit_code===0)throw new CiStateError("FAILED_EXIT_CONFLICT");
  return Object.freeze({...run,state:next,updated_at:now.toISOString(),revision:run.revision+1,...(evidence?{evidence}: {})});
 }
+
+/** After a host crash, execution evidence is incomplete. Never silently resume
+ * a RUNNING or PREPARING job or label it successful.
+ */
+export function reconcileInterruptedRun(run:CiRunRecord,now=new Date()):CiRunRecord{
+ if(run.state==="RUNNING"||run.state==="PREPARING")
+   return transitionRun(run,"UNKNOWN",run.revision,now);
+ return run;
+}
