@@ -131,7 +131,7 @@ do {
         RunLoop.main.run(mode:.default,before:Date().addingTimeInterval(0.05))
     }
     if !completed {
-        Task { try? await vm.stop() }
+        Task { @MainActor in try? await vm.stop() }
         let shutdownLimit = Date().addingTimeInterval(5)
         while vm.state != .stopped && Date() < shutdownLimit {
             RunLoop.main.run(mode:.default,before:Date().addingTimeInterval(0.1))
@@ -149,7 +149,7 @@ do {
     }
     // The guest is not authorized to run connector tasks. Stop the disposable VM.
     if vm.state != .stopped {
-        Task { try? await vm.stop() }
+        Task { @MainActor in try? await vm.stop() }
         let shutdownLimit = Date().addingTimeInterval(10)
         while vm.state != .stopped && Date() < shutdownLimit {
             RunLoop.main.run(mode:.default,before:Date().addingTimeInterval(0.1))
