@@ -56,6 +56,29 @@ export async function enrollReadOnly(id:string,root:string,dir=identityDirectory
   await persistEntries(dir,[...existing.filter(e=>e.id!==id),{id,root:canonical,permissions:["read"]}]);
  });
 }
+/** One atomic persistence operation for a set of user-supplied absolute roots.
+ * All validation completes before the persisted registry changes.
+ */
+export async function enrollReadOnlyBatch(requests:ReadonlyArray<{id:string;root:string}>,dir=identityDirectory()):Promise<Array<{id:string;root:string}>>{
+ if(!requests.length||requests.length>16)throw Error("INVALID_ARGUMENTS");
+ return withGrantLock(dir,async()=>{
+  const previous=await readEntries(dir);
+  const registry=await loadTrustedRegistry(dir);
+  const newEntries=previous.slice();
+  const bound:Array<{id:string;root:string}>=[];
+  for(const request of requests){
+   await registry.enrollTrusted(request.id,request.root,["read"]);
+   const root=registry.requireGrant(request.id,"read").canonicalRoot;
+   if(bound.some(e=>e.id===request.id&&e.root!==root)||newEntries.some(e=>e.id!==request.id&&e.root===root)||bound.some(e=>e.id!==request.id&&e.root===root))throw Error("WORKSPACE_DUPLICATE_ROOT");
+   const prior=newEntries.findIndex(e=>e.id===request.id);
+   if(prior>=0)newEntries.splice(prior,1);
+   newEntries.push({id:request.id,root,permissions:["read"]});
+   bound.push({id:request.id,root});
+  }
+  await persistEntries(dir,newEntries);
+  return bound;
+ });
+}
 export async function revokeTrusted(id:string,dir=identityDirectory()):Promise<void>{
  await withGrantLock(dir,async()=>{
   const entries=await readEntries(dir);
