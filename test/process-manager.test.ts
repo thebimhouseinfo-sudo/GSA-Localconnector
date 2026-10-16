@@ -74,3 +74,18 @@ test("missing host cancellation capability returns SECURITY_BLOCKED",async()=>{
  await assert.rejects(manager.stop("a",started.process_id),(e:any)=>e.code==="SECURITY_BLOCKED");
  finish();await manager.settle("a",started.process_id);
 });
+
+test("run and start share concurrent process capacity",async()=>{
+ let finish!:()=>void;
+ const gate=new Promise<void>(resolve=>{finish=resolve;});
+ const native:VerifiedNativeSandbox={platform:"macos",verified:true,policy_fingerprint:"fake",
+  execute:async()=>{await gate;return {exit_code:0,signal:null,stdout:"done",stderr:"",cancelled:false,timed_out:false};}
+ };
+ const manager=new ProcessManager(native);
+ const active=[manager.start(req),manager.start(req),manager.start(req),manager.start(req)];
+ await assert.rejects(manager.run(req),(e:any)=>e.code==="PROCESS_BUSY");
+ finish();
+ const done=await Promise.all(active.map(r=>manager.settle("a",r.process_id)));
+ assert.ok(done.every(x=>x.state==="SUCCEEDED"));
+ assert.equal((await manager.run(req)).state,"SUCCEEDED");
+});
