@@ -14,7 +14,7 @@ const result={
  symlink_escape_denied:false,nested_child_denied:false,workspace_write_allowed:false,
  outcome:"SECURITY_BLOCKED",security_verified:false,
  positive_probe:{exit_code:null,signal:null,error_code:null,stderr_excerpt:""},
- temp_path_canonicalized:false
+ temp_path_canonicalized:false,policy_ladder:[]
 };
 if(process.platform!=="darwin"){
  console.log(JSON.stringify({...result,outcome:"WRONG_PLATFORM"}));process.exit(0);
@@ -34,6 +34,21 @@ try{
    env:{PATH:"/usr/bin:/bin",HOME:own,TMPDIR:path.join(own,"tmp")}
   });
  };
+ // Diagnostic ladder: exact same disposable file, progressively restrictive rules.
+ // A positive rung is feasibility only; no rung grants production authorization.
+ const ladders=[
+  {id:"allow_default_cat",profile:"(version 1)\\n(allow default)"},
+  {id:"deny_default_exec_read",profile:"(version 1)\\n(deny default)\\n(allow process-exec)\\n(allow process-fork)\\n(allow file-read*)"},
+  {id:"deny_default_workspace_write",profile:"(version 1)\\n(deny default)\\n(allow process-exec)\\n(allow process-fork)\\n(allow file-read*)\\n(allow file-write* (subpath (param \\"WORKSPACE\\")))"}
+ ];
+ result.policy_ladder=[];
+ for(const rung of ladders){
+  const run=spawnSync("/usr/bin/sandbox-exec",["-p",rung.profile,"-D","WORKSPACE="+own,"/bin/cat",path.join(own,"allowed.txt")],{
+   cwd:own,encoding:"utf8",timeout:10000,maxBuffer:16384,
+   env:{PATH:"/usr/bin:/bin",HOME:own,TMPDIR:path.join(own,"tmp")}
+  });
+  result.policy_ladder.push({id:rung.id,exit_code:run.status,signal:run.signal,allowed:run.status===0&&run.stdout==="allowed"});
+ }
  const base=call("/usr/bin/true",[],true);
  result.baseline_allowed=base.status===0;
  if(result.baseline_allowed){
