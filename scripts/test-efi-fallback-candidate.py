@@ -93,7 +93,8 @@ class CandidateTests(unittest.TestCase):
                 self.assertEqual(result["allocatedClusters"],5)
                 with self.assertRaisesRegex(ValueError,"FALLBACK_TARGET_ALREADY_PRESENT"):
                     tool.patch_esp(fd,expected_bytes=size,
-                                   grub_digest=hashlib.sha256(grub).hexdigest())
+                                   grub_digest=hashlib.sha256(grub).hexdigest(),
+                                   cfg_digest=hashlib.sha256(cfg).hexdigest())
             finally:
                 os.close(fd)
             self.assertEqual(tool.sha256(base),base_digest)
