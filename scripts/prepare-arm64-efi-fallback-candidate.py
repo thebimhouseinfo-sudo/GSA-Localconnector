@@ -23,6 +23,8 @@ SOURCE_SHA256 = "384f7eb9976ad155812b48efb1b780024c0748e35b5c3161c82c797578168e7
 GRUB_SHA256 = "b9d9dd81845d68a1f1867b5bcf26393908a9a349e749ce8ea944a1066d9abfcc"
 ESP_GUID = bytes.fromhex("28732ac11ff8d211ba4b00a0c93ec93b")
 NAME = b"GRUBAA64EFI"
+CFG_NAME = b"GRUB    CFG"
+CFG_SHA256 = "5943c82020bbdd3f1d79a732e131a9f8ec2284c4bc790695736106a9e1fa8d9d"
 
 def require(condition, message):
     if not condition:
@@ -44,7 +46,7 @@ def sha256(path):
             h.update(chunk)
     return h.hexdigest()
 
-def patch_esp(fd, expected_bytes=SOURCE_BYTES, grub_digest=GRUB_SHA256):
+def patch_esp(fd, expected_bytes=SOURCE_BYTES, grub_digest=GRUB_SHA256, cfg_digest=CFG_SHA256):
     """Modify only a disposable clone; verify expected signed Ubuntu GRUB bytes."""
     def read_at(off, size):
         require(off >= 0 and size >= 0 and off + size <= expected_bytes, "READ_BOUNDS")
@@ -150,65 +152,86 @@ def patch_esp(fd, expected_bytes=SOURCE_BYTES, grub_digest=GRUB_SHA256):
     efi,_=get(root,b"EFI        ",True)
     boot,_=get(efi,b"BOOT       ",True)
     ubuntu,_=get(efi,b"UBUNTU     ",True)
-    grub_start,grub_size=get(ubuntu,NAME,False)
-    require(0 < grub_size <= 8*1024*1024, "GRUB_SIZE_INVALID")
-    grub=bytearray()
-    for c in chain(grub_start,grub_size):
-        grub.extend(read_at(cluster_off(c),cluster_bytes))
-    grub=bytes(grub[:grub_size])
-    require(hashlib.sha256(grub).hexdigest() == grub_digest, "GRUB_DIGEST_MISMATCH")
+    def file_bytes(directory_cluster,name,expected_digest):
+        start,size=get(directory_cluster,name,False)
+        require(0 < size <= 8*1024*1024, "EFI_SOURCE_FILE_SIZE")
+        value=bytearray()
+        for c in chain(start,size):
+            value.extend(read_at(cluster_off(c),cluster_bytes))
+        data=bytes(value[:size])
+        require(hashlib.sha256(data).hexdigest() == expected_digest,
+                "EFI_SOURCE_DIGEST_MISMATCH:"+name.decode("ascii"))
+        return data
+
+    grub=file_bytes(ubuntu,NAME,grub_digest)
+    require(len(grub)>=140 and grub[:2] == b"MZ", "GRUB_NOT_PE")
     pe=u32(grub,0x3c)
-    require(grub[:2] == b"MZ" and grub[pe:pe+4] == bytes((80,69,0,0)) and
-            u16(grub,pe+4) == 0xaa64, "GRUB_NOT_ARM64")
+    require(pe+6 <= len(grub) and grub[pe:pe+4] == bytes((80,69,0,0))
+            and u16(grub,pe+4) == 0xaa64, "GRUB_NOT_ARM64")
+    cfg=file_bytes(ubuntu,CFG_NAME,cfg_digest)
+    require(b"search.fs_uuid" in cfg and b"configfile" in cfg, "UNEXPECTED_GRUB_CFG")
 
-    free_slot=None
+    files=[(NAME,grub,grub_digest),(CFG_NAME,cfg,cfg_digest)]
+    eof_slot=None
     for off,e,end in directory(boot):
-        require(e[:11] != NAME, "FALLBACK_GRUB_ALREADY_EXISTS")
-        if (end or e[0] == 0xe5) and free_slot is None:
-            free_slot=(off,end)
-    require(free_slot is not None, "NO_FREE_BOOT_DIRECTORY_ENTRY")
-    slot,end_marker=free_slot
-    if end_marker:
-        # Preserve directory EOF after new entry (fail if no subsequent slot).
-        require((slot-cluster_off_for_slot(slot,data_off,cluster_bytes)) + 64 <= cluster_bytes,
-                "DIRECTORY_END_SLOT_NOT_SAFE")
-        require(read_at(slot+32,1) == bytes((0,)), "DIRECTORY_END_NOT_ZERO")
+        require(e[:11] not in (NAME,CFG_NAME), "FALLBACK_TARGET_ALREADY_PRESENT")
+        if end:
+            eof_slot=off
+    require(eof_slot is not None, "NO_BOOT_DIRECTORY_EOF")
+    # Require 3 consecutive unused records: two new 8.3 names + a new terminator.
+    local=eof_slot-cluster_off_for_slot(eof_slot,data_off,cluster_bytes)
+    require(local+96 <= cluster_bytes, "DIRECTORY_NO_CONTIGUOUS_FREE_SLOTS")
+    require(read_at(eof_slot,96)[0:1] == bytes((0,)) and
+            read_at(eof_slot+32,1) == bytes((0,)) and
+            read_at(eof_slot+64,1) == bytes((0,)), "DIRECTORY_NOT_EMPTY_AFTER_EOF")
 
-    count_needed=(grub_size+cluster_bytes-1)//cluster_bytes
+    needed=sum((len(data)+cluster_bytes-1)//cluster_bytes for _,data,_ in files)
     available=[]
     for c in range(2,max_cluster+1):
         if fat_next(c) == 0:
             available.append(c)
-            if len(available) == count_needed:
+            if len(available)==needed:
                 break
-    require(len(available) == count_needed, "NOT_ENOUGH_FREE_CLUSTERS")
-    for i,c in enumerate(available):
-        chunk=grub[i*cluster_bytes:(i+1)*cluster_bytes]
-        write_at(cluster_off(c),chunk.ljust(cluster_bytes,bytes((0,))))
-        old=u32(fat,c*4)
-        next_value=available[i+1] if i+1<len(available) else 0x0fffffff
-        struct.pack_into("<I",fat,c*4,(old&0xf0000000)|next_value)
+    require(len(available)==needed,"NOT_ENOUGH_FREE_CLUSTERS")
+    allocations=[]
+    cursor=0
+    for name,contents,digest in files:
+        count=(len(contents)+cluster_bytes-1)//cluster_bytes
+        assigned=available[cursor:cursor+count]
+        cursor+=count
+        for i,c in enumerate(assigned):
+            chunk=contents[i*cluster_bytes:(i+1)*cluster_bytes]
+            write_at(cluster_off(c),chunk.ljust(cluster_bytes,bytes((0,))))
+            old=u32(fat,c*4)
+            successor=assigned[i+1] if i+1<len(assigned) else 0x0fffffff
+            struct.pack_into("<I",fat,c*4,(old&0xf0000000)|successor)
+        allocations.append((name,contents,digest,assigned[0],count))
+
     write_at(fat_off,bytes(fat))
     write_at(fat_off+fat_bytes,bytes(fat))
-    first=available[0]
-    entry=bytearray(32)
-    entry[:11]=NAME
-    entry[11]=0x20  # regular archive file
-    struct.pack_into("<H",entry,20,(first>>16)&0xffff)
-    struct.pack_into("<H",entry,26,first&0xffff)
-    struct.pack_into("<I",entry,28,grub_size)
-    write_at(slot,entry)
-    stored_start,stored_size=get(boot,NAME,False)
-    require(stored_start == first and stored_size == grub_size, "GRUB_ENTRY_VERIFY_FAILED")
-    restored=bytearray()
-    for c in chain(stored_start,stored_size):
-        restored.extend(read_at(cluster_off(c),cluster_bytes))
-    require(hashlib.sha256(bytes(restored[:stored_size])).hexdigest() == grub_digest,
-            "GRUB_FILE_VERIFY_FAILED")
+    for i,(name,contents,digest,first,count) in enumerate(allocations):
+        entry=bytearray(32)
+        entry[:11]=name
+        entry[11]=0x20
+        struct.pack_into("<H",entry,20,(first>>16)&0xffff)
+        struct.pack_into("<H",entry,26,first&0xffff)
+        struct.pack_into("<I",entry,28,len(contents))
+        write_at(eof_slot+32*i,entry)
+    write_at(eof_slot+64,bytes(32))
+
+    for name,contents,digest,first,count in allocations:
+        check_start,check_size=get(boot,name,False)
+        require(check_start==first and check_size==len(contents), "PATCHED_ENTRY_MISMATCH")
+        restored=bytearray()
+        for c in chain(check_start,check_size):
+            restored.extend(read_at(cluster_off(c),cluster_bytes))
+        require(hashlib.sha256(bytes(restored[:check_size])).hexdigest()==digest,
+                "PATCHED_FILE_DIGEST_MISMATCH")
     os.fsync(fd)
-    return {"addedEFIPath":"EFI/BOOT/grubaa64.efi",
-            "addedBytes":grub_size,"grubSHA256":grub_digest,
-            "allocatedClusters":count_needed,"clusterBytes":cluster_bytes}
+    return {"addedEFIPaths":["EFI/BOOT/grubaa64.efi","EFI/BOOT/grub.cfg"],
+            "addedBytes":len(grub)+len(cfg),
+            "grubSHA256":grub_digest,"grubCfgSHA256":cfg_digest,
+            "allocatedClusters":needed,"clusterBytes":cluster_bytes}
 
 def cluster_off_for_slot(slot,data_off,cluster_bytes):
     return data_off+((slot-data_off)//cluster_bytes)*cluster_bytes
