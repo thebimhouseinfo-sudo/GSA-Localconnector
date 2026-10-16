@@ -80,7 +80,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry) {
              for(const e of entries){
                if(examined>=200||matches.length>=100)break;
                if(e.name.startsWith(".")||e.isSymbolicLink())continue;
-               const child=rel+"/"+e.name;
+               const child=rel==="."?e.name:rel+"/"+e.name;
                if(e.isDirectory()){if(pending.length<100)pending.push(child);continue;}
                if(!e.isFile())continue;
                examined++;
