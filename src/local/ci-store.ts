@@ -35,13 +35,22 @@ export class CiJournalStore {
    await fs.writeFile(this.recordPath(record.run_id),JSON.stringify(record)+"\n",{flag:"wx",mode:0o600});
    return;
   }
-  const previous=await this.load(record.run_id);
-  if(previous.revision!==expectedRevision||record.revision!==expectedRevision+1)throw new CiStoreError("RUN_REVISION_CONFLICT","Stale revision");
-  const tmp=path.join(this.root,".run-"+randomBytes(12).toString("hex"));
+  const lock=this.recordPath(record.run_id)+".lock";
+  let handle:Awaited<ReturnType<typeof fs.open>>;
+  try{handle=await fs.open(lock,"wx",0o600);}
+  catch(e){
+   if((e as NodeJS.ErrnoException).code==="EEXIST")throw new CiStoreError("RUN_REVISION_CONFLICT","Record is already being updated");
+   throw e;
+  }
   try{
-   await fs.writeFile(tmp,JSON.stringify(record)+"\n",{flag:"wx",mode:0o600});
-   await fs.rename(tmp,this.recordPath(record.run_id));
-  }finally{await fs.rm(tmp,{force:true});}
+   const previous=await this.load(record.run_id);
+   if(previous.revision!==expectedRevision||record.revision!==expectedRevision+1)throw new CiStoreError("RUN_REVISION_CONFLICT","Stale revision");
+   const tmp=path.join(this.root,".run-"+randomBytes(12).toString("hex"));
+   try{
+    await fs.writeFile(tmp,JSON.stringify(record)+"\\n",{flag:"wx",mode:0o600});
+    await fs.rename(tmp,this.recordPath(record.run_id));
+   }finally{await fs.rm(tmp,{force:true});}
+  }finally{await handle.close();await fs.rm(lock,{force:true});}
  }
  async list():Promise<Array<{run_id:string;workspace_id:string;state:string;revision:number}>>{
   let files:string[];
