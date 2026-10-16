@@ -287,3 +287,9 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - User executed Windows PowerShell `docker version --format '{{.Server.Os}}/{{.Server.Arch}}'` and received `CommandNotFoundException` / `docker is not recognized` from PATH. This establishes Docker CLI is not available in that PowerShell session; do not infer whether Docker Desktop is installed elsewhere or daemon state. `docker info` output was not provided.
 - Windows Docker-based candidate cannot be validated from present environment. Do NOT ask user to install Docker without architecture decision. Keep shell/CI/Git execution blocked and prototype OS-native Windows confinement alternative as needed.
 - macOS Docker capability has not yet been reported. Resume planning/source-only work that does not depend on Docker, but do not claim native security PASS.
+
+## Human environment gate resolved — neither host has Docker CLI (2026-10-16)
+- macOS user Terminal: both `docker version --format '{{.Server.Os}}/{{.Server.Arch}}'` and `docker info --format '{{.OSType}}'` returned `zsh: command not found: docker`.
+- Windows user PowerShell: both commands returned CommandNotFoundException. Both current shells therefore lack Docker CLI; not proof no binary exists elsewhere.
+- DECISION FOR IMPLEMENTATION: do not make Docker a prerequisite and do not ask for installation. Native Windows/macOS sandbox prototypes must be designed separately; shell/CI remain SECURITY_BLOCKED until OS-enforced negative tests pass. Docker candidate remains optional and inactive. GSA remains agent, gsa-lc and gsa-lc-mac direct connectors; user supplies absolute workspace directories.
+- Further source implementation independent of native tests may continue. Next true human gate is testing the selected host-native security backend and legitimate SDK builds on both machines.
