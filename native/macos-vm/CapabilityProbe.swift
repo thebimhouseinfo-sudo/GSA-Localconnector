@@ -10,16 +10,10 @@ struct Probe: Encodable {
     let architecture: String
     let virtualizationFramework: Bool
     let guest: String
-    let entitlementPresent: Bool
+    let entitlementPresent: Bool?
     let securityVerified: Bool
     let workerImplemented: Bool
-    let codeSignatureTeamIdentifierPresent: Bool
-}
-
-func hasVirtualizationEntitlement() -> Bool {
-    // Entitlement and code signing are checked by platform APIs / host test,
-    // not inferred from framework import or compilation.
-    return false
+    let codeSignatureTeamIdentifierPresent: Bool?
 }
 
 let arch: String = {
@@ -37,10 +31,10 @@ let report = Probe(
     architecture: arch,
     virtualizationFramework: true,
     guest: "linux-arm64-candidate",
-    entitlementPresent: hasVirtualizationEntitlement(),
+    entitlementPresent: nil,
     securityVerified: false,
     workerImplemented: false,
-    codeSignatureTeamIdentifierPresent: false
+    codeSignatureTeamIdentifierPresent: nil
 )
 let encoded = try JSONEncoder().encode(report)
 print(String(decoding: encoded, as: UTF8.self))
