@@ -88,7 +88,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
         case "ci_artifacts":case "ci_read_artifact":
           if(typeof args.workspace_id!=="string"||typeof args.run_id!=="string"||Object.keys(args).some(k=>!["workspace_id","run_id","artifact"].includes(k)))throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"read");
-          {const run=await ciStore.load(args.run_id);
+          {const run=await (ciStore??new CiJournalStore()).load(args.run_id);
            if(run.workspace_id!==args.workspace_id)throw Error("RUN_NOT_FOUND");
            if(call.name==="ci_artifacts"){
             if(args.artifact!==undefined)throw Error("INVALID_ARGUMENTS");
