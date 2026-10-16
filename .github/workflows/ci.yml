@@ -26,3 +26,19 @@ jobs:
         run: |
           swiftc -framework Virtualization native/macos-vm/WorkerPreflight.swift -o "$RUNNER_TEMP/gsa-vm-worker-preflight"
           printf '%s' '{"protocolVersion":"gsa-vm-worker-preflight-v1","workspaceID":"fixture","canonicalRoot":"${{ github.workspace }}","cpuCount":2,"memoryMiB":2048,"maxRuntimeMs":120000}' | "$RUNNER_TEMP/gsa-vm-worker-preflight"
+      - name: Reject VM worker unsafe roots and malformed input
+        if: runner.os == 'macOS'
+        run: |
+          set +e
+          printf '%s' '{"protocolVersion":"gsa-vm-worker-preflight-v1","workspaceID":"fixture","canonicalRoot":"/","cpuCount":2,"memoryMiB":2048,"maxRuntimeMs":120000}' | "$RUNNER_TEMP/gsa-vm-worker-preflight" > "$RUNNER_TEMP/gsa-root-denied.json"
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          grep -q '"state":"BLOCKED"' "$RUNNER_TEMP/gsa-root-denied.json"
+          grep -q '"executionAuthorized":false' "$RUNNER_TEMP/gsa-root-denied.json"
+          set +e
+          printf '%s' 'not-json' | "$RUNNER_TEMP/gsa-vm-worker-preflight" > "$RUNNER_TEMP/gsa-json-denied.json"
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          grep -q '"errorCode":"INVALID_INPUT"' "$RUNNER_TEMP/gsa-json-denied.json"
