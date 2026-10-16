@@ -305,7 +305,7 @@ Every phase must produce source revision, actual executed tests and a short veri
 
 ## 9. Non-goals
 
-- Replicating GitHub PR/issues/Actions endpoints locally.
+- Replicating GitHub PR/issues or hosted GitHub Actions APIs locally. A **local-only CI runner with GitHub Actions-like workflow semantics** is IN scope; it does not require GitHub hosting.
 - Porting GPTWorker's Dev Coding, Dev Planning, Layla or MTO Job Packs.
 - Building a new AI/Agent or duplicating GSA planning/review/test orchestration.
 - A Git Sync Manager, Deployment Manager or automatic cross-target synchronization.
@@ -318,3 +318,101 @@ Every phase must produce source revision, actual executed tests and a short veri
 - **DESIGN PLAN ONLY** — no implementation, CI pass, Windows smoke, connector connection or GSA migration is claimed.
 - New repo is the planned implementation home.
 - Begin coding only after reviewing current upstream source revisions and approving this architecture's implementation scope.
+
+
+## 11. ADDENDUM — Mandatory Local CI Runner for LOCAL-only Projects (2026-10-16)
+
+**Decision:** Local CI is a first-class core capability, not an optional helper shell command. A folder without `.git`, GitHub remote, Actions or network access must be able to run reliable, repeatable tests and supply machine-readable evidence to GSA. GSA owns CI policy, planning, reviewer decisions and promotion gates; Localconnector owns execution, lifecycle, logs, artifacts and truthful run state.
+
+### 11.1 Workflow source and compatibility
+
+- Default local workflow manifest: `.gsa/ci.yaml` inside the authorized Workspace, explicitly selected by `workflow_path` when needed. No implicit access to workflow files outside the root.
+- Support named workflows, jobs, dependencies (`needs`), steps, working directories, allowed tools/commands, environment variables, exit criteria, time limits, artifact paths and retry policy.
+- Support platform-native commands (PowerShell/CMD on Windows; optional bash when available) and explicit executable+argv invocation.
+- Importing a small documented subset of GitHub Actions YAML may be added through a **separate validated adapter**, not claimed as full GitHub Actions parity. Unknown keys/actions fail with `UNSUPPORTED_WORKFLOW_FEATURE` rather than silently skipping. Marketplace actions and hosted runner services are not automatically supported.
+- No Git requirement: identify source state by deterministic Workspace snapshot/file-hash manifest. When Git is present, capture HEAD + dirty diff fingerprint as additional metadata. Never equate a snapshot to a Git commit.
+- Fail closed on workflow files or artifacts crossing unauthorized Workspace boundaries.
+
+### 11.2 Dedicated typed MCP CI tools
+
+- `ci_list_workflows(workspace_id)`: discover safe local workflow definitions.
+- `ci_validate_workflow(workspace_id, workflow_path)`: parse, schema-check, dependency graph and security preflight; no execution.
+- `ci_run(workspace_id, workflow, parameters?, source_fingerprint?)`: create asynchronous run; return stable run_id and initial state. Pin exact workflow definition revision and source fingerprint before start.
+- `ci_status(workspace_id, run_id)`: queued/running/passed/failed/cancelled/blocked/unknown, started/finished timestamps, step states.
+- `ci_logs(workspace_id, run_id, job_id?, step_id?, cursor?, limit?)`: bounded paged stdout/stderr, exact cursors, truncation marker.
+- `ci_artifacts(workspace_id, run_id)`: enumerate test result XML/JSON, coverage, build outputs and diagnostics (paths, size, hashes).
+- `ci_read_artifact(workspace_id, run_id, artifact_id, offset?, limit?)`: bounded access without unrestricted host filesystem paths.
+- `ci_cancel(workspace_id, run_id)`: stop owned process tree, record cancellation and preserve evidence.
+- `ci_list_runs(workspace_id, workflow?, limit?, cursor?)`: discover run history.
+- Optional `ci_rerun_failed(workspace_id, run_id)`: **new** run ID and source revision policy; never overwrite prior evidence.
+
+CI tools are named directly in MCP `tools/list` rather than hiding behind generic `work_tool`. Outputs use consistent typed envelopes and stable errors.
+
+### 11.3 Execution and security boundaries
+
+- Run each workflow inside the selected Workspace's security context. Validate every step cwd, executable, arguments, input, output, cache, temp and artifact location; apply independently granted SDK/system read-only access where required.
+- The legacy GPTWorker command-text guard is *not* an OS sandbox. Before advertising strict containment, implement and prove process-level Windows isolation (restricted execution identity + ACL, sandbox/container or demonstrably equivalent control), including child processes, scripts, junctions, network shares and inherited file handles.
+- If OS isolation is unavailable, return an explicit degraded/blocked security capability; do **not** run untrusted CI with a false claim of containment.
+- Never expand authorized roots through a workflow manifest, `GITHUB_WORKSPACE`, env expansion, symlink, cache, artifact path or child process.
+- Secrets are opt-in scoped references resolved by the trusted runner, never raw tokens in YAML/logs; redact secrets and avoid exporting ambient connector credentials.
+- Default no arbitrary remote code download or unattended execution of third-party GitHub Marketplace actions. Dependence on approved package installs/network policy must be explicit.
+- Restrict CPU/memory/process count/log storage/concurrent runs using configurable quotas; reserve resources for the desktop.
+
+### 11.4 Run state, persistence and evidence
+
+- State machine: `QUEUED → PREPARING → RUNNING → PASSED | FAILED | CANCELLED | BLOCKED | UNKNOWN`; every run and step has timestamps and immutable IDs.
+- Persist local run journal under isolated connector AppData; retain outputs, step exit codes, timeouts, process identity, log stream cursors, artifacts and source/workflow fingerprints.
+- Connector restart/reboot: reconcile orphan processes by verified ownership; mark interrupted runs `UNKNOWN` or `INTERRUPTED` until verified, never fabricate `PASSED`. Resume only if workflow/step explicitly supports idempotent resume.
+- Artifacts and result files must be within authorized paths or separately designated connector-owned evidence storage; use checksums and bounded retention.
+- Produce a `ci_run_evidence` record with `workspace_id`, `run_id`, source fingerprint, workflow fingerprint, every step outcome, artifact checksums and final status. GSA Reviewer/Tester consumes this evidence but independently decides verification PASS.
+- Any source mutation during CI invalidates or re-identifies the pinned source revision. Distinguish build outputs from source files; no claim that tests apply to current source if it changed after start.
+
+### 11.5 Example manifest — illustrative only
+
+```yaml
+version: 1
+workflows:
+  verify:
+    jobs:
+      test:
+        steps:
+          - id: install
+            run: npm ci
+          - id: build
+            run: npm run build
+          - id: test
+            run: npm test
+        artifacts:
+          - reports/**/*.xml
+          - coverage/**
+```
+
+Real runner must define a strict schema, shell selection, execution isolation and network/install permissions before accepting this manifest.
+
+### 11.6 Revised implementation sequence
+
+- P0: freeze GitHub-aligned tools **and CI schema**, write OS-isolation threat model.
+- P1: standalone runtime, watchdog, restart recovery, durable CI journal skeleton.
+- P2: authorized roots + security isolation; fail-closed workflow preflight.
+- P3: direct file tools + snapshot/fingerprint engine.
+- **P4A: CI engine** (DAG scheduling, steps, log cursors, durable run journal, artifacts, cancellation).
+- **P4B: process/shell/Git integration**; local-only Node/Python/.NET/Rust smoke as installed, no Git precondition.
+- P5: GSA target routing and `ci_run_evidence` consumption without adding a local Planner/Job Pack.
+- P6: Windows reboot, sleep/wake, concurrent CI, security negative-control and release tests.
+
+### 11.7 New mandatory acceptance tests
+
+- CI01: LOCAL-only folder **without `.git` and without GitHub Actions** validates and completes build/test.
+- CI02: A failing test returns FAILED, exact exit code, step, stdout/stderr and persisted logs.
+- CI03: Concurrent CI across two Workspaces does not leak cwd, variables, credentials, cache or artifacts.
+- CI04: CI child process attempting out-of-root read/write and junction escape is denied by OS enforcement; positive in-scope build still succeeds.
+- CI05: `ci_cancel` terminates owned process tree, no unrelated process.
+- CI06: Connector restart and Windows restart preserve runs/evidence and honestly mark interrupted/unknown states.
+- CI07: Tests and artifacts attach exact source/workflow fingerprints and detect source drift.
+- CI08: Artifact access cannot escape allowed boundaries; pagination, quotas and retention work.
+- CI09: Manifest with unsupported GitHub Actions feature fails explicitly; no claimed full parity.
+- CI10: GSA can invoke CI tools directly, inspect failed tests, revise local source, rerun CI, and submit revision-bound evidence to its independent Reviewer.
+- CI11: Autostart and local CI do not conflict with GPTWorker, CadGPT, RevitGPT.
+- CI12: Offline/no-Git build/test works provided dependencies/toolchains are already installed locally.
+
+**Status:** Architecture addendum and proposed contracts only; implementation and verification are not yet complete.
