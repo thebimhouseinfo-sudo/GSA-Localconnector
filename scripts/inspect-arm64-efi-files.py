@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read-only FAT32 ESP bootloader inventory. No mounts, writes, or external tools."""
 import json
+import hashlib
 import os
 import struct
 from pathlib import Path
@@ -8,7 +9,12 @@ from pathlib import Path
 IMAGE = Path.home() / "Library/Application Support/GSA-Localconnector/images/ubuntu-24.04-arm64-converted.raw"
 SIZE = 3758096384
 ESP_GUID = bytes.fromhex("28732ac11ff8d211ba4b00a0c93ec93b")  # GPT little-endian
-TARGETS = ("EFI/BOOT/BOOTAA64.EFI", "EFI/ubuntu/grubaa64.efi", "EFI/ubuntu/shimaa64.efi")
+TARGETS = (
+    "EFI/BOOT/BOOTAA64.EFI", "EFI/BOOT/grubaa64.efi",
+    "EFI/BOOT/grub.cfg", "EFI/BOOT/fbaa64.efi", "EFI/BOOT/mmaa64.efi",
+    "EFI/ubuntu/grubaa64.efi", "EFI/ubuntu/shimaa64.efi",
+    "EFI/ubuntu/grub.cfg",
+)
 def u16(b,n): return struct.unpack_from("<H",b,n)[0]
 def u32(b,n): return struct.unpack_from("<I",b,n)[0]
 def result(**kw): print(json.dumps(kw,sort_keys=True)); return 0
@@ -71,6 +77,24 @@ def main():
                                   "size":u32(e,28),"directory":bool(e[11]&0x10)}
                     num=next_cluster(num)
                 return out
+            def read_file(item):
+                size=item["size"]
+                if item["directory"] or size > 8 * 1024 * 1024:
+                    raise ValueError("EFI_FILE_SIZE_INVALID")
+                remain=size
+                num=item["cluster"]
+                seen=set()
+                chunks=[]
+                while remain:
+                    if num in seen or len(seen)>4096:
+                        raise ValueError("EFI_FILE_CHAIN_LOOP")
+                    seen.add(num)
+                    raw=cluster_bytes(num)
+                    chunks.append(raw[:min(remain,len(raw))])
+                    remain-=min(remain,len(raw))
+                    if remain:
+                        num=next_cluster(num)
+                return b"".join(chunks)
             found={}
             for target in TARGETS:
                 cur=root;item=None
@@ -82,12 +106,33 @@ def main():
                         if i<len(target.split("/"))-1:
                             if not item["directory"]: item=None;break
                             cur=item["cluster"]
-                    found[target]={"exists":item is not None,
-                                   "bytes":item["size"] if item is not None else None}
+                    info={"exists":item is not None,
+                          "bytes":item["size"] if item is not None else None}
+                    if item is not None and not item["directory"]:
+                        data=read_file(item)
+                        info["sha256"]=hashlib.sha256(data).hexdigest()
+                        if target.lower().endswith(".efi"):
+                            peoffset=u32(data,0x3c) if len(data)>=0x40 and data[:2]==b"MZ" else -1
+                            machine=u16(data,peoffset+4) if peoffset>=0 and peoffset+6<=len(data) and data[peoffset:peoffset+4]==b"PE\\x00\\x00" else None
+                            info["peMachine"]=("ARM64" if machine==0xaa64 else
+                                                "OTHER" if machine is not None else "INVALID_PE")
+                            info["peMachineHex"]=hex(machine) if machine is not None else None
+                        elif target.lower().endswith(".cfg"):
+                            excerpt=data[:1500].decode("utf-8","replace")
+                            info["configExcerpt"]="".join(
+                                c if c.isprintable() or c in "\\n\\t" else " "
+                                for c in excerpt
+                            )
+                    found[target]=info
                 except ValueError as ex:
                     return result(state="BLOCKED",reason=str(ex))
-            return result(state="ESP_FILES_INSPECTED",espBytes=extent,paths=found,
-                          bootVerified=False,executionAuthorized=False)
+            boot=found.get("EFI/BOOT/BOOTAA64.EFI",{})
+            shim=found.get("EFI/ubuntu/shimaa64.efi",{})
+            return result(
+                state="ESP_FILES_INSPECTED",espBytes=extent,paths=found,
+                fallbackIsUbuntuShim=bool(boot.get("sha256") and boot.get("sha256")==shim.get("sha256")),
+                bootVerified=False,executionAuthorized=False
+            )
     except (OSError,ValueError,struct.error) as ex:
         return result(state="BLOCKED",reason=type(ex).__name__)
 if __name__=="__main__":
