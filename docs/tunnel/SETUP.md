@@ -1,50 +1,76 @@
-# GSA-Localconnector — Native install & Cloudflare handoff
+# GSA-Localconnector — OpenAI Secure MCP Tunnel (primary)
 
-**Status: tunnel is NOT installed, no ChatGPT plugin exists.** This handoff is for one Windows or macOS machine at a time. Local MCP is read-only during bootstrap. The real Cloudflare tunnel and host validation require the authorized human.
+Status: Windows/macOS local MCP test gates **8/8 PASS**, from user native outputs; **OpenAI tunnel client NOT installed**, **tunnel_id NOT created**, **private ChatGPT MCP plugin NOT created**. Cloudflare is postponed to optional future interop.
 
-## 1. Prepare the machine
+Official guides:
+- https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
+- https://github.com/openai/tunnel-client/blob/master/docs/onboarding.md
+- https://github.com/openai/tunnel-client/releases/latest
 
-Install Node.js 22+ and Git. From a user-owned checkout of
-`https://github.com/thebimhouseinfo-sudo/GSA-Localconnector` run:
+## Architecture
 
-```bash
+ChatGPT private plugin -> OpenAI-hosted tunnel endpoint -> `tunnel-client` on one authorized machine -> local GSA-Localconnector via **stdio**.
+
+**Prefer stdio over HTTP** here. The tunnel client launches the local MCP process and exchanges JSON-RPC through stdin/stdout. This avoids passing the current local HTTP MCP bearer secret into tunnel configuration. Existing loopback HTTP MCP at 127.0.0.1:58347 remains available for independent native validation; never bind it to a public interface.
+
+Windows installation path: `D:\00 Other Works\Vibecode\GSA-Localconnector`.
+macOS installation path: `~/GSA-Localconnector`.
+
+Windows and macOS are **alternate single-host installations**, not one cluster. Create separate OpenAI tunnels and private ChatGPT plugin entries per machine if both are to be reachable independently. Keep the one active GSA controller rule. Do not point both live clients at the same tunnel ID.
+
+## Prerequisites (human/Platform authorization)
+
+1. Platform organization with Tunnels **Read + Manage** to create and **Read + Use** for running/selection; ChatGPT workspace authorized to add custom MCP servers. Tunnel must be associated with the intended workspace.
+2. An OpenAI-hosted `tunnel_id` created in Platform tunnel settings and a scoped runtime API key entered locally using secure input/environment; **never post keys in chat or commit them**.
+3. Download the official latest `tunnel-client` release for the actual OS and inspect `tunnel-client help quickstart`; follow live CLI help if it differs from examples.
+4. Local repository checked out and `npm install --ignore-scripts`, `npm test`, `npm run build` succeed; Node.js and Git installed.
+
+## Windows — PowerShell (after authorized tunnel/key provisioning)
+
+```powershell
+cd "D:\00 Other Works\Vibecode\GSA-Localconnector"
+git pull --ff-only origin main
 npm install --ignore-scripts
 npm test
-npm run prepare
-npm run mcp:http
+npm run build
+# Install tunnel-client via official release and ensure it is on PATH.
+tunnel-client help quickstart
+# Set CONTROL_PLANE_API_KEY using the client's supported local secure method;
+# do not include the actual secret in a pasted command or chat transcript.
+tunnel-client init --sample sample_mcp_stdio_local --profile gsa-lc-windows --tunnel-id <WINDOWS_TUNNEL_ID> --mcp-command "node D:\00 Other Works\Vibecode\GSA-Localconnector\dist\src\mcp\cli.js"
+tunnel-client doctor --profile gsa-lc-windows --explain
+tunnel-client run --profile gsa-lc-windows
 ```
 
-The `prepare` command generates a unique 48-byte random bearer secret under the user's host-owned application directory (Windows: LocalAppData/GSA-Localconnector; macOS: ~/Library/Application Support/GSA-Localconnector). It reuses the secret if already initialized and does not print its value. Do not commit, chat, screenshot, or upload that secret.
+The example `--mcp-command` string contains a path with spaces. Verify the resulting profile command and quoting with `doctor` before running. Where quoting is incompatible with the client, put a local launcher outside the repository that preserves argument boundaries and does not contain secrets.
 
-HTTP MCP binds **127.0.0.1:58347** by default. Override the port with `MCP_HTTP_PORT` if the port is occupied. `/health` is unprivileged health only; `/mcp` requires a bearer token. Do not bind this local app to `0.0.0.0`.
+## macOS — Terminal (after authorized tunnel/key provisioning)
 
-Open another terminal, check local health:
 ```bash
-curl http://127.0.0.1:58347/health
+cd ~/GSA-Localconnector
+git pull --ff-only origin main
+npm install --ignore-scripts
+npm test
+npm run build
+# Install tunnel-client via official release and ensure it is on PATH.
+tunnel-client help quickstart
+# Set CONTROL_PLANE_API_KEY using the client's supported local secure method.
+tunnel-client init --sample sample_mcp_stdio_local --profile gsa-lc-macos --tunnel-id <MACOS_TUNNEL_ID> --mcp-command "node $HOME/GSA-Localconnector/dist/src/mcp/cli.js"
+tunnel-client doctor --profile gsa-lc-macos --explain
+tunnel-client run --profile gsa-lc-macos
 ```
 
-No plugin or tunnel should be created until the server starts and the health test passes. The local token is not exposed by the health endpoint.
+## Verify and connect ChatGPT
 
-## 2. Create a dedicated Cloudflare tunnel (human action)
+1. Doctor passes; `tunnel-client` is healthy, ready and polling. It exposes local `/healthz`, `/readyz`, `/metrics` and `/ui` for diagnostics.
+2. In ChatGPT **Plugins > + > Add custom MCP server**, set Connection **Tunnel**. Select the matching tunnel or paste its ID, configure auth and confirm the warning.
+3. Confirm discovery of the three read-only tools `connector_status`, `list_workspaces`, `get_workspace`; invoke `connector_status` and verify the expected host. **Only after that** mark the plugin connection PASS.
+4. If tunnel is not visible, inspect Platform organization + ChatGPT workspace associations and Tunnels Read+Use permissions. Do not substitute a public unauthenticated HTTP endpoint.
 
-Use your own Cloudflare account and a DNS zone you control. Create a **new named Tunnel**, unique to this connector, using the Cloudflare Zero Trust dashboard. Choose a DNS label like `gsa-lc-<random-suffix>.<your-domain>`. Verify the name is unassigned before provisioning it. Set its public hostname service to `http://127.0.0.1:58347`.
+OpenAI Secure MCP Tunnel is for private MCP connections, **not public plugin submission**. Its default per-request deadline is 120s, including queue time: future Local CI/shell work MUST be asynchronous with durable run IDs and short MCP polling calls; don't run long jobs inside one MCP request.
 
-Follow Cloudflare's generated install/connector commands for the **actual target OS** (Windows or macOS); do not paste credentials into this repo or ChatGPT. A tunnel token/credentials are different from the local MCP bearer token. Never reuse GPTWorker/CadGPT/RevitGPT tunnel credentials, ports, startup registrations or hostname.
+## Blockers and safeguards
 
-Check Cloudflare route DNS, TLS, and the authenticated MCP initialize handshake from an **external** client. Choose a ChatGPT-compatible authentication/Access strategy; this read-only bootstrap currently requires a bearer header and **does not implement an OAuth authorization server**. If ChatGPT's plugin flow requires OAuth, stop at this gate rather than exposing an unauthenticated endpoint or inventing a token bypass.
-
-## 3. Human-ready checklist
-
-- [ ] Native local npm tests PASS on target OS
-- [ ] `npm run prepare` succeeded without exposing token
-- [ ] `npm run mcp:http` starts on loopback port, `/health` responds
-- [ ] Cloudflare named tunnel installed, distinct hostname mapped to 127.0.0.1:58347
-- [ ] Remote TLS valid; anonymous `/mcp` denied; authorized MCP handshake succeeds
-- [ ] Restart/reconnect and local supervision validated
-- [ ] Compatible authentication with ChatGPT verified before plugin registration
-
-## 4. Until the native sandbox is verified
-
-Only the status/workspace metadata tools are available. No execute, shell, write or Local CI is enabled. A READY tunnel **does not** imply Localconnector's coding tools are ready. Production startup, token rotation, secure authenticated control-session lease and native Windows/macOS sandbox remain separate unfinished tickets.
-
-See `.gsa/CURRENT_CHECKPOINT.md` for last verified code revision and test evidence.
+- As of this document, no Platform tunnel ID or runtime key has been provisioned, and no native tunnel-client installation has been evidenced.
+- No real plugin exists. Production OS sandbox, authenticated single-controller lease, shell/write, and Local CI remain **blocked**.
+- Cloudflare remains an optional future multi-provider transport; not part of the current onboarding critical path.
