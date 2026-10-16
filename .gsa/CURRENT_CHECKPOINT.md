@@ -110,3 +110,8 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Combined Windows/macOS native health and anonymous-token-rejection gates: **4/4 PASS** based on user-supplied local outputs.
 - No claim yet for authenticated initialize/tools/list from either host, macOS `npm test` output, tunnel provisioning, external HTTPS MCP, startup persistence or shell/CI containment.
 - NEXT: run authenticated MCP initialize + tools/list locally without printing the token; then configure distinct Cloudflare tunnel only after local gates PASS; no ChatGPT plugin until tunnel READY.
+
+## macOS authenticated MCP initialize — user-provided evidence (2026-10-16)
+- macOS authenticated POST `http://127.0.0.1:58347/mcp` with token read locally from `~/Library/Application Support/GSA-Localconnector/mcp-token` returned JSON-RPC result: `protocolVersion=2025-03-26`, `serverInfo.name=gsa-localconnector`, `serverInfo.version=0.1.0`, `capabilities.tools.listChanged=false`.
+- **MAC-AUTH-INITIALIZE PASS**; token was not included in evidence.
+- Windows authenticated initialize and both hosts' authenticated tools/list still pending; actual Cloudflare tunnel and ChatGPT plugin not created.
