@@ -25,8 +25,17 @@ export async function scheduleValidatedCI(native:VerifiedNativeSandbox|null,work
     run=transitionRun(run,"UNKNOWN",run.revision);
     return {record:run,logs,finished_jobs:completed};
    }
-   if(out.stdout)logs.append("stdout",out.stdout);
-   if(out.stderr)logs.append("stderr",out.stderr);
+   // Never discard a real execution outcome because evidence capture exceeded a quota.
+   // The operation cannot be certified when its evidence is incomplete.
+   try{
+    if(Buffer.byteLength(out.stdout,"utf8")+Buffer.byteLength(out.stderr,"utf8")>request.max_output_bytes)
+      throw Error("CI_OUTPUT_LIMIT");
+    if(out.stdout)logs.append("stdout",out.stdout);
+    if(out.stderr)logs.append("stderr",out.stderr);
+   }catch{
+    run=transitionRun(run,"UNKNOWN",run.revision);
+    return {record:run,logs,finished_jobs:completed};
+   }
    if(out.exit_code===null){
     run=transitionRun(run,"UNKNOWN",run.revision);return {record:run,logs,finished_jobs:completed};
    }
