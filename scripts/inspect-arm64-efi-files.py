@@ -113,14 +113,14 @@ def main():
                         info["sha256"]=hashlib.sha256(data).hexdigest()
                         if target.lower().endswith(".efi"):
                             peoffset=u32(data,0x3c) if len(data)>=0x40 and data[:2]==b"MZ" else -1
-                            machine=u16(data,peoffset+4) if peoffset>=0 and peoffset+6<=len(data) and data[peoffset:peoffset+4]==b"PE\\x00\\x00" else None
+                            machine=u16(data,peoffset+4) if peoffset>=0 and peoffset+6<=len(data) and data[peoffset:peoffset+4]==bytes((80,69,0,0)) else None
                             info["peMachine"]=("ARM64" if machine==0xaa64 else
                                                 "OTHER" if machine is not None else "INVALID_PE")
                             info["peMachineHex"]=hex(machine) if machine is not None else None
                         elif target.lower().endswith(".cfg"):
                             excerpt=data[:1500].decode("utf-8","replace")
                             info["configExcerpt"]="".join(
-                                c if c.isprintable() or c in "\\n\\t" else " "
+                                c if c.isprintable() or c in (chr(10),chr(9)) else " "
                                 for c in excerpt
                             )
                     found[target]=info
