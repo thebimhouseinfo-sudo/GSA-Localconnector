@@ -30,6 +30,7 @@ class CandidateTests(unittest.TestCase):
             contents[128:132]=bytes((80,69,0,0))
             struct.pack_into("<H",contents,132,0xaa64)
             grub=bytes(contents)
+            cfg=b"search.fs_uuid 5b886046-3262-4eca-a390-4cd88779a3c7 root\nconfigfile /grub/grub.cfg\n"
             def entry(name,first,length=0,directory=False):
                 e=bytearray(32)
                 assert len(name)==11
@@ -66,7 +67,7 @@ class CandidateTests(unittest.TestCase):
                                     2:0x0fffffff,3:0x0fffffff,
                                     4:0x0fffffff,5:0x0fffffff,
                                     6:7,7:8,8:9,9:0x0fffffff,
-                                    10:0x0fffffff}.items():
+                                    10:0x0fffffff,11:0x0fffffff}.items():
                     struct.pack_into("<I",fat,cluster*4,nxt)
                 f.seek(fatstart);f.write(fat)
                 f.seek(fatstart+fatsize);f.write(fat)
@@ -75,19 +76,22 @@ class CandidateTests(unittest.TestCase):
                     entry(b"BOOT       ",4,directory=True)+
                     entry(b"UBUNTU     ",5,directory=True))
                 f.seek(datastart+1024);f.write(entry(b"BOOTAA64EFI",10,512))
-                f.seek(datastart+1536);f.write(entry(b"GRUBAA64EFI",6,len(grub)))
+                f.seek(datastart+1536);f.write(entry(b"GRUBAA64EFI",6,len(grub))+entry(b"GRUB    CFG",11,len(cfg)))
                 for i in range(4):
                     f.seek(datastart+(6-2+i)*512)
                     f.write(grub[i*512:(i+1)*512].ljust(512,b"\x00"))
+                f.seek(datastart+(11-2)*512)
+                f.write(cfg.ljust(512,b"\\x00"))
             base_digest=tool.sha256(base)
             shutil.copyfile(base,clone)
             fd=os.open(clone,os.O_RDWR)
             try:
                 result=tool.patch_esp(fd,expected_bytes=size,
-                                      grub_digest=hashlib.sha256(grub).hexdigest())
-                self.assertEqual(result["addedBytes"],1600)
-                self.assertEqual(result["allocatedClusters"],4)
-                with self.assertRaisesRegex(ValueError,"FALLBACK_GRUB_ALREADY_EXISTS"):
+                                      grub_digest=hashlib.sha256(grub).hexdigest(),
+                                      cfg_digest=hashlib.sha256(cfg).hexdigest())
+                self.assertEqual(result["addedBytes"],1600+len(cfg))
+                self.assertEqual(result["allocatedClusters"],5)
+                with self.assertRaisesRegex(ValueError,"FALLBACK_TARGET_ALREADY_PRESENT"):
                     tool.patch_esp(fd,expected_bytes=size,
                                    grub_digest=hashlib.sha256(grub).hexdigest())
             finally:
@@ -99,6 +103,10 @@ class CandidateTests(unittest.TestCase):
                 e=f.read(32)
                 self.assertEqual(e[:11],b"GRUBAA64EFI")
                 self.assertEqual(struct.unpack_from("<I",e,28)[0],1600)
+                f.seek(datastart+1024+64)
+                cfg_e=f.read(32)
+                self.assertEqual(cfg_e[:11],b"GRUB    CFG")
+                self.assertEqual(struct.unpack_from("<I",cfg_e,28)[0],len(cfg))
                 f.seek(fatstart);a=f.read(fatsize)
                 f.seek(fatstart+fatsize);b=f.read(fatsize)
                 self.assertEqual(a,b)
