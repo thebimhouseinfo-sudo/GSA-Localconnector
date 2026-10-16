@@ -68,8 +68,8 @@ export function createReadOnlyTools(registry: WorkspaceRegistry) {
           {const dir=await registry.resolveExistingRead(args.workspace_id,args.path);
            if(!(await fs.stat(dir)).isDirectory())throw Error("NOT_A_DIRECTORY");
            const pattern=args.pattern as string;
-           if(pattern.includes("..")||pattern.includes("/")||pattern.includes("\\\\")||pattern.includes("**"))throw Error("INVALID_GLOB");
-           const escaped=Array.from(pattern).map(ch=>ch==="*" ? ".*" : ch==="?" ? "." : /[\\^$+?.()|{}\[\]]/.test(ch) ? "\\\\"+ch : ch).join("");
+           if(pattern.includes("..")||pattern.includes("/")||pattern.includes(String.fromCharCode(92))||pattern.includes("**"))throw Error("INVALID_GLOB");
+           const escaped=Array.from(pattern).map(ch=>ch==="*" ? ".*" : ch==="?" ? "." : /[\\^$+?.()|{}\[\]]/.test(ch) ? String.fromCharCode(92)+ch : ch).join("");
            const re=new RegExp("^"+escaped+"$");
            const found=[];
            for(const e of (await fs.readdir(dir,{withFileTypes:true})).slice(0,500))
