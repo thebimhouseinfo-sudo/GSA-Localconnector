@@ -8,7 +8,9 @@ import {enrollReadOnly} from "../local/grants.js";
 import {plannedTools,plannedToolNames} from "./catalog.js";
 import {validateWorkflow} from "../core/ci-dag.js";
 import {dispatchFileMutation} from "./write-dispatch.js";
-import type {NativeScopedFiles} from "../core/native-io.js";
+import type {NativeScopedFiles,VerifiedNativeSandbox} from "../core/native-io.js";
+import {executeGit} from "../core/git-engine.js";
+import {ProcessManager} from "../core/process-manager.js";
 
 /** Read-only file surface with explicit caller-authorized absolute-root binding; no shell or CI. */
 export interface ToolCall { name: string; arguments?: Record<string, unknown> }
@@ -24,7 +26,8 @@ const definitions = [
   {name:"fetch_file",description:"Read UTF-8 text from an enrolled read-only workspace (maximum 64 KiB)",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},start_line:{type:"integer",minimum:1},max_lines:{type:"integer",minimum:1,maximum:500}},required:["workspace_id","path"],additionalProperties:false}}
 ] as const;
 export function toolDefinitions() {return [...definitions,...plannedTools];}
-export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null) {
+export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null) {
+  const processes=new ProcessManager(sandbox);
   return async (call:ToolCall):Promise<ToolResult> => {
     try {
       const args=call.arguments??{};
@@ -159,6 +162,25 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           }break;
         case "create_file":case "update_file":case "edit_file":case "create_directory":case "delete_file":case "copy_file":case "move_file":
           result=await dispatchFileMutation(call.name,args,registry,nativeFiles);break;
+        case "git_status":case "git_diff":case "git_log":case "git_show":case "compare_commits":
+        case "git_add":case "git_commit":case "create_branch":case "git_checkout":case "git_fetch":case "git_pull":case "git_push":
+          if(typeof args.workspace_id!=="string")throw Error("INVALID_ARGUMENTS");
+          registry.requireGrant(args.workspace_id,["git_status","git_diff","git_log","git_show","compare_commits"].includes(call.name)?"read":"execute");
+          {const {workspace_id,...parameters}=args;
+           result=await executeGit(sandbox,args.workspace_id,call.name,parameters);
+          }break;
+        case "run_command":
+          if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string"))throw Error("INVALID_ARGUMENTS");
+          registry.requireGrant(args.workspace_id,"execute");
+          result=await processes.run({workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:false});break;
+        case "list_processes":
+          if(typeof args.workspace_id!=="string")throw Error("INVALID_ARGUMENTS");
+          registry.requireGrant(args.workspace_id,"execute");
+          result=processes.list(args.workspace_id);break;
+        case "process_status":case "process_output":
+          if(typeof args.workspace_id!=="string"||typeof args.process_id!=="string")throw Error("INVALID_ARGUMENTS");
+          registry.requireGrant(args.workspace_id,"execute");
+          result=processes.get(args.workspace_id,args.process_id);break;
         default: if(plannedToolNames.has(call.name))throw Error("SECURITY_BLOCKED"); else throw Error("UNKNOWN_TOOL");
       }
       return {content:[{type:"text",text:JSON.stringify({ok:true,result})}]};
