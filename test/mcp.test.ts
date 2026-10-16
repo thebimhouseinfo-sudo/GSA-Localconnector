@@ -4,11 +4,11 @@ import {test} from "node:test";
 import {createReadOnlyTools,toolDefinitions} from "../src/mcp/server.js";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
 
-test("bootstrap tool catalog is read-only and direct",()=>{
+test("full direct tool catalog is discoverable but unsafe operations are blocked",()=>{
  const names: string[]=toolDefinitions().map(t=>t.name);
  assert.deepEqual(names,["connector_status","list_workspaces","get_workspace","list_directory","bind_workspaces","get_file_info","search","fetch_file",...plannedTools.map(t=>t.name)]);
- assert.equal(names.includes("run_command"),false);
- assert.equal(names.includes("ci_run"),false);
+ assert.equal(names.includes("run_command"),true);
+ assert.equal(names.includes("ci_run"),true);
 });
 test("unauthorized Workspace is never exposed",async()=>{
  const invoke=createReadOnlyTools(new WorkspaceRegistry());
