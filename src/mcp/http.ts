@@ -4,7 +4,7 @@ import { connectorStatus } from "../index.js";
 import { WorkspaceRegistry } from "../core/workspace.js";
 import { createReadOnlyTools, toolDefinitions } from "./server.js";
 
-const DEFAULT_PORT = 43281;
+const DEFAULT_PORT = 58347;
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const PROTOCOL_VERSION = "2025-03-26";
 
