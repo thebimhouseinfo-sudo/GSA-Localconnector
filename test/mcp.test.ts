@@ -5,7 +5,7 @@ import {WorkspaceRegistry} from "../src/core/workspace.js";
 
 test("bootstrap tool catalog is read-only and direct",()=>{
  const names: string[]=toolDefinitions().map(t=>t.name);
- assert.deepEqual(names,["connector_status","list_workspaces","get_workspace","list_directory","fetch_file"]);
+ assert.deepEqual(names,["connector_status","list_workspaces","get_workspace","list_directory","bind_workspaces","fetch_file"]);
  assert.equal(names.includes("run_command"),false);
  assert.equal(names.includes("ci_run"),false);
 });
