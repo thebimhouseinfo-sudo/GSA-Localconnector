@@ -461,3 +461,72 @@ Real runner must define a strict schema, shell selection, execution isolation an
 - P2-02 is a **hard gate** before arbitrary shell/CI execution is advertised; feasibility can be tested in a disposable fixture in parallel with P1/P2, but full source edit/build/test release depends on it.
 - Review loop per ticket: Planner checks scope → implement → local tests → independent Reviewer → fix findings → rerun tests → record revision-bound outcome. Repeat until PASS or explicit BLOCKED; never invent a green status.
 - No code implementation, Windows sandbox validation, CI runner execution or live connector regression is claimed by this document.
+
+
+## 13. CROSS-PLATFORM MANDATE — Windows + macOS (2026-10-16)
+
+**Mandatory change:** Windows and macOS are equal, supported first-class platforms at initial release. The formerly Windows-only implementation and acceptance language elsewhere in this document is superseded by this section. Linux is not an initial support requirement. No Windows-only feature may be declared globally PASS while macOS lacks the corresponding contract/evidence.
+
+### 13.1 Portable core and host adapters
+- Shared TypeScript/Node MCP protocol, typed tool schemas, Workspace registry contract, CI engine (DAG, journal, logs/artifacts, hashes), error codes, concurrency controls and GSA-facing API.
+- Separate host adapters for canonical path and filesystem handle semantics, process tree management, shell launch, isolated execution identity, credential storage, service/autostart registration, evidence directories and packaging.
+- Return platform/capabilities in `connector_status`; unsupported optional features must fail explicitly. OS-specific internals must not leak into the GSA-facing tool signatures.
+- Store Workspace IDs as opaque stable IDs. Canonical paths are host-specific. Never transfer a Windows path or authority grant to a macOS host.
+- Support macOS case-sensitive/case-insensitive APFS variants, POSIX symlinks, file descriptor-based operations, Unicode normalization, and Windows drive/UNC/junction behaviors. Reject ambiguous path changes during resolution.
+
+### 13.2 Startup, headless lifecycle, and transport
+- **Windows:** independently named Task Scheduler launch at logon with safe HKCU Run fallback, hidden launcher, process supervision, distinct mutex/ports/tunnel and scoped uninstall. Preserve existing GPTWorker/CadGPT/RevitGPT registrations.
+- **macOS:** user LaunchAgent via `launchd` with `RunAtLoad` and `KeepAlive` when appropriate, persistent logs in user-owned Application Support/Logs, plist-owned executable arguments without shell interpolation, `launchctl` bootstrap/bootout verification, stable process supervisor and optional menu-bar UI (not required for GSA operations). No requirement to keep Terminal open.
+- **Important:** `launchd` does not bypass macOS sleep. After system wake, reconnect and reconcile unfinished processes. For genuinely continuous work during sleep, document user-approved power-management configuration; never claim unattended jobs continue through system sleep.
+- Support host-specific local socket/listen addresses, port collision detection, secure remote MCP transport/tunnel, authentication and reconnection on both platforms. Independent per-host identity and secrets.
+- macOS TCC privacy permissions (Desktop/Documents/Downloads, Full Disk Access, etc.) are not silently bypassed. Enrollment must accurately report inaccessible folders and required user authorization.
+
+### 13.3 Per-OS shell containment — HARD GATE ON BOTH
+- **Windows:** use a demonstrably enforced restricted identity/ACL, AppContainer or equivalent sandbox. Child processes must inherit the restriction. Existing command-text parser is defense in depth, not the sandbox.
+- **macOS:** investigate sandbox-exec limitations/deprecation and prefer a supported, maintainable isolation strategy (e.g. dedicated restricted OS user with ACL permissions, or dedicated virtualization/container boundary with properly scoped mounts). A simple `cwd`, `chroot`, shell-command validation or POSIX symlink check is not sufficient. Assess code-signing, entitlements, TCC and toolchain compatibility explicitly.
+- Since regular UNIX user home permissions may expose unrelated files, do not assume launching `bash` under the interactive user provides filesystem isolation. Require OS-enforced forbidden read/write tests including spawned child processes, env indirection, symlinks, and external mounts.
+- Connector's trusted runtime/config/credentials must be inaccessible to the sandboxed CI/shell identity. Isolate temporary directories, caches, logs and artifacts; grant only explicitly declared read-only toolchain/system paths and scoped write roots.
+- If isolation cannot be established on either OS, mark that OS `SECURITY_BLOCKED`, do not expose shell/CI as safely confined on it, and do not issue cross-platform release PASS.
+
+### 13.4 Cross-platform CI workflows
+- One versioned `.gsa/ci.yaml` schema across platforms, with optional per-job `runs_on: windows|macos`, architecture and installed-toolchain capability selectors.
+- Steps run with explicit shell/executable; Windows PowerShell/CMD and macOS zsh/bash are supported when installed. No implicit shell syntax translation.
+- Native build/test targets: Node/TypeScript and Python on both; .NET/Rust/other toolchains when installed and authorized. Test supported toolchains as appropriate without falsely reporting missing ones as PASS.
+- CI logs/artifacts/source revision evidence follow the same machine-readable schema. Runner metadata includes `os`, `arch`, isolation mode and toolchain versions.
+- A `runs_on` mismatch is `UNSUPPORTED_PLATFORM` or `RUNNER_UNAVAILABLE`, not a silent execution on another OS. A local-only Workspace need not contain Git.
+
+### 13.5 Platform-specific release and regression
+- Windows installer, startup repair/update/uninstall smoke.
+- macOS package/install instructions, LaunchAgent registration/repair/uninstall smoke, quarantine/code-signing/notarization decision and Apple Silicon + Intel support policy. At minimum, explicitly test Apple Silicon and document Intel coverage status; do not claim untested architecture support.
+- Mac sleep/wake and disconnect/reconnect, launchd crash recovery, multiple authorized Workspaces, permission/TCC denial, symlink escape, CI cancellation and runtime logs.
+- A common MCP contract conformance suite must run on each supported OS using identical tool names/schemas and normalized errors.
+
+### 13.6 Revised work tickets / platform gates
+
+| Ticket | Scope | Exit evidence |
+| --- | --- | --- |
+| PX-01 | Extract portable core; define Windows/macOS HostAdapter interface | Shared contract and unit tests |
+| PX-02 | Windows Task Scheduler + supervisor | Reboot/logon/reconnect smoke |
+| PX-03 | macOS LaunchAgent + supervisor | Logon/crash/sleep-wake smoke |
+| PX-04 | Windows execution isolation | OS-enforced negative read/write and positive build |
+| PX-05 | macOS execution isolation | OS-enforced negative read/write and positive build |
+| PX-06 | Common local-only CI runner | Non-Git project CI on both OSes |
+| PX-07 | Cross-platform shell/Git/path process contract | Both-OS E2E and concurrency |
+| PX-08 | Packaging, upgrade, uninstall | No damage to other apps / system services |
+
+Both PX-04 and PX-05 are hard gates before a **Windows + macOS** release can be marked PASS. Platform-specific feature readiness may be reported individually, never conflated.
+
+### 13.7 Mandatory new acceptance tests
+
+- XP01: identical direct MCP tool schemas and stable error codes on Windows/macOS.
+- XP02: Workspace path traversal and symlink escape refused on APFS and NTFS; junction/UNC escape refused on Windows.
+- XP03: Windows and macOS independently deny out-of-scope shell/child-process reads and writes using OS enforcement.
+- XP04: LOCAL-only folder without `.git` builds/tests and returns same evidence shape on each OS.
+- XP05: Windows startup after reboot and macOS LaunchAgent after logon; crash restart and reconnection on both.
+- XP06: macOS sleep/wake reconciliation never invents CI PASS; Windows does the same.
+- XP07: concurrent authorized Workspaces do not leak secrets, cwd, logs, caches or processes on either OS.
+- XP08: macOS permission/TCC denial fails clearly; Windows ACL denied root fails clearly.
+- XP09: installer, upgrade, disable/startup removal and uninstall affect only this connector on each OS.
+- XP10: GSA connects to either host using the same API and does not assume shared filesystem paths or OS identities.
+
+**Status:** Cross-platform design requirement recorded; Windows/macOS implementation and native validation remain pending.
