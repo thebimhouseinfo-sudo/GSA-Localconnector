@@ -39,7 +39,7 @@ def main():
             f.seek(base);v=f.read(512)
             bps=u16(v,11);spc=v[13];reserved=u16(v,14);nfats=v[16]
             fatsz=u32(v,36);root=u32(v,44);total=u32(v,32)
-            if not (v[510:512]==b"\\x55\\xaa" and bps==512 and spc in (1,2,4,8,16,32,64,128)
+            if not (v[510:512]==bytes.fromhex("55aa") and bps==512 and spc in (1,2,4,8,16,32,64,128)
                     and nfats in (1,2) and reserved>0 and fatsz>0 and total*bps<=extent):
                 return result(state="BLOCKED",reason="INVALID_FAT32_BPB")
             data_start=base+(reserved+nfats*fatsz)*bps
