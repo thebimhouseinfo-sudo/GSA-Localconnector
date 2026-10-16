@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/test/*.test.js",
     "check": "npm run test",
-    "mcp": "node dist/src/mcp/cli.js"
+    "mcp": "node dist/src/mcp/cli.js",
+    "mcp:http": "node dist/src/mcp/http-cli.js"
   },
   "engines": {
     "node": ">=20"
