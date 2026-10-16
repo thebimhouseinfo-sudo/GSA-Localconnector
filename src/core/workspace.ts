@@ -18,6 +18,7 @@ export class WorkspaceRegistry {
     return grant;
   }
   list(): readonly WorkspaceGrant[] { return [...this.grants.values()]; }
+  get(id: string): WorkspaceGrant | undefined { return this.grants.get(id); }
   revoke(id: string): void { this.grants.delete(id); }
   requireGrant(id: string, permission: WorkspacePermission): WorkspaceGrant {
     const grant = this.grants.get(id);
