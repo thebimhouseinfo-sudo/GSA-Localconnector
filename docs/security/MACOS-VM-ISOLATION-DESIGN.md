@@ -96,3 +96,32 @@ or prove QEMU isolation.
 ## Bounded EFI VM boot probe — 2026-10-16 (experimental)
 `native/macos-vm/BootProbe.swift` is an explicitly invoked, DEVELOPMENT-ONLY boot experiment. It validates the expected RAW bytes and SHA256 again, sets disposable EFI variable store, a 2-CPU/2-GiB VM, read-only disk, file-backed serial console, zero network adapters and zero directory shares. It requests VM stop after a 10–180 second observation window. The serial excerpt is untrusted guest data.
 A VM start callback returning success is **not proof the Ubuntu guest reached Linux userspace**, and reporting `VM_STARTED_UNVERIFIED` does NOT certify guest boot, root confinement, persistent machine state, immutable image attachment or SEC01. The disk attachment API reopens a pathname after hashing; TOCTOU risk remains. Guest boot may fail when a read-only Ubuntu cloud image needs writable storage or EFI boot files are absent. This experiment is NEVER run in CI and is NEVER dispatched by connector shell tools; CI compiles/signs it only. Production worker must use a separately reviewed isolation and image lifecycle design.
+
+## EFI fallback boot-chain experiment (2026-10-16)
+
+Actual MacBook offline inspection confirmed the pinned RAW contains ARM64 EFI loaders,
+a matching `EFI/ubuntu/grub.cfg` UUID (`5b886046-3262-4eca-a390-4cd88779a3c7`,
+partition 16), and a fallback `EFI/BOOT/BOOTAA64.EFI` whose SHA256 is identical
+to `EFI/ubuntu/shimaa64.efi`. The fallback directory lacks both
+`grubaa64.efi` and `grub.cfg`. **This is a plausible shim lookup failure,
+NOT a confirmed diagnosis** without the exact graphical UEFI error lines.
+
+The optional `scripts/prepare-arm64-efi-fallback-candidate.py --prepare` is a
+development-only hypothesis test. It requires a pinned 3.5 GiB RAW source digest,
+makes an APFS CoW clone using macOS `cp -c` into a private temporary directory,
+fails closed if CoW is unsupported, validates FAT32 copies and bounds, and
+duplicates the exact SHA256-pinned Ubuntu signed GRUB ARM64 binary and GRUB
+bootstrap config into the **clone's** `EFI/BOOT` directory. It rereads both
+patched files and checks their digests before publishing a separate candidate
+RAW and JSON manifest without overwriting existing outputs. This does not mount
+volumes or modify the baseline RAW. The candidate and its manifest are
+**not production-trusted artifacts**, and preflight/image verification still
+does not prove guest userspace or SEC01.
+
+The VM boot smoke script accepts `--fallback-candidate` explicitly to select
+only this manifest-pinned test image; default behavior still uses the original,
+read-only RAW. Even if EFI/GRUB progresses, the test guest disk remains attached
+read-only and Linux might fail to mount or operate a writable root filesystem.
+No cloud-init provisioning, host network, host share, credential pass-through,
+or connector shell/Git/CI permissions are enabled. Inspect graphical boot
+results before proposing a writable guest data-layer design.
