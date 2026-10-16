@@ -21,6 +21,8 @@ export const MACOS_SEATBELT_PROFILE=[
  "  (subpath (param \"WORKSPACE\"))",
  "  (subpath \"/System\")",
  "  (subpath \"/usr\")",
+ "  (subpath \"/bin\")",
+ "  (subpath \"/sbin\")",
  "  (subpath \"/Library\")",
  "  (literal \"/dev/null\")",
  "  (literal \"/dev/urandom\"))",
