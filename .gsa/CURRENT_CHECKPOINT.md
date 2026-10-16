@@ -78,3 +78,8 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 ### Verified HTTP transport CI completion
 - Implementation revision `81a842f9bf47f7a9b354dd8e8e74158b4d507b48`: [run 38842600984](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/38842600984) completed **Windows PASS / macOS PASS / Ubuntu PASS**.
 - This verifies HTTP test harness, compilation, bearer rejection and tool restrictions in GitHub Actions; real external Cloudflare tunnel, host native install and ChatGPT client compatibility remain untested.
+
+## Endpoint uniqueness (2026-10-16)
+- Default HTTP loopback port changed from 43281 to **58347**; MCP_HTTP_PORT remains configurable. The previous 43281 references above are historical.
+- Bind address stays 127.0.0.1 (security), and Cloudflare hostname must use an independently generated suffix under the user's authorized domain, checked for DNS collisions before creation.
+- Change requires cross-platform CI verification. Real hostname/tunnel does not exist yet; do not invent one.
