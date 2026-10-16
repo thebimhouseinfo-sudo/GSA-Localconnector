@@ -141,3 +141,8 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Human blockers: OpenAI Platform Tunnels Read+Manage/Use permission, per-host tunnel_id and scoped runtime API key, installation of official tunnel-client on each machine, `doctor` + `run` live evidence, plugin creation and actual `connector_status` invocation.
 - **Not yet PASS:** OpenAI tunnel setup on either host, native tunnel-client and private ChatGPT plugin. Current connector tools remain read-only; write/shell/CI sandbox blocked. Secure tunnel default request deadline 120s, so implement durable async runs for long jobs.
 - Next resume: user chooses first host; obtain nonsecret tunnel ID and doctor/ready observations from user's machine; never collect API key in chat. Validate one private plugin end-to-end before configuring second host.
+
+## User-approved single-plugin architecture (2026-10-16)
+- **Exactly ONE ChatGPT plugin (`GSA-Localconnector`) and ONE shared stable OpenAI `tunnel_id`** across two separately installed Windows/macOS runtimes. Supersedes all older notes suggesting one plugin or tunnel per OS.
+- OpenAI stdio tunnel-client restriction: NEVER run two instances sharing the tunnel ID concurrently. Manual exclusive handoff only: stop and fence old client, ensure no pending/in-flight requests, start new OS profile with same ID, verify ready + connector_status OS. If old host inaccessible, revoke its runtime authorization before switching. No failover, session routing or fencing implementation claimed yet.
+- Updated docs/tunnel/SETUP.md and unified implementation plan. Still waiting for Human to create ONE OpenAI tunnel and ONE plugin. Native Windows/macOS 8/8 read-only MCP gates PASS from user evidence.
