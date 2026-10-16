@@ -30,7 +30,7 @@ const definitions = [
   {name:"fetch_file",description:"Read UTF-8 text from an enrolled read-only workspace (maximum 64 KiB)",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},start_line:{type:"integer",minimum:1},max_lines:{type:"integer",minimum:1,maximum:500}},required:["workspace_id","path"],additionalProperties:false}}
 ] as const;
 export function toolDefinitions() {return [...definitions,...plannedTools];}
-export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore=new CiJournalStore(), artifacts:CiArtifactStore=new CiArtifactStore()) {
+export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null) {
   const processes=new ProcessManager(sandbox);
   return async (call:ToolCall):Promise<ToolResult> => {
     try {
@@ -77,11 +77,11 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
         case "ci_list_runs":
           if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1)throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"read");
-          result=(await ciStore.list()).filter(r=>r.workspace_id===args.workspace_id);break;
+          result=(await (ciStore??new CiJournalStore()).list()).filter(r=>r.workspace_id===args.workspace_id);break;
         case "ci_status":
           if(typeof args.workspace_id!=="string"||typeof args.run_id!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"read");
-          {const record=await ciStore.load(args.run_id);
+          {const record=await (ciStore??new CiJournalStore()).load(args.run_id);
            if(record.workspace_id!==args.workspace_id)throw Error("RUN_NOT_FOUND");
            result=record;
           }break;
@@ -92,10 +92,10 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            if(run.workspace_id!==args.workspace_id)throw Error("RUN_NOT_FOUND");
            if(call.name==="ci_artifacts"){
             if(args.artifact!==undefined)throw Error("INVALID_ARGUMENTS");
-            result=await artifacts.list(args.run_id);
+            result=await (artifacts??new CiArtifactStore()).list(args.run_id);
            }else{
             if(typeof args.artifact!=="string")throw Error("INVALID_ARGUMENTS");
-            const data=await artifacts.read(args.run_id,args.artifact);
+            const data=await (artifacts??new CiArtifactStore()).read(args.run_id,args.artifact);
             result={...data.metadata,base64:Buffer.from(data.bytes).toString("base64")};
            }
           }break;
