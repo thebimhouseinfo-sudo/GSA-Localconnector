@@ -8,6 +8,7 @@ import {enrollReadOnly} from "../local/grants.js";
 import {plannedTools,plannedToolNames} from "./catalog.js";
 import {validateWorkflow} from "../core/ci-dag.js";
 import {dispatchFileMutation} from "./write-dispatch.js";
+import {batchFileOperations} from "./batch-dispatch.js";
 import {requireNativeBackend,type NativeScopedFiles,type VerifiedNativeSandbox} from "../core/native-io.js";
 import {executeGit} from "../core/git-engine.js";
 import {ProcessManager} from "../core/process-manager.js";
@@ -183,6 +184,9 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           if(typeof args.workspace_id!=="string"||typeof args.process_id!=="string")throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"execute");
           result=processes.get(args.workspace_id,args.process_id);break;
+        case "batch_file_operations":
+          if(typeof args.workspace_id!=="string"||Object.keys(args).some(k=>!["workspace_id","operations"].includes(k)))throw Error("INVALID_ARGUMENTS");
+          result=await batchFileOperations(registry,nativeFiles,args.workspace_id,args.operations);break;
         default: if(plannedToolNames.has(call.name))throw Error("SECURITY_BLOCKED"); else throw Error("UNKNOWN_TOOL");
       }
       return {content:[{type:"text",text:JSON.stringify({ok:true,result})}]};
