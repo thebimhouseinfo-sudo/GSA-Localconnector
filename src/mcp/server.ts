@@ -39,8 +39,8 @@ export function toolDefinitions() {return [...definitions,...plannedTools];}
 export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null, logs:CiLogStore|null=null, nativeProcesses:VerifiedNativeProcessController|null=null, snapshots:CiSnapshotStore|null=null, sourceCapture:VerifiedWorkspaceSourceCapture|null=null, ciExecutor:VerifiedCiExecutor|null=null) {
   const processes=new ProcessManager(sandbox);
   const durable=new DurableProcessManager(nativeProcesses);
-  const sourceService=new CiSourceCaptureService(sourceCapture,snapshots??new CiSnapshotStore(),ciStore??new CiJournalStore());
-  const ciService=new CiRunService(ciStore??new CiJournalStore(),snapshots??new CiSnapshotStore(),ciExecutor);
+  const sourceService=()=>new CiSourceCaptureService(sourceCapture,snapshots??new CiSnapshotStore(),ciStore??new CiJournalStore());
+  const ciService=()=>new CiRunService(ciStore??new CiJournalStore(),snapshots??new CiSnapshotStore(),ciExecutor);
   return async (call:ToolCall):Promise<ToolResult> => {
     try {
       const args=call.arguments??{};
@@ -95,17 +95,17 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1)throw Error("INVALID_ARGUMENTS");
           requireNativeBackend(sourceCapture);
           registry.requireGrant(args.workspace_id,"read");
-          result=await sourceService.prepare(args.workspace_id);break;
+          result=await sourceService().prepare(args.workspace_id);break;
         case "ci_run":
           if(typeof args.workspace_id!=="string"||typeof args.workflow!=="string"||typeof args.source_run_id!=="string"||Object.keys(args).length!==3)throw Error("INVALID_ARGUMENTS");
           requireNativeBackend(ciExecutor);
           registry.requireGrant(args.workspace_id,"execute");
-          await sourceService.requireOwned(args.workspace_id,args.source_run_id);
+          await sourceService().requireOwned(args.workspace_id,args.source_run_id);
           {const file=await registry.resolveExistingRead(args.workspace_id,args.workflow);
            const stat=await fs.stat(file);
            if(!stat.isFile()||stat.size>65536)throw Error("CI_MANIFEST_TOO_LARGE");
            const workflow=parseCiManifest(new TextDecoder("utf-8",{fatal:true}).decode(await fs.readFile(file)));
-           result=await ciService.submit(args.workspace_id,workflow,args.source_run_id);
+           result=await ciService().submit(args.workspace_id,workflow,args.source_run_id);
           }break;
         case "ci_rerun_failed":
           if(typeof args.workspace_id!=="string"||typeof args.run_id!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
