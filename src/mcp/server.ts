@@ -58,6 +58,23 @@ export function createReadOnlyTools(registry: WorkspaceRegistry) {
            const entries=await fs.readdir(target,{withFileTypes:true});
            result=entries.slice(0,500).map(e=>({name:e.name,kind:e.isDirectory()?"directory":e.isFile()?"file":"other"}));
           }break;
+        case "list_capabilities":
+          if(Object.keys(args).some(k=>k!=="workspace_id")||(args.workspace_id!==undefined&&typeof args.workspace_id!=="string"))throw Error("INVALID_ARGUMENTS");
+          {if(typeof args.workspace_id==="string"&&!registry.get(args.workspace_id))throw Error("WORKSPACE_NOT_FOUND");
+           result={read:["connector_status","list_workspaces","get_workspace","bind_workspaces","list_directory","fetch_file","get_file_info","search","glob","list_capabilities"],blocked:plannedTools.map(t=>t.name).filter(n=>n!=="glob"&&n!=="list_capabilities"),shellIsolation:"blocked",reason:"Native OS sandbox and write grants are not verified"};
+          }break;
+        case "glob":
+          if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||typeof args.pattern!=="string"||Object.keys(args).length!==3||args.pattern.length>160||!args.pattern)throw Error("INVALID_ARGUMENTS");
+          {const dir=await registry.resolveExistingRead(args.workspace_id,args.path);
+           if(!(await fs.stat(dir)).isDirectory())throw Error("NOT_A_DIRECTORY");
+           const pattern=args.pattern as string;
+           if(pattern.includes("..")||pattern.includes("/")||pattern.includes("\\\\")||pattern.includes("**"))throw Error("INVALID_GLOB");
+           const re=new RegExp("^"+pattern.replace(/[.+^$\\{\\}()|[\\]\\]/g,"\\        case "get_file_info":").replace(/\\*/g,".*").replace(/\\?/g,".")+"$");
+           const found=[];
+           for(const e of (await fs.readdir(dir,{withFileTypes:true})).slice(0,500))
+             if(!e.isSymbolicLink()&&re.test(e.name))found.push({name:e.name,kind:e.isDirectory()?"directory":e.isFile()?"file":"other"});
+           result={entries:found,truncated:false};
+          }break;
         case "get_file_info":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
           {const target=await registry.resolveExistingRead(args.workspace_id,args.path);
