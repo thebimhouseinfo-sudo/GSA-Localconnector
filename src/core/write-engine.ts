@@ -1,4 +1,5 @@
 import {TextDecoder} from "node:util";
+import {applyUnifiedTextPatch} from "./unified-patch.js";
 import {exactTextEdit,planExactEdit,requireExpectedHash,sha256} from "./edit-guards.js";
 import type {NativeScopedFiles,ScopedFileRef,MutationReceipt} from "./native-io.js";
 const MAX_BYTES=8*1024*1024;
@@ -40,4 +41,14 @@ export async function copyFile(io:NativeScopedFiles,source:ScopedFileRef,dest:Sc
 export async function moveFile(io:NativeScopedFiles,source:ScopedFileRef,dest:ScopedFileRef,expectedSha256:string):Promise<MutationReceipt>{
  validate(source);validate(dest);const snap=await io.read(source,MAX_BYTES);requireExpectedHash(snap.bytes,expectedSha256);
  await io.moveExclusive(source,dest,expectedSha256);return receipt(dest,null,expectedSha256);
+}
+
+export async function applyPatch(io:NativeScopedFiles,ref:ScopedFileRef,patch:string,expectedSha256:string):Promise<MutationReceipt>{
+ validate(ref);
+ const snap=await io.read(ref,MAX_BYTES);
+ requireExpectedHash(snap.bytes,expectedSha256);
+ const original=new TextDecoder("utf-8",{fatal:true}).decode(snap.bytes);
+ const next=body(applyUnifiedTextPatch(original,patch));
+ await io.replaceIfHash(ref,next,expectedSha256);
+ return receipt(ref,expectedSha256,sha256(next));
 }
