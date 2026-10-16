@@ -7,6 +7,35 @@ Official guides:
 - https://github.com/openai/tunnel-client/blob/master/docs/onboarding.md
 - https://github.com/openai/tunnel-client/releases/latest
 
+## Windows: reuse GPTWorker's existing tunnel-client (no additional download)
+
+The GSA-Localconnector runner now has `reuse-gptworker-tunnel.ps1`. It discovers the preinstalled `tunnel-client.exe` inside GPTWorker's `bin` directory. **No PATH installation and no second download**. This reuses only the executable, not GPTWorker's tunnel ID, runtime key, profile, autostart, or process.
+
+From PowerShell:
+
+```powershell
+cd "D:\00 Other Works\Vibecode\GSA-Localconnector"
+git pull --ff-only origin main
+powershell -NoProfile -ExecutionPolicy Bypass -File .\reuse-gptworker-tunnel.ps1 -Action check
+```
+
+If the binary is elsewhere, append `-TunnelClientPath "FULL_PATH_TO_EXISTING_tunnel-client.exe"`. The first command must find the existing binary and report its version, without touching GPTWorker.
+
+Once ONE separate GSA-Localconnector OpenAI Tunnel ID has been created in Platform and an authorized runtime key is provisioned locally (never paste the key into chats or commands shared with other people), set `GSA_LC_TUNNEL_ID` and `CONTROL_PLANE_API_KEY` **only in the local PowerShell process**. Then run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\reuse-gptworker-tunnel.ps1 -Action doctor -TunnelId $env:GSA_LC_TUNNEL_ID
+powershell -NoProfile -ExecutionPolicy Bypass -File .\reuse-gptworker-tunnel.ps1 -Action run -TunnelId $env:GSA_LC_TUNNEL_ID
+```
+
+**PowerShell caveat:** The nested `powershell` process inherits environment variables; if you use an in-process secret prompt, launch it in the SAME process or set environment variables in the parent session first. The script writes a dedicated YAML profile to `%LOCALAPPDATA%\GSA-Localconnector\tunnel\gsa-localconnector.yaml`, with only `env:CONTROL_PLANE_API_KEY` reference (no secret contents). Health port 58348; GPTWorker's own health port remains unchanged.
+
+The existing HTTP server may continue to listen on 58347, but the GSA tunnel runs the compiled **stdio** MCP, not HTTP; HTTP token is not passed to OpenAI.
+
+For macOS, discover a preinstalled `tunnel-client` binary if present and use the dedicated stdio profile. Do not assume GPTWorker's Windows `.exe` can run on macOS. A separate macOS executable is necessary unless already present; obtaining it is a separate human/platform step.
+
+---
+
 ## Architecture
 
 ChatGPT private plugin -> OpenAI-hosted tunnel endpoint -> `tunnel-client` on one authorized machine -> local GSA-Localconnector via **stdio**.
