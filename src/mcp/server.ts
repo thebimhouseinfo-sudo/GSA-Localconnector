@@ -40,7 +40,8 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
   const processes=new ProcessManager(sandbox);
   const durable=new DurableProcessManager(nativeProcesses);
   const sourceService=()=>new CiSourceCaptureService(sourceCapture,snapshots??new CiSnapshotStore(),ciStore??new CiJournalStore());
-  const ciService=()=>new CiRunService(ciStore??new CiJournalStore(),snapshots??new CiSnapshotStore(),ciExecutor);
+  let coordinator:CiRunService|null=null;
+  const ciService=()=>coordinator??(coordinator=new CiRunService(ciStore??new CiJournalStore(),snapshots??new CiSnapshotStore(),ciExecutor));
   return async (call:ToolCall):Promise<ToolResult> => {
     try {
       const args=call.arguments??{};
