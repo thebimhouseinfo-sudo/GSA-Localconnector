@@ -8,7 +8,7 @@ import {enrollReadOnly} from "../local/grants.js";
 import {plannedTools,plannedToolNames} from "./catalog.js";
 import {validateWorkflow} from "../core/ci-dag.js";
 import {dispatchFileMutation} from "./write-dispatch.js";
-import type {NativeScopedFiles,VerifiedNativeSandbox} from "../core/native-io.js";
+import {requireNativeBackend,type NativeScopedFiles,type VerifiedNativeSandbox} from "../core/native-io.js";
 import {executeGit} from "../core/git-engine.js";
 import {ProcessManager} from "../core/process-manager.js";
 
@@ -165,12 +165,14 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
         case "git_status":case "git_diff":case "git_log":case "git_show":case "compare_commits":
         case "git_add":case "git_commit":case "create_branch":case "git_checkout":case "git_fetch":case "git_pull":case "git_push":
           if(typeof args.workspace_id!=="string")throw Error("INVALID_ARGUMENTS");
+          requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,["git_status","git_diff","git_log","git_show","compare_commits"].includes(call.name)?"read":"execute");
           {const {workspace_id,...parameters}=args;
            result=await executeGit(sandbox,args.workspace_id,call.name,parameters);
           }break;
         case "run_command":
           if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string"))throw Error("INVALID_ARGUMENTS");
+          requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,"execute");
           result=await processes.run({workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:false});break;
         case "list_processes":
