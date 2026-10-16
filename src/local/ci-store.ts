@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {randomBytes} from "node:crypto";
 import {identityDirectory} from "./identity.js";
-import type {CiRunRecord} from "../core/ci-journal.js";
+import {reconcileInterruptedRun,type CiRunRecord} from "../core/ci-journal.js";
 
 /** Supervisor-owned CI journal. No child process may be granted access here.
  * Atomic updates within one filesystem; concurrent writers need revision guards.
@@ -51,6 +51,23 @@ export class CiJournalStore {
     await fs.rename(tmp,this.recordPath(record.run_id));
    }finally{await fs.rm(tmp,{force:true});}
   }finally{await handle.close();await fs.rm(lock,{force:true});}
+ }
+ /** Recovery is an explicit supervisor operation; each transition is persisted with
+  * revision preconditions. A stale lock or conflicting writer stops recovery.
+  */
+ async reconcileInterrupted():Promise<{recovered:string[];unchanged:number}>{
+  let files:string[];
+  try{files=await fs.readdir(this.root);}
+  catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")return {recovered:[],unchanged:0};throw e;}
+  const recovered:string[]=[];let unchanged=0;
+  for(const file of files.filter(x=>x.endsWith(".json")&&UUID.test(x.slice(0,-5))).sort()){
+   const r=await this.load(file.slice(0,-5));
+   const next=reconcileInterruptedRun(r);
+   if(next===r){unchanged++;continue;}
+   await this.save(next,r.revision);
+   recovered.push(r.run_id);
+  }
+  return {recovered,unchanged};
  }
  async list():Promise<Array<{run_id:string;workspace_id:string;state:string;revision:number}>>{
   let files:string[];
