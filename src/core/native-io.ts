@@ -20,6 +20,7 @@ export interface NativeScopedFiles {
 }
 export interface SandboxedProcessRequest {
  readonly workspace_id:string;readonly executable:string;readonly argv:readonly string[];
+ readonly process_id?:string; // supervisor-assigned stable cancellation identity
  readonly cwd_relative:string;readonly time_limit_ms:number;readonly max_output_bytes:number;
  readonly network_allowed:boolean;
 }
