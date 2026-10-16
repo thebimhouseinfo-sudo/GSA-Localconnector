@@ -4,7 +4,7 @@ import {createReadOnlyTools,toolDefinitions} from "../src/mcp/server.js";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
 
 test("bootstrap tool catalog is read-only and direct",()=>{
- const names=toolDefinitions().map(t=>t.name);
+ const names: string[]=toolDefinitions().map(t=>t.name);
  assert.deepEqual(names,["connector_status","list_workspaces","get_workspace"]);
  assert.equal(names.includes("run_command"),false);
  assert.equal(names.includes("ci_run"),false);
