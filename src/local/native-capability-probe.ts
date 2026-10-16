@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {fileURLToPath} from "node:url";
 export interface HostProbe{
  readonly platform:string;readonly arch:string;readonly release:string;readonly node_version:string;
  readonly native_strategy:string;readonly candidate_available:boolean|null;
@@ -23,6 +24,6 @@ export async function probeNativeCapabilities():Promise<HostProbe>{
  return {platform,arch,release:os.release(),node_version:process.version,
   native_strategy:strategy,candidate_available:available,security_verified:false,requires_host_negative_test:true};
 }
-const isMain=process.argv[1]&&path.resolve(process.argv[1])===path.resolve(new URL(import.meta.url).pathname);
+const isMain=process.argv[1]&&path.resolve(process.argv[1])===path.resolve(fileURLToPath(import.meta.url));
 if(isMain)probeNativeCapabilities().then(x=>{process.stdout.write(JSON.stringify(x,null,2)+"\n");})
  .catch(e=>{process.stderr.write("NATIVE_PROBE_FAILED: "+(e instanceof Error?e.message:String(e))+"\n");process.exitCode=1;});
