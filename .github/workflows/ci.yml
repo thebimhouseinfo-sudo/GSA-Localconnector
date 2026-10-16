@@ -109,3 +109,9 @@ jobs:
       - name: Hermetic synthetic FAT32 EFI fallback clone patch test (never touch guest disk)
         if: runner.os != 'Windows'
         run: python3 scripts/test-efi-fallback-candidate.py
+
+      - name: Syntax-check opt-in macOS fallback candidate preparation and boot wrapper
+        if: runner.os == 'macOS'
+        run: |
+          python3 -c 'import ast,pathlib;ast.parse(pathlib.Path("scripts/prepare-arm64-efi-fallback-candidate.py").read_text())'
+          bash -n scripts/test-macos-vm-boot.sh
