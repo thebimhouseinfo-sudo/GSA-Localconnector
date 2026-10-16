@@ -103,3 +103,10 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - **WIN-AUTH-NEGATIVE PASS**: anonymous MCP access rejected on the user's Windows host.
 - Combined Windows evidence: `/health` alive and anonymous `/mcp` POST 401. Authenticated tool handshake and native `npm test` output have NOT been supplied.
 - macOS native `/health` and anonymous 401 remain PENDING. No tunnel or ChatGPT plugin has been created.
+
+## macOS native HTTP gates — user-provided live evidence (2026-10-16)
+- Mac Terminal `curl http://127.0.0.1:58347/health` returned `{"status":"alive","name":"gsa-localconnector","exposedTools":"read-only"}`. **MAC-HEALTH PASS**.
+- Unauthenticated POST `/mcp` with JSON-RPC `initialize` returned `HTTP Status: 401`. **MAC-AUTH-NEGATIVE PASS**.
+- Combined Windows/macOS native health and anonymous-token-rejection gates: **4/4 PASS** based on user-supplied local outputs.
+- No claim yet for authenticated initialize/tools/list from either host, macOS `npm test` output, tunnel provisioning, external HTTPS MCP, startup persistence or shell/CI containment.
+- NEXT: run authenticated MCP initialize + tools/list locally without printing the token; then configure distinct Cloudflare tunnel only after local gates PASS; no ChatGPT plugin until tunnel READY.
