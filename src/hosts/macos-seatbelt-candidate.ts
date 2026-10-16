@@ -5,6 +5,16 @@ import {createHash} from "node:crypto";
  * Construction is NOT native enforcement verification. NEVER inject this
  * as VerifiedNativeSandbox without host-specific negative controls.
  */
+/** Host evidence is negative: this exact policy SIGABRTs on macOS 26.6.2 arm64.
+ * This is intentionally NOT a capability token and must never be upgraded
+ * based on a compile/test-only PASS.
+ */
+export const MACOS_SEATBELT_HOST_VERDICT={
+ status:"BLOCKED_HOST_SIGABRT",
+ security_verified:false,
+ production_eligible:false,
+ reason:"Restricted file-read policy fails the legitimate in-Workspace read control"
+} as const;
 export class MacSandboxPolicyError extends Error {
  constructor(message:string){super(message);this.name="MacSandboxPolicyError";}
 }
