@@ -21,6 +21,14 @@ test("Workspace metadata and search are bounded and reject traversal",async()=>{
   assert.equal(match.result.matches[0].path,"src/a.ts");
   const forbidden=await call({name:"get_file_info",arguments:{workspace_id:"w",path:"../secret.txt"}});
   assert.equal(forbidden.isError,true);
+  const capability=JSON.parse((await call({name:"list_capabilities",arguments:{workspace_id:"w"}})).content[0].text);
+  assert.equal(capability.ok,true);
+  assert.equal(capability.result.shellIsolation,"blocked");
+  const glob=JSON.parse((await call({name:"glob",arguments:{workspace_id:"w",path:"src",pattern:"*.ts"}})).content[0].text);
+  assert.deepEqual(glob.result.entries.map((x:any)=>x.name),["a.ts"]);
+  const blocked=await call({name:"run_command",arguments:{workspace_id:"w",command:"node",args:[]}});
+  assert.equal(blocked.isError,true);
+  assert.equal(JSON.parse(blocked.content[0].text).code,"SECURITY_BLOCKED");
   const invalid=await call({name:"search",arguments:{workspace_id:"w",path:".",query:""}});
   assert.equal(invalid.isError,true);
  } finally {await fs.rm(tmp,{recursive:true,force:true});}
