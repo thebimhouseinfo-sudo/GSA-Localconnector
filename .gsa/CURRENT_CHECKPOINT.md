@@ -74,3 +74,7 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Cloudflare named Tunnel, domain/hostname mapping, secret provisioning, end-to-end public HTTPS MCP handshake, process autostart and ChatGPT plugin creation are NOT DONE.
 - Human action required at tunnel installation: machine-local Node + cloudflared, Cloudflare DNS/tunnel authorization and hostname, environment secret setup and external access acceptance test. `docs/tunnel/SETUP.md` describes this boundary. **Do not create a ChatGPT plugin before tunnel READY.**
 - Resume by checking latest CI outcome, then tunnel/client compatibility and safe auth; do not advertise production security conformance yet.
+
+### Verified HTTP transport CI completion
+- Implementation revision `81a842f9bf47f7a9b354dd8e8e74158b4d507b48`: [run 38842600984](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/38842600984) completed **Windows PASS / macOS PASS / Ubuntu PASS**.
+- This verifies HTTP test harness, compilation, bearer rejection and tool restrictions in GitHub Actions; real external Cloudflare tunnel, host native install and ChatGPT client compatibility remain untested.
