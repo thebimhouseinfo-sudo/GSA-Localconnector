@@ -46,7 +46,12 @@ try{
   {id:"deny_default_workspace_write",lines:[...header,"(allow file-read*)",...write]},
   {id:"restricted_read_no_write",lines:[...header,...rootRead,...systemRead]},
   {id:"restricted_read_with_write",lines:[...header,...rootRead,...systemRead,...write]},
-  {id:"restricted_read_write_network_deny",lines:[...header,...rootRead,...systemRead,...write,"(deny network*)"]}
+  {id:"restricted_read_write_network_deny",lines:[...header,...rootRead,...systemRead,...write,"(deny network*)"]},
+  {id:"restricted_plus_dev",lines:[...header,...rootRead,...systemRead,'(allow file-read* (subpath "/dev"))',...write]},
+  {id:"restricted_plus_etc",lines:[...header,...rootRead,...systemRead,'(allow file-read* (subpath "/private/etc"))',...write]},
+  {id:"restricted_plus_var_db",lines:[...header,...rootRead,...systemRead,'(allow file-read* (subpath "/private/var/db"))',...write]},
+  {id:"restricted_plus_private_diagnostic_only",lines:[...header,...rootRead,...systemRead,'(allow file-read* (subpath "/private"))',...write]},
+  {id:"restricted_plus_dev_etc_var_db",lines:[...header,...rootRead,...systemRead,'(allow file-read* (subpath "/dev") (subpath "/private/etc") (subpath "/private/var/db"))',...write]}
  ];
  result.policy_ladder=[];
  for(const rung of ladders){
