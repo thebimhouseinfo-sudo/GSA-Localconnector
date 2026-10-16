@@ -16,3 +16,8 @@ jobs:
           node-version: '22'
       - run: npm install --ignore-scripts
       - run: npm test
+      - name: Compile macOS Virtualization preflight (no VM launch)
+        if: runner.os == 'macOS'
+        run: |
+          swiftc -framework Virtualization native/macos-vm/CapabilityProbe.swift -o "$RUNNER_TEMP/gsa-vm-capability-probe"
+          "$RUNNER_TEMP/gsa-vm-capability-probe"
