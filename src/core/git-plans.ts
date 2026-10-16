@@ -19,10 +19,10 @@ export function gitPlan(name:string,args:Record<string,unknown>={}):GitPlan{
   case "git_status":only([]);return plan(["-c","core.fsmonitor=false","status","--porcelain=v1","-z"]);
   case "git_diff":only([]);return plan(["-c","core.fsmonitor=false","-c","diff.external=","diff","--no-ext-diff","--"]);
   case "git_log":only([]);return plan(["log","-n","30","--format=%H%x09%s"]);
-  case "git_show":only(["revision"]);return plan(["show","--no-ext-diff","--format=fuller","--",ref(String(args.revision))]);
+  case "git_show":only(["revision"]);return plan(["show","--no-ext-diff","--format=fuller",ref(String(args.revision))]);
   case "compare_commits":only(["base","head"]);return plan(["diff","--no-ext-diff",ref(String(args.base)),ref(String(args.head)),"--"]);
   case "git_add":only(["paths"]);if(!Array.isArray(args.paths)||!args.paths.length||args.paths.length>100||args.paths.some(x=>typeof x!=="string"))bad("Invalid Git paths");return plan(["add","--",...(args.paths as string[]).map(rel)],true);
-  case "git_commit":only(["message"]);if(typeof args.message!=="string"||!args.message.trim()||args.message.length>500)bad("Invalid commit message");return plan(["-c","core.hooksPath=/dev/null","commit","-m",args.message],true);
+  case "git_commit":only(["message"]);if(typeof args.message!=="string"||!args.message.trim()||args.message.length>500)bad("Invalid commit message");return plan(["commit","-m",args.message],true);
   case "create_branch":only(["branch"]);return plan(["branch",ref(String(args.branch))],true);
   case "git_checkout":only(["branch"]);return plan(["switch",ref(String(args.branch))],true);
   case "git_fetch":only([]);return plan(["fetch","--no-tags","origin"],true,true);
