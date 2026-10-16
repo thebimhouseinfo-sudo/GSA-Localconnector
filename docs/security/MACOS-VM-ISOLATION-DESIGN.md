@@ -92,3 +92,7 @@ separate gates.
 stop and request explicit installation approval rather than installing tools
 silently. CI syntax checks the converter but does not run a real conversion
 or prove QEMU isolation.
+
+## Bounded EFI VM boot probe — 2026-10-16 (experimental)
+`native/macos-vm/BootProbe.swift` is an explicitly invoked, DEVELOPMENT-ONLY boot experiment. It validates the expected RAW bytes and SHA256 again, sets disposable EFI variable store, a 2-CPU/2-GiB VM, read-only disk, file-backed serial console, zero network adapters and zero directory shares. It requests VM stop after a 10–180 second observation window. The serial excerpt is untrusted guest data.
+A VM start callback returning success is **not proof the Ubuntu guest reached Linux userspace**, and reporting `VM_STARTED_UNVERIFIED` does NOT certify guest boot, root confinement, persistent machine state, immutable image attachment or SEC01. The disk attachment API reopens a pathname after hashing; TOCTOU risk remains. Guest boot may fail when a read-only Ubuntu cloud image needs writable storage or EFI boot files are absent. This experiment is NEVER run in CI and is NEVER dispatched by connector shell tools; CI compiles/signs it only. Production worker must use a separately reviewed isolation and image lifecycle design.
