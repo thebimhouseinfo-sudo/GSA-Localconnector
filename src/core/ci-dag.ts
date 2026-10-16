@@ -13,13 +13,13 @@ export function validateWorkflow(value:unknown):{name:string;job_order:string[]}
   const j=raw as Record<string,unknown>;
   if(Object.keys(j).some(k=>!["id","needs","steps"].includes(k))||typeof j.id!=="string"||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(j.id)||nodes.has(j.id))bad("invalid or duplicate job ID");
   if(j.needs!==undefined&&(!Array.isArray(j.needs)||j.needs.some(x=>typeof x!=="string")))bad("invalid dependencies");
-  if(!Array.isArray(j.steps)||j.steps.length<1||j.steps.length>100)bad("missing/oversized steps");
-  for(const rawStep of j.steps){
+  if(!Array.isArray(j.steps)||j.steps.length<1||(j.steps as unknown[]).length>100)bad("missing/oversized steps");
+  for(const rawStep of j.steps as unknown[]){
    if(!rawStep||typeof rawStep!=="object"||Array.isArray(rawStep))bad("invalid step");
    const s=rawStep as Record<string,unknown>;
    if(Object.keys(s).some(k=>!["id","command","args"].includes(k))||typeof s.id!=="string"||typeof s.command!=="string"||!s.command||(s.args!==undefined&&(!Array.isArray(s.args)||s.args.some(x=>typeof x!=="string"))))bad("invalid step schema");
   }
-  nodes.set(j.id,j.needs as string[]??[]);
+  nodes.set(j.id as string,(j.needs as string[]|undefined)??[]);
  }
  const visited=new Set<string>();const active=new Set<string>();const ordered:string[]=[];
  const walk=(id:string):void=>{
