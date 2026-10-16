@@ -3,7 +3,7 @@ import path from "node:path";
 import {createHash} from "node:crypto";
 import {identityDirectory} from "./identity.js";
 import {createSnapshotManifest} from "../core/ci-snapshot.js";
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export class SnapshotStoreError extends Error{
  constructor(public readonly code:"INVALID_RUN_ID"|"SNAPSHOT_EXISTS"|"SNAPSHOT_INTEGRITY",message:string){super(message);}
 }
