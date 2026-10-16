@@ -69,3 +69,26 @@ and must NOT be treated as a verified raw disk compatible with the earlier
 (or verified EFI boot configuration), guest console/bootstrap, and SEC01 remain to do.
 The release alias can change; provenance is HTTPS + downloaded SHA256SUMS, *not* an
 independent signature verification or immutable distribution pin.
+
+## Host image inspection PASS and offline RAW conversion gate — 2026-10-16
+
+Actual MacBook verified the Canonical image checksum and recognized QCOW2 **v3**,
+3,758,096,384-byte virtual disk, no backing file and no external data file.
+This is not directly attachable to the current Apple VZ raw disk configuration.
+
+Added `scripts/convert-ubuntu-arm64-image.mjs` for an explicitly invoked copy
+conversion, using an already-installed Homebrew `qemu-img` at
+`/opt/homebrew/bin/qemu-img`. It first checks the *exact* approved source digest,
+file size, QCOW2 header and `qemu-img info` (rejects backing, external or encrypted
+layout). It refuses overwrites and emits a separate RAW image plus manifest,
+including the destination SHA256; it never modifies the source, boots a VM or
+changes connector permissions. No `brew install` is performed by the script.
+**Residual risk:** path-to-file races remain before qemu-img opens the source
+and must be resolved for a production trusted conversion pipeline.
+Raw output is `boot_ready:false`; Linux boot/kernel/EFI support and SEC01 are
+separate gates.
+
+**Human prerequisite:** MacBook must have `qemu-img` available. If missing,
+stop and request explicit installation approval rather than installing tools
+silently. CI syntax checks the converter but does not run a real conversion
+or prove QEMU isolation.
