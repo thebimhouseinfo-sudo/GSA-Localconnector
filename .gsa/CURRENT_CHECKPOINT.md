@@ -174,3 +174,9 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - **WIN-OPENAI-TUNNEL-READY PASS** based on live native /readyz endpoint. The earlier Windows path parser fix has not been independently re-run through doctor output in this turn, but tunnel runtime now reports ready.
 - Still pending: proof of ChatGPT private plugin connection, remote tool discovery/`connector_status`, explicit GSA host identity, macOS tunnel handoff. Do not claim plugin LIVE or read/write/shell/CI enabled.
 - Next human action: in ChatGPT Plugins create ONE custom MCP server plugin `GSA-Localconnector`, Connection=Tunnel and select the existing GSA OpenAI tunnel, then invoke `connector_status`. Keep macOS tunnel-client stopped during Windows testing.
+
+## ChatGPT private GSA-Localconnector plugin E2E verified — 2026-10-16
+- User invoked installed `gsa-lc` plugin. Direct `mcp__gsa_lc__connector_status({})` returned `ok=true`, name `gsa-localconnector`, apiVersion `1`, capabilities `platform=windows`, `arch=x64`, `shellIsolation=blocked`, `localCi=blocked`, `readyForShell=false`.
+- Direct `mcp__gsa_lc__list_workspaces({})` returned `ok=true`, `result=[]`.
+- **WINDOWS CHATGPT -> OPENAI TUNNEL -> LOCAL MCP TOOLS E2E PASS.** Plugin connection real and tool calls succeeded. Workspace registry is currently empty; shell/write/CI are not enabled and are not certified.
+- Next: implement secure local workspace enrollment and native containment before exposing coding operations. macOS handoff using the SAME plugin/tunnel still pending; do not launch both hosts simultaneously.
