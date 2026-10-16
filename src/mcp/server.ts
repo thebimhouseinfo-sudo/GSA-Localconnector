@@ -2,8 +2,10 @@ import { createRequire } from "node:module";
 import { connectorStatus } from "../index.js";
 import { WorkspaceRegistry } from "../core/workspace.js";
 import fs from "node:fs/promises";
+import path from "node:path";
+import {enrollReadOnly} from "../local/grants.js";
 
-/** Strict read-only bootstrap surface. No shell, CI, or enrollment tools. */
+/** Read-only file surface with explicit caller-authorized absolute-root binding; no shell or CI. */
 export interface ToolCall { name: string; arguments?: Record<string, unknown> }
 export interface ToolResult { content: Array<{type:"text";text:string}>; isError?: boolean }
 const definitions = [
@@ -11,6 +13,7 @@ const definitions = [
   {name:"list_workspaces",description:"List explicitly trusted workspaces; does not enroll new ones",inputSchema:{type:"object",properties:{},additionalProperties:false}},
   {name:"get_workspace",description:"Inspect trusted workspace metadata",inputSchema:{type:"object",properties:{workspace_id:{type:"string"}},required:["workspace_id"],additionalProperties:false}},
   {name:"list_directory",description:"Read immediate directory entries in an enrolled read-only workspace",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"}},required:["workspace_id","path"],additionalProperties:false}},
+  {name:"bind_workspaces",description:"Bind user-provided absolute directory paths as read-only workspaces on this host. Requires explicit user-provided paths; never discover or widen roots automatically.",inputSchema:{type:"object",properties:{paths:{type:"array",items:{type:"string"},minItems:1,maxItems:16}},required:["paths"],additionalProperties:false}},
   {name:"fetch_file",description:"Read UTF-8 text from an enrolled read-only workspace (maximum 64 KiB)",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"}},required:["workspace_id","path"],additionalProperties:false}}
 ] as const;
 export function toolDefinitions() {return definitions;}
@@ -30,6 +33,21 @@ export function createReadOnlyTools(registry: WorkspaceRegistry) {
           if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1) throw Error("INVALID_ARGUMENTS");
           {const g=registry.get(args.workspace_id);if(!g) throw Error("WORKSPACE_NOT_FOUND");
           result={workspace_id:g.id,permissions:g.permissions,revision:g.revision};}break;
+        case "bind_workspaces":
+          if(Object.keys(args).length!==1||!Array.isArray(args.paths)||args.paths.length<1||args.paths.length>16||args.paths.some(p=>typeof p!=="string"||!path.isAbsolute(p)))throw Error("INVALID_ARGUMENTS");
+          {const outputs=[];
+           for(const root of args.paths as string[]){
+             const stat=await fs.stat(root);
+             if(!stat.isDirectory())throw Error("WORKSPACE_NOT_DIRECTORY");
+             const canonical=await fs.realpath(root);
+             const existing=registry.list().find(g=>g.canonicalRoot===canonical);
+             const id=existing?.id??"ws-"+(await import("node:crypto")).createHash("sha256").update(canonical).digest("hex").slice(0,16);
+             await enrollReadOnly(id,canonical);
+             await registry.enrollTrusted(id,canonical,["read"]);
+             outputs.push({workspace_id:id,root:canonical,permissions:["read"]});
+           }
+           result=outputs;
+          }break;
         case "list_directory":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
           {const target=await registry.resolveExistingRead(args.workspace_id,args.path);
