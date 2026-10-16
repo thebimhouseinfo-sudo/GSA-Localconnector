@@ -41,6 +41,13 @@ test("MCP CI source + run never executes unless both native verifiers are inject
   assert.equal(started.ok,true);
   // The async execution contract returns a queue record; native proof is a separate gate.
   assert.equal(started.result.state,"QUEUED");
+  let completed=false;
+  for(let attempt=0;attempt<100;attempt++){
+   const status=JSON.parse((await call({name:"ci_status",arguments:{workspace_id:"A",run_id:started.result.run_id}})).content[0].text);
+   if(status.result.state==="PASSED"){completed=true;break;}
+   await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  assert.equal(completed,true);
   const denied=await createReadOnlyTools(reg)({name:"ci_prepare_source",arguments:{workspace_id:"A"}});
   assert.equal(denied.isError,true);
  }finally{await fs.rm(tmp,{recursive:true,force:true});}
