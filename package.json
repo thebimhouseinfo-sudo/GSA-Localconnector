@@ -10,7 +10,8 @@
     "check": "npm run test",
     "mcp": "node dist/src/mcp/cli.js",
     "mcp:http": "node dist/src/mcp/http-cli.js",
-    "prepare": "node dist/src/local/prepare.js"
+    "prepare": "node dist/src/local/prepare.js",
+    "workspace": "node dist/src/local/workspace-cli.js"
   },
   "engines": {
     "node": ">=20"
