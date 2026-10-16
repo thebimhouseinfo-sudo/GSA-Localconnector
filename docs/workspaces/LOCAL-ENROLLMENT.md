@@ -31,3 +31,10 @@ After verifying local enrollment, restart only the GSA tunnel for that host, the
 
 ## Shell and future Git/CI
 Directory binding is not containment for arbitrary shell commands. Shell will not be exposed until native isolation per OS prevents escaped child processes, filesystem writes outside grants, network and elevation hazards per policy, and verified denial tests on real Windows/macOS installations. Future Git changes and CI must use the same independently verified process containment gate.
+
+## CURRENT binding contract — plugin-first (2026-10-16)
+This section supersedes local-CLI-first instructions above. User calls `gsa-lc` (Windows) or `gsa-lc-mac` (macOS) with one or more **explicit absolute directory paths**. GSA invokes `bind_workspaces({paths:[...]})` on the selected plugin, and the connector verifies each target exists and is a directory, canonicalizes it, assigns a stable host-local Workspace ID, persists read-only grant, and makes the grant available to the calling tool process immediately. The user **must supply the paths**; do not infer broad parent directories or grant extra paths. Each host has independent Workspace roots. Shell/write/Local CI remain blocked until OS-native containment is verified.
+
+Example human instruction: `@gsa-lc-mac bind /Users/username/projectA and /Users/username/projectB`.
+
+A tunnel MCP child process may reload between requests; persistence is required and included. If an existing process cached grants before binding, restart the selected host's GSA tunnel once to reload. Do not modify GPTWorker or the other host. The old `npm run workspace -- enroll-read ...` remains a maintenance fallback, **not a prerequisite** for normal Workspace binding.
