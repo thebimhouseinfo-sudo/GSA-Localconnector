@@ -206,3 +206,7 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Initial CI failed due to Linux stdio bootstrap attempting unsupported host-owned macOS/Windows grant-store path; code correction `c2429a52535806c4456911e282cf5a2ae107ed6a` keeps Linux CI stdio test harness on empty in-memory registry only, while Windows/macOS load protected grants. **Cross-platform CI re-verification pending**.
 - Security caveats: read path realpath enforcement does NOT provide a race-free native sandbox (TOCTOU), and revocation requires MCP process restart. No high-sensitivity or adversary-writable folders should be enrolled until stronger protections verified. The target original plan's secure write/execution/Git/CI features remain unimplemented; never claim full coding readiness.
 - Resume: check GitHub Actions run for correction, fix any failures, then test local enrollment/read/revoke on both hosts without exposing secret content. Implement platform-native isolation before exposing `run_command` or local CI.
+
+## Phase 2 source CI verified — 2026-10-16
+- GitHub Actions [run 38850073521](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/38850073521) for source revision `c2429a52535806c4456911e282cf5a2ae107ed6a`: **Windows PASS, macOS PASS, Ubuntu PASS**. This verifies unit and E2E stdio contract tests for read-only Workspace support, NOT native directory enrollment on user's machines.
+- Follow-up checkpoint-only commits did not alter TypeScript source. Local Windows/macOS smoke after git pull and restart still PENDING.
