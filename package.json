@@ -11,7 +11,8 @@
     "mcp": "node dist/src/mcp/cli.js",
     "mcp:http": "node dist/src/mcp/http-cli.js",
     "prepare": "node dist/src/local/prepare.js",
-    "workspace": "node dist/src/local/workspace-cli.js"
+    "workspace": "node dist/src/local/workspace-cli.js",
+    "native:probe": "npm run build && node dist/src/local/native-capability-probe.js"
   },
   "engines": {
     "node": ">=20"
