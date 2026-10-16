@@ -36,18 +36,29 @@ try{
  };
  // Diagnostic ladder: exact same disposable file, progressively restrictive rules.
  // A positive rung is feasibility only; no rung grants production authorization.
+ const header=["(version 1)","(deny default)","(allow process-exec)","(allow process-fork)"];
+ const rootRead=['(allow file-read* (subpath (param "WORKSPACE")))'];
+ const systemRead=['(allow file-read* (subpath "/System") (subpath "/usr") (subpath "/bin") (subpath "/sbin") (subpath "/Library") (literal "/dev/null") (literal "/dev/urandom"))'];
+ const write=['(allow file-write* (subpath (param "WORKSPACE")))'];
  const ladders=[
-  {id:"allow_default_cat",profile:"(version 1)\\n(allow default)"},
-  {id:"deny_default_exec_read",profile:"(version 1)\\n(deny default)\\n(allow process-exec)\\n(allow process-fork)\\n(allow file-read*)"},
-  {id:"deny_default_workspace_write",profile:["(version 1)","(deny default)","(allow process-exec)","(allow process-fork)","(allow file-read*)",'(allow file-write* (subpath (param "WORKSPACE")))'].join(String.fromCharCode(10))}
+  {id:"allow_default_cat",lines:["(version 1)","(allow default)"]},
+  {id:"deny_default_exec_read",lines:[...header,"(allow file-read*)"]},
+  {id:"deny_default_workspace_write",lines:[...header,"(allow file-read*)",...write]},
+  {id:"restricted_read_no_write",lines:[...header,...rootRead,...systemRead]},
+  {id:"restricted_read_with_write",lines:[...header,...rootRead,...systemRead,...write]},
+  {id:"restricted_read_write_network_deny",lines:[...header,...rootRead,...systemRead,...write,"(deny network*)"]}
  ];
  result.policy_ladder=[];
  for(const rung of ladders){
-  const run=spawnSync("/usr/bin/sandbox-exec",["-p",rung.profile,"-D","WORKSPACE="+own,"/bin/cat",path.join(own,"allowed.txt")],{
+  const profile=rung.lines.join(String.fromCharCode(10));
+  const args=["-p",profile];
+  if(profile.includes('(param "WORKSPACE")'))args.push("-D","WORKSPACE="+own);
+  args.push("/bin/cat",path.join(own,"allowed.txt"));
+  const run=spawnSync("/usr/bin/sandbox-exec",args,{
    cwd:own,encoding:"utf8",timeout:10000,maxBuffer:16384,
    env:{PATH:"/usr/bin:/bin",HOME:own,TMPDIR:path.join(own,"tmp")}
   });
-  result.policy_ladder.push({id:rung.id,exit_code:run.status,signal:run.signal,allowed:run.status===0&&run.stdout==="allowed"});
+  result.policy_ladder.push({id:rung.id,exit_code:run.status,signal:run.signal,allowed:run.status===0&&run.stdout==="allowed",error_code:run.error?.code??null});
  }
  const base=call("/usr/bin/true",[],true);
  result.baseline_allowed=base.status===0;
