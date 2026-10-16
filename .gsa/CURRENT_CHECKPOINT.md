@@ -62,3 +62,15 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Explicitly NOT validated: official SDK-client conformance, authenticated external MCP transport, on-disk trusted enrollment, write/shell/CI, Task Scheduler, launchd and OS isolation.
 - **Human boundary for privileged continuation:** authorize local trusted Workspace enrollment and permit Windows/macOS on-device sandbox feasibility fixtures. No arbitrary shell or CI will be enabled before native isolation evidence. Exact paths need local user enrollment, not made-up paths.
 - Resume: verify HEAD + this checkpoint; implement local trusted enrollment/persistence and official client conformance; then platform-native sandbox feasibility and release tests.
+
+## HTTP MCP + tunnel preparation checkpoint — 2026-10-16
+- Implementation source revision `81a842f9bf47f7a9b354dd8e8e74158b4d507b48`.
+- Added `src/mcp/http.ts`, `src/mcp/http-cli.ts`, `test/http.test.ts`, `docs/tunnel/SETUP.md`.
+- HTTP MCP is stateless JSON-RPC at loopback `127.0.0.1:43281/mcp`; `/health` returns unprivileged liveness.
+- Secret is mandatory `MCP_HTTP_TOKEN` (>=32 characters), compared timing-safe; requests lacking bearer token rejected. Origin and MCP Accept/protocol version checks included. Limits body size to 1 MiB.
+- Only read-only `connector_status`, `list_workspaces`, `get_workspace`; all shell/write/CI capabilities remain disabled.
+- Added `npm run mcp:http`. Never expose directly on 0.0.0.0.
+- [CI run 38842600984](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/38842600984) for implementation revision: Ubuntu PASS and macOS PASS, Windows IN PROGRESS at the checkpoint moment. **Do not claim 3/3 until verified.**
+- Cloudflare named Tunnel, domain/hostname mapping, secret provisioning, end-to-end public HTTPS MCP handshake, process autostart and ChatGPT plugin creation are NOT DONE.
+- Human action required at tunnel installation: machine-local Node + cloudflared, Cloudflare DNS/tunnel authorization and hostname, environment secret setup and external access acceptance test. `docs/tunnel/SETUP.md` describes this boundary. **Do not create a ChatGPT plugin before tunnel READY.**
+- Resume by checking latest CI outcome, then tunnel/client compatibility and safe auth; do not advertise production security conformance yet.
