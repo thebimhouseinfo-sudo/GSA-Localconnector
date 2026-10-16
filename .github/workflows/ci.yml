@@ -94,6 +94,6 @@ jobs:
       - name: Compile experimental macOS VM boot probe (never launch on CI)
         if: runner.os == 'macOS'
         run: |
-          swiftc -framework Virtualization native/macos-vm/BootProbe.swift -o "$RUNNER_TEMP/gsa-vm-boot-probe"
+          swiftc -framework Virtualization -framework AppKit native/macos-vm/BootProbe.swift -o "$RUNNER_TEMP/gsa-vm-boot-probe"
           codesign --force --sign - --entitlements native/macos-vm/Virtualization.entitlements "$RUNNER_TEMP/gsa-vm-boot-probe"
           codesign --verify --strict "$RUNNER_TEMP/gsa-vm-boot-probe"
