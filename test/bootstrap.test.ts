@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, symlink, rm, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createHostAdapter } from "../src/hosts/index.js";
@@ -25,7 +25,7 @@ test("workspace read resolver rejects traversal and symlink escapes", async () =
     await writeFile(path.join(outside, "secret.txt"), "private");
     const registry = new WorkspaceRegistry();
     await registry.enrollTrusted("a", root, ["read"]);
-    assert.equal(await registry.resolveExistingRead("a", "good.txt"), path.join(root, "good.txt"));
+    assert.equal(await registry.resolveExistingRead("a", "good.txt"), await realpath(path.join(root, "good.txt")));
     await assert.rejects(registry.resolveExistingRead("a", "../outside/secret.txt"), /Unsafe relative path/);
     await assert.rejects(registry.resolveExistingRead("a", path.join(outside, "secret.txt")), /workspace-relative/);
     try { await symlink(outside, path.join(root, "link"), process.platform === "win32" ? "junction" : "dir");
