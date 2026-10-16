@@ -23,6 +23,7 @@ export class NativeFileCandidate {
  async readCandidate(id:string,relative:string,maxBytes=65536):Promise<{bytes:Uint8Array;sha256:string}>{
   const {dir,base}=await this.existingParent(id,relative);
   const file=path.join(dir,base);
+  if((await fs.lstat(file)).isSymbolicLink())throw Error("SYMLINK_DENIED");
   const fd=await fs.open(file,flags.O_RDONLY|(flags.O_NOFOLLOW??0));
   try{
    const st=await fd.stat();
