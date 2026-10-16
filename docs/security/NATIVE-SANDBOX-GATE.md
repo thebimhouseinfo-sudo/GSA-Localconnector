@@ -28,3 +28,26 @@ macOS Terminal:
 If Docker is absent or daemon inaccessible, report the error; do not install blindly. No GSA tunnel restart or GPTWorker/CadGPT/RevitGPT changes needed.
 
 Native gate requires forbidden sibling file read/write failures, nested shell escapes denied, host secrets and daemon socket unavailable, safe symlink handling, and legitimate compile/test/build inside bound Workspace. Static CI contracts do not certify OS sandbox PASS.
+
+## macOS 26.6.2 host verdict — Seatbelt candidate is BLOCKED (2026-10-16)
+
+Actual ARM64 MacBook repeatedly launched an `allow default` profile successfully, while the
+deny-default **restricted file-read** profile aborted with `SIGABRT`, even when
+the policy added `/dev`, `/private/etc`, `/private/var/db`, the combined paths,
+or the broad `/private` tree. Broader write and network rules did not resolve this.
+No read/write denial controls executed because the legitimate read positive-control
+failed first. These runs establish **nonviability of this exact profile on this host**;
+they do not prove the OS cannot implement any other native isolation mechanism.
+
+**Decision:** do not widen filesystem allowances further, do not classify crash as a
+security denial, and do not use `sandbox-exec` as the production execution substrate
+without a new independently reviewed OS-native design. The candidate remains source-only,
+`verified:false`. Shell, Git subprocesses and Local CI stay `SECURITY_BLOCKED`.
+
+**Next design path:** prototype a separate native macOS worker with OS-supported
+sandboxing/virtualization or a dedicated isolated account with OS-enforced deny semantics.
+An account alone or POSIX permissions must not be mistaken for root isolation;
+the worker must demonstrate SEC01 forbidden sibling/secret access, symlink and
+nested-process escape denial, network control, and in-root SDK builds. Windows requires
+a separate native worker and proof. Until then, keep file reads and planning tools
+independent of native process execution.
