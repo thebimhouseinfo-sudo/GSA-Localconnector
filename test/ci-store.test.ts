@@ -61,3 +61,23 @@ test("crash reconciliation marks unfinished runs UNKNOWN, not PASSED",async()=>{
   assert.deepEqual((await store.reconcileInterrupted()).recovered,[]);
  }finally{await fs.rm(tmp,{recursive:true,force:true});}
 });
+
+test("queued CI can be cancelled, running CI cannot fake cancellation",async()=>{
+ const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"ci-cancel-"));
+ try{
+  const journal=new CiJournalStore(path.join(tmp,"ci"));
+  const queued=createQueuedRun("A","build","c".repeat(64));await journal.save(queued,null);
+  const registry=new WorkspaceRegistry();await registry.enrollTrusted("A",tmp,["read","execute"]);await registry.enrollTrusted("B",tmp,["read","execute"]);
+  const invoke=createReadOnlyTools(registry,null,null,journal);
+  const denied=await invoke({name:"ci_cancel",arguments:{workspace_id:"B",run_id:queued.run_id}});
+  assert.equal(denied.isError,true);
+  const approved=JSON.parse((await invoke({name:"ci_cancel",arguments:{workspace_id:"A",run_id:queued.run_id}})).content[0].text);
+  assert.equal(approved.result.state,"CANCELLED");
+  const repeated=await invoke({name:"ci_cancel",arguments:{workspace_id:"A",run_id:queued.run_id}});
+  assert.equal(repeated.isError,true);
+  const active=createQueuedRun("A","build","d".repeat(64));await journal.save(active,null);
+  await journal.save(transitionRun(active,"PREPARING",1),1);
+  const notPretended=await invoke({name:"ci_cancel",arguments:{workspace_id:"A",run_id:active.run_id}});
+  assert.equal(notPretended.isError,true);
+ }finally{await fs.rm(tmp,{recursive:true,force:true});}
+});
