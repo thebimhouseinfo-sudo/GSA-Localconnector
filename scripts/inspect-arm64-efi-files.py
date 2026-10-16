@@ -17,7 +17,45 @@ TARGETS = (
 )
 def u16(b,n): return struct.unpack_from("<H",b,n)[0]
 def u32(b,n): return struct.unpack_from("<I",b,n)[0]
-def result(**kw): print(json.dumps(kw,sort_keys=True)); return 0
+def result(**kw):
+    print(json.dumps(kw,sort_keys=True))
+    return 2 if kw.get("state") == "BLOCKED" else 0
+
+def read_fat_file(item, cluster_size, max_cluster, cluster_bytes, next_cluster):
+    """Read one FAT32 file with a size-derived bound, detecting genuine cycles.
+
+    A 2.8 MiB EFI binary occupies more than 4096 FAT entries with 512-byte
+    clusters; treating that count as a loop produces false corruption alarms.
+    """
+    size = item["size"]
+    if item["directory"] or size < 0 or size > 8 * 1024 * 1024:
+        raise ValueError("EFI_FILE_SIZE_INVALID")
+    expected_clusters = (size + cluster_size - 1) // cluster_size
+    if cluster_size <= 0 or expected_clusters > max_cluster - 1:
+        raise ValueError("EFI_FILE_CHAIN_BOUNDS")
+    remain = size
+    cluster = item["cluster"]
+    seen = set()
+    chunks = []
+    while remain:
+        if cluster in seen:
+            raise ValueError("EFI_FILE_CHAIN_LOOP")
+        if cluster < 2 or cluster > max_cluster:
+            raise ValueError("EFI_FILE_CLUSTER_BOUNDS")
+        if len(seen) >= expected_clusters:
+            raise ValueError("EFI_FILE_CHAIN_OVERRUN")
+        seen.add(cluster)
+        block = cluster_bytes(cluster)
+        if len(block) != cluster_size:
+            raise ValueError("EFI_FILE_SHORT_READ")
+        take = min(remain, cluster_size)
+        chunks.append(block[:take])
+        remain -= take
+        if remain:
+            cluster = next_cluster(cluster)
+            if cluster >= 0x0ffffff8:
+                raise ValueError("EFI_FILE_CHAIN_TRUNCATED")
+    return b"".join(chunks)
 def main():
     if IMAGE.is_symlink() or not IMAGE.is_file() or IMAGE.stat().st_size != SIZE:
         return result(state="BLOCKED",reason="IMAGE_IDENTITY")
@@ -77,24 +115,6 @@ def main():
                                   "size":u32(e,28),"directory":bool(e[11]&0x10)}
                     num=next_cluster(num)
                 return out
-            def read_file(item):
-                size=item["size"]
-                if item["directory"] or size > 8 * 1024 * 1024:
-                    raise ValueError("EFI_FILE_SIZE_INVALID")
-                remain=size
-                num=item["cluster"]
-                seen=set()
-                chunks=[]
-                while remain:
-                    if num in seen or len(seen)>4096:
-                        raise ValueError("EFI_FILE_CHAIN_LOOP")
-                    seen.add(num)
-                    raw=cluster_bytes(num)
-                    chunks.append(raw[:min(remain,len(raw))])
-                    remain-=min(remain,len(raw))
-                    if remain:
-                        num=next_cluster(num)
-                return b"".join(chunks)
             found={}
             for target in TARGETS:
                 cur=root;item=None
@@ -109,7 +129,7 @@ def main():
                     info={"exists":item is not None,
                           "bytes":item["size"] if item is not None else None}
                     if item is not None and not item["directory"]:
-                        data=read_file(item)
+                        data=read_fat_file(item,cluster_size,max_cluster,cluster_bytes,next_cluster)
                         info["sha256"]=hashlib.sha256(data).hexdigest()
                         if target.lower().endswith(".efi"):
                             peoffset=u32(data,0x3c) if len(data)>=0x40 and data[:2]==b"MZ" else -1
@@ -129,7 +149,7 @@ def main():
             boot=found.get("EFI/BOOT/BOOTAA64.EFI",{})
             shim=found.get("EFI/ubuntu/shimaa64.efi",{})
             return result(
-                state="ESP_FILES_INSPECTED",espBytes=extent,paths=found,
+                state="ESP_FILES_INSPECTED",espBytes=extent,clusterBytes=cluster_size,paths=found,
                 fallbackIsUbuntuShim=bool(boot.get("sha256") and boot.get("sha256")==shim.get("sha256")),
                 bootVerified=False,executionAuthorized=False
             )
