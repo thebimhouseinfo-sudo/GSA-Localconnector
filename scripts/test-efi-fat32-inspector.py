@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Hermetic FAT32 file-chain regression tests; never touches a real image."""
 import importlib.util
+import io
 import unittest
+import uuid
 from pathlib import Path
 
 script = Path(__file__).resolve().with_name("inspect-arm64-efi-files.py")
@@ -53,6 +55,25 @@ class TestFAT32Chains(unittest.TestCase):
                 {"size": 51_200, "cluster": 2, "directory": False},
                 512, 10, lambda _: bytes(512), lambda c: c + 1,
             )
+
+    def test_grub_uuid_from_ubuntu_config(self):
+        config = "search.fs_uuid 5b886046-3262-4eca-a390-4cd88779a3c7 root \\nset prefix=($root)'/grub'\\n"
+        self.assertEqual(inspector.grub_target_uuid(config),
+                         "5b886046-3262-4eca-a390-4cd88779a3c7")
+        self.assertIsNone(inspector.grub_target_uuid("search --label ubuntu root"))
+
+    def test_read_only_ext_uuid_at_partition_superblock(self):
+        raw = bytearray(16384)
+        partition_first = 8
+        sb = partition_first * 512 + 1024
+        raw[sb+56:sb+58] = bytes((0x53, 0xef))
+        expected = uuid.UUID("5b886046-3262-4eca-a390-4cd88779a3c7")
+        raw[sb+104:sb+120] = expected.bytes
+        self.assertEqual(inspector.ext_filesystem_uuid(
+            io.BytesIO(raw),partition_first,31,len(raw)),str(expected))
+        raw[sb+56:sb+58] = bytes(2)
+        self.assertIsNone(inspector.ext_filesystem_uuid(
+            io.BytesIO(raw),partition_first,31,len(raw)))
 
     def test_zero_byte_file(self):
         out = inspector.read_fat_file(
