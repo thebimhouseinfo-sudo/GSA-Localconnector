@@ -3,7 +3,9 @@
 import json
 import hashlib
 import os
+import re
 import struct
+import uuid
 from pathlib import Path
 
 IMAGE = Path.home() / "Library/Application Support/GSA-Localconnector/images/ubuntu-24.04-arm64-converted.raw"
@@ -56,6 +58,33 @@ def read_fat_file(item, cluster_size, max_cluster, cluster_bytes, next_cluster):
             if cluster >= 0x0ffffff8:
                 raise ValueError("EFI_FILE_CHAIN_TRUNCATED")
     return b"".join(chunks)
+def ext_filesystem_uuid(f, first_lba, last_lba, disk_size):
+    """Read ext2/3/4 superblock UUID only; never mounts or modifies a volume."""
+    if first_lba < 0 or last_lba <= first_lba:
+        return None
+    sb_offset = first_lba * 512 + 1024
+    if sb_offset + 1024 > disk_size or sb_offset + 1024 > (last_lba + 1) * 512:
+        return None
+    f.seek(sb_offset)
+    sb = f.read(1024)
+    if len(sb) != 1024 or sb[56:58] != bytes((0x53,0xef)):
+        return None
+    raw_uuid = sb[104:120]
+    if raw_uuid == bytes(16):
+        return None
+    return str(uuid.UUID(bytes=raw_uuid))
+
+def grub_target_uuid(config_text):
+    if not isinstance(config_text,str):
+        return None
+    match = re.search(r"(?m)^\\s*search\\.fs_uuid\\s+([0-9a-fA-F-]{36})(?:\\s|$)",config_text)
+    if not match:
+        return None
+    try:
+        return str(uuid.UUID(match.group(1)))
+    except ValueError:
+        return None
+
 def main():
     if IMAGE.is_symlink() or not IMAGE.is_file() or IMAGE.stat().st_size != SIZE:
         return result(state="BLOCKED",reason="IMAGE_IDENTITY")
@@ -69,15 +98,21 @@ def main():
             count,esz=struct.unpack_from("<II",hdr,80)
             if count>256 or esz<128 or esz>512: return result(state="BLOCKED",reason="INVALID_GPT")
             esp=None
+            candidates=[]
             for i in range(count):
                 at=ent_lba*512+i*esz
                 if at+esz>SIZE:break
                 f.seek(at);e=f.read(esz)
-                if e[:16]==ESP_GUID:
-                    first,last=struct.unpack_from("<QQ",e,32)
-                    if first>=last or last*512>=SIZE: return result(state="BLOCKED",reason="ESP_BOUNDS")
+                if e[:16]==bytes(16): continue
+                first,last=struct.unpack_from("<QQ",e,32)
+                if first >= last or last*512 >= SIZE:
+                    return result(state="BLOCKED",reason="GPT_PARTITION_BOUNDS")
+                if e[:16] == ESP_GUID:
+                    if esp is not None:
+                        return result(state="BLOCKED",reason="MULTIPLE_ESP")
                     esp=(first*512,(last-first+1)*512)
-                    break
+                else:
+                    candidates.append((i+1,first,last))
             if esp is None:return result(state="BLOCKED",reason="NO_ESP")
             base,extent=esp
             f.seek(base);v=f.read(512)
@@ -148,9 +183,24 @@ def main():
                     return result(state="BLOCKED",reason=str(ex))
             boot=found.get("EFI/BOOT/BOOTAA64.EFI",{})
             shim=found.get("EFI/ubuntu/shimaa64.efi",{})
+            grub=found.get("EFI/BOOT/grubaa64.efi",{})
+            cfg=found.get("EFI/ubuntu/grub.cfg",{})
+            target_uuid=grub_target_uuid(cfg.get("configExcerpt"))
+            filesystems=[]
+            for index,first,last in candidates:
+                fs_uuid=ext_filesystem_uuid(f,first,last,SIZE)
+                if fs_uuid is not None:
+                    filesystems.append({"partition":index,"extFilesystemUUID":fs_uuid,
+                                        "matchesGrubConfig":fs_uuid==target_uuid if target_uuid else None})
+            matched=any(x["matchesGrubConfig"] for x in filesystems)
             return result(
                 state="ESP_FILES_INSPECTED",espBytes=extent,clusterBytes=cluster_size,paths=found,
                 fallbackIsUbuntuShim=bool(boot.get("sha256") and boot.get("sha256")==shim.get("sha256")),
+                fallbackSiblingGrubPresent=bool(grub.get("exists")),
+                fallbackSiblingGrubMissingCandidate=bool(boot.get("exists") and not grub.get("exists")),
+                grubConfigTargetUUID=target_uuid,
+                extFilesystems=filesystems,
+                grubConfigUUIDMatched=matched if target_uuid else None,
                 bootVerified=False,executionAuthorized=False
             )
     except (OSError,ValueError,struct.error) as ex:
