@@ -23,7 +23,7 @@ export class ProcessManager {
   */
  start(request:SandboxedProcessRequest):ProcessRecord {
   if(!this.native?.verified)throw new ProcessError("SECURITY_BLOCKED","Native sandbox unavailable");
-  if(!request.workspace_id||!request.executable||!Array.isArray(request.argv)||request.argv.some(a=>typeof a!=="string"||a.includes("\\0"))||request.cwd_relative!=="."||!Number.isSafeInteger(request.time_limit_ms)||request.time_limit_ms<1||request.time_limit_ms>120000||!Number.isSafeInteger(request.max_output_bytes)||request.max_output_bytes<1||request.max_output_bytes>2097152||request.network_allowed)
+  if(!request.workspace_id||!request.executable||!Array.isArray(request.argv)||request.argv.some(a=>typeof a!=="string"||a.includes(String.fromCharCode(0)))||request.cwd_relative!=="."||!Number.isSafeInteger(request.time_limit_ms)||request.time_limit_ms<1||request.time_limit_ms>120000||!Number.isSafeInteger(request.max_output_bytes)||request.max_output_bytes<1||request.max_output_bytes>2097152||request.network_allowed)
    throw new ProcessError("INVALID_PROCESS","Invalid process request");
   if([...this.records.values()].filter(r=>r.state==="RUNNING").length>=4)throw new ProcessError("PROCESS_BUSY","Concurrent process limit");
   const now=new Date().toISOString(),id=randomUUID();
