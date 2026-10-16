@@ -475,3 +475,10 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Source commit `8bf369ce` creates disposable `VZEFIVariableStore(creatingVariableStoreAt:options:)` in a new temporary directory, assigns it to `VZEFIBootLoader.variableStore`, and removes it on completion. No VM boot, persistent NVRAM, network, filesystem share, or execution authority.
 - GitHub Actions [38885394926](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/38885394926) passed for previous diagnostic-only source; NEW run [38885918355](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/38885918355) pending after variable-store fix. Native Mac retest required. CI PASS is source test, not guest boot/SEC01.
 - NEXT: run `bash scripts/test-macos-efi-preflight.sh` after pulling main. Expect `efiConfigurationValid:true` only if no further host validation blocker. Keep execution/security gates blocked.
+
+## Actual Mac EFI signed configuration PASS — 2026-10-16
+- User MacBook pulled source `03a7736`, ran `bash scripts/test-macos-efi-preflight.sh`; Swift compilation, ad-hoc code signing, signature verification and `com.apple.security.virtualization=true` observed.
+- Native output: `state:CANDIDATE_ONLY`, `efiConfigurationValid:true`, `nativeDiskAttachedReadOnly:true`, `vmStarted:false`, `securityVerified:false`, `executionAuthorized:false`, `errorCode:BOOT_AND_SEC01_NOT_VERIFIED`.
+- GitHub Actions [38885947326](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/38885947326) completed SUCCESS (source test CI). This does not validate Linux image EFI boot or SEC01.
+- **Milestone** Mac native signed offline EFI+RAW configuration preflight PASS. Do not repeat preflight without source/image change.
+- NEXT: design a gated bounded VM boot experiment (read-only base image, writable disposable overlay/secondary state as required, ephemeral EFI NVRAM, serial diagnostics, no network/share/connector secrets) and observe actual Ubuntu guest boot, then independent SEC01 containment probes. Shell/Git/local CI remain SECURITY_BLOCKED. No unrestricted process worker yet.
