@@ -187,7 +187,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
       }
       return {content:[{type:"text",text:JSON.stringify({ok:true,result})}]};
     } catch(e) {
-      return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:e instanceof Error?e.message:"UNKNOWN_ERROR"})}]};
+      return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:e&&typeof e==="object"&&"code" in e&&typeof e.code==="string"?e.code:e instanceof Error?e.message:"UNKNOWN_ERROR"})}]};
     }
   };
 }
