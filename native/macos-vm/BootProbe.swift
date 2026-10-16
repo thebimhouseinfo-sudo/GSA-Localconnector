@@ -23,7 +23,7 @@ struct Report: Encodable {
     let diagnostic: String?
 }
 func report(_ state: String, _ imageVerified: Bool, _ vmStarted: Bool,
-            _ log: String? = nil, _ detail: String? = nil) {
+            _ log: String? = nil, detail: String? = nil) {
     let result = Report(state: state, imageVerified: imageVerified, vmStarted: vmStarted,
                         securityVerified: false, executionAuthorized: false,
                         serialLogPath: log, diagnostic: detail)
@@ -105,10 +105,11 @@ do {
     var started = false
     var completed = false
     var failure: String? = nil
-    vm.start { error in
-        if let error = error {
-            failure = String(describing:error).prefix(300).description
-        } else { started = true }
+    vm.start { result in
+        switch result {
+        case .success: started = true
+        case .failure(let error): failure = String(describing:error).prefix(300).description
+        }
         completed = true
     }
     let startDeadline = Date().addingTimeInterval(20)
@@ -116,7 +117,11 @@ do {
         RunLoop.main.run(mode:.default,before:Date().addingTimeInterval(0.05))
     }
     if !completed {
-        try? vm.stop()
+        Task { try? await vm.stop() }
+        let shutdownLimit = Date().addingTimeInterval(5)
+        while vm.state != .stopped && Date() < shutdownLimit {
+            RunLoop.main.run(mode:.default,before:Date().addingTimeInterval(0.1))
+        }
         report("BLOCKED",true,false,detail:"START_TIMEOUT"); exit(2)
     }
     if !started {
@@ -127,7 +132,13 @@ do {
         RunLoop.main.run(mode:.default,before:Date().addingTimeInterval(0.1))
     }
     // The guest is not authorized to run connector tasks. Stop the disposable VM.
-    if vm.state != .stopped { try? vm.stop() }
+    if vm.state != .stopped {
+        Task { try? await vm.stop() }
+        let shutdownLimit = Date().addingTimeInterval(10)
+        while vm.state != .stopped && Date() < shutdownLimit {
+            RunLoop.main.run(mode:.default,before:Date().addingTimeInterval(0.1))
+        }
+    }
     try? serialFile.synchronize()
     let logData = (try? Data(contentsOf:serialURL)) ?? Data()
     let snippet = String(decoding:logData.prefix(4096),as:UTF8.self)
