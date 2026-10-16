@@ -155,12 +155,14 @@ do {
             RunLoop.main.run(mode:.default,before:Date().addingTimeInterval(0.1))
         }
     }
+    let safelyStopped = vm.state == .stopped
+    phase(safelyStopped ? "VM_STOPPED" : "VM_STOP_UNCONFIRMED")
     try? serialFile.synchronize()
     let logData = (try? Data(contentsOf:serialURL)) ?? Data()
     let snippet = String(decoding:logData.prefix(4096),as:UTF8.self)
     // Logs can contain guest-controlled content; limit printable control characters.
     let sanitized = snippet.unicodeScalars.map { CharacterSet.controlCharacters.contains($0) && $0 != "\n" ? " " : String($0) }.joined()
-    report("VM_STARTED_UNVERIFIED",true,true,detail:"serial_bytes=\(logData.count); serial_prefix="+String(sanitized.prefix(1500)))
+    report(safelyStopped ? "VM_STARTED_UNVERIFIED" : "VM_STOP_UNCONFIRMED",true,true,detail:"serial_bytes=\(logData.count); serial_prefix="+String(sanitized.prefix(1500)))
 } catch {
     report("BLOCKED",true,false,detail:String(describing:error).prefix(300).description)
     exit(2)
