@@ -115,3 +115,9 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - macOS authenticated POST `http://127.0.0.1:58347/mcp` with token read locally from `~/Library/Application Support/GSA-Localconnector/mcp-token` returned JSON-RPC result: `protocolVersion=2025-03-26`, `serverInfo.name=gsa-localconnector`, `serverInfo.version=0.1.0`, `capabilities.tools.listChanged=false`.
 - **MAC-AUTH-INITIALIZE PASS**; token was not included in evidence.
 - Windows authenticated initialize and both hosts' authenticated tools/list still pending; actual Cloudflare tunnel and ChatGPT plugin not created.
+
+## Windows authenticated MCP initialize — user-provided evidence (2026-10-16)
+- Windows PowerShell loaded bearer secret from `%LOCALAPPDATA%/GSA-Localconnector/mcp-token` without printing it and successfully POSTed authenticated JSON-RPC initialize to `http://127.0.0.1:58347/mcp`.
+- Response: `protocolVersion=2025-03-26`, `serverInfo.name=gsa-localconnector`, `serverInfo.version=0.1.0`, `capabilities.tools.listChanged=false`.
+- **WIN-AUTH-INITIALIZE PASS**; macOS authenticated initialize also PASS. Health and anonymous-denial tests already PASS on both systems.
+- NEXT: verify authenticated `tools/list` on Windows and macOS, then native tunnel preparation; Cloudflare and plugin still not created.
