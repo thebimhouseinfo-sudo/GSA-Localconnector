@@ -31,7 +31,7 @@ export class ProcessManager {
   this.records.set(id,started);
   const task=(async()=>{
    try {
-    const output=await this.native!.execute(request);
+    const output=await this.native!.execute({...request,process_id:id});
     const length=Buffer.byteLength(output.stdout,"utf8")+Buffer.byteLength(output.stderr,"utf8");
     if(length>request.max_output_bytes)throw Error("OUTPUT_LIMIT_EXCEEDED");
     const state:ProcessState=output.cancelled?"CANCELLED":output.timed_out?"FAILED":output.exit_code===0?"SUCCEEDED":output.exit_code===null?"UNKNOWN":"FAILED";
@@ -42,6 +42,18 @@ export class ProcessManager {
   })();
   this.active.set(id,task);
   return started;
+ }
+ /** Cancellation can only be attempted via a verified native implementation
+  * which owns the process tree. Never pretend a missing cancel hook succeeded.
+  */
+ async stop(workspaceId:string,processId:string):Promise<{requested:boolean;record:ProcessRecord}>{
+  const record=this.get(workspaceId,processId);
+  if(record.state!=="RUNNING")return {requested:false,record};
+  if(!this.native?.verified||!this.native.cancel)throw new ProcessError("SECURITY_BLOCKED","Native process-tree cancellation unavailable");
+  const requested=await this.native.cancel(processId,workspaceId);
+  if(!requested)throw new ProcessError("PROCESS_BUSY","Native supervisor did not confirm cancellation request");
+  // Acknowledged request is not proof of termination. Final receipt still controls state.
+  return {requested:true,record:this.get(workspaceId,processId)};
  }
  async settle(workspaceId:string,processId:string):Promise<ProcessRecord>{
   this.get(workspaceId,processId);
