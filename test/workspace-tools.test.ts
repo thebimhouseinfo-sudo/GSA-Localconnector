@@ -18,7 +18,7 @@ test("Workspace metadata and search are bounded and reject traversal",async()=>{
   assert.equal(info.result.kind,"file");assert.match(info.result.sha256,/^[a-f0-9]{64}$/);
   const match=JSON.parse((await call({name:"search",arguments:{workspace_id:"w",path:".",query:"needle"}})).content[0].text);
   assert.equal(match.result.matches.length,1);
-  assert.equal(match.result.matches[0].path,"./src/a.ts");
+  assert.equal(match.result.matches[0].path,"src/a.ts");
   const forbidden=await call({name:"get_file_info",arguments:{workspace_id:"w",path:"../secret.txt"}});
   assert.equal(forbidden.isError,true);
   const invalid=await call({name:"search",arguments:{workspace_id:"w",path:".",query:""}});
