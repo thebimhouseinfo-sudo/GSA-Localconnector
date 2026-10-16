@@ -8,6 +8,7 @@ type Entry={workspace_id:string;native_id:string;public_id:string};
 export class DurableProcessManager{
  private readonly owned=new Map<string,Entry>();
  constructor(private readonly backend:VerifiedNativeProcessController|null,private readonly maxActive=16){}
+ list(workspaceId:string){return [...this.owned.values()].filter(x=>x.workspace_id===workspaceId).map(x=>({process_id:x.public_id,workspace_id:x.workspace_id}));}
  private get(workspaceId:string,publicId:string):Entry{
   const e=this.owned.get(publicId);
   if(!e||e.workspace_id!==workspaceId)throw new DurableProcessError("PROCESS_NOT_FOUND","Process not owned by workspace");
