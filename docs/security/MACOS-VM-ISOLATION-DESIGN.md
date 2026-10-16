@@ -34,3 +34,20 @@ The production-restricted Seatbelt candidate SIGABRTs on the actual macOS 26.6.2
 - `requireMacIsolationProof` always throws SECURITY_BLOCKED. No process/Git/Local CI permission is enabled by this design.
 
 The existing Docker candidate is optional and separate; Docker Linux containers also cannot execute native macOS binaries.
+
+## Worker protocol v1 — fail-closed handshake
+
+Pure, unprivileged host contract is implemented in `src/hosts/macos-vm-handshake.ts`.
+Before considering any worker data, a host-issued `boot_nonce` (64 lowercase hex)
+and a workspace-specific policy fingerprint must match the worker claim;
+the claim also states exactly one share, zero network devices, zero host socket
+devices, ARM64 guest and READY state. A mismatch is `SECURITY_BLOCKED`.
+Even a match returns `security_verified:false` and
+`execution_authorized:false`: an untrusted worker claim cannot prove isolation,
+root identity, image provenance or authority to execute. Native code-signature,
+guest filesystem and process tests are still a hard gate.
+
+This is not a functioning VM worker or a communications channel. A future
+signed Swift worker must receive a freshly generated challenge from a trusted
+host supervisor and prove actual VM measurements, host share controls, and
+revocation independently. Never accept a user-provided nonce as host authority.
