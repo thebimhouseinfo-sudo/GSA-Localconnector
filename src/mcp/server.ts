@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {createHash} from "node:crypto";
 import {enrollReadOnly} from "../local/grants.js";
+import {plannedTools,plannedToolNames} from "./catalog.js";
 
 /** Read-only file surface with explicit caller-authorized absolute-root binding; no shell or CI. */
 export interface ToolCall { name: string; arguments?: Record<string, unknown> }
@@ -19,7 +20,7 @@ const definitions = [
   {name:"search",description:"Search UTF-8 text across bounded files under a workspace-relative directory; no external grep subprocess",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},query:{type:"string"}},required:["workspace_id","path","query"],additionalProperties:false}},
   {name:"fetch_file",description:"Read UTF-8 text from an enrolled read-only workspace (maximum 64 KiB)",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"}},required:["workspace_id","path"],additionalProperties:false}}
 ] as const;
-export function toolDefinitions() {return definitions;}
+export function toolDefinitions() {return [...definitions,...plannedTools];}
 export function createReadOnlyTools(registry: WorkspaceRegistry) {
   return async (call:ToolCall):Promise<ToolResult> => {
     try {
@@ -103,7 +104,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry) {
            const value=new TextDecoder("utf-8",{fatal:true}).decode(data);
            result={path:args.path,text:value};
           }break;
-        default: throw Error("UNKNOWN_TOOL");
+        default: if(plannedToolNames.has(call.name))throw Error("SECURITY_BLOCKED"); else throw Error("UNKNOWN_TOOL");
       }
       return {content:[{type:"text",text:JSON.stringify({ok:true,result})}]};
     } catch(e) {
