@@ -1,25 +1,50 @@
-# Tunnel setup boundary — GSA-Localconnector
+# GSA-Localconnector — Native install & Cloudflare handoff
 
-**Do not create the ChatGPT plugin before the local HTTP MCP server and tunnel are READY.**
+**Status: tunnel is NOT installed, no ChatGPT plugin exists.** This handoff is for one Windows or macOS machine at a time. Local MCP is read-only during bootstrap. The real Cloudflare tunnel and host validation require the authorized human.
 
-The HTTP endpoint is currently **read-only and experimental**. It binds to `127.0.0.1:58347` by default and requires `Authorization: Bearer <token>` on `/mcp`. No shell/write/CI tools are exposed.
+## 1. Prepare the machine
 
-## Local smoke
-1. Install Node 22 and checkout this repository on the desired Windows or macOS machine.
-2. `npm install --ignore-scripts && npm test`, then `npm run build`.
-3. Generate a random secret of >=32 characters locally; set `MCP_HTTP_TOKEN` as a **process secret**, never commit it or write it to a Workspace.
-4. Run `npm run mcp:http`; check `http://127.0.0.1:58347/health`.
-5. Verify authorized POST `/mcp` initialize and tools/list; a request lacking a token must be rejected.
+Install Node.js 22+ and Git. From a user-owned checkout of
+`https://github.com/thebimhouseinfo-sudo/GSA-Localconnector` run:
 
-## Cloudflare boundary
-- Create a dedicated named Cloudflare Tunnel and DNS hostname **only after local tests pass**, and point its ingress to `http://127.0.0.1:58347`.
-- Provision tunnel credentials **locally** through the trusted user-managed Cloudflare account; never commit a tunnel token/config/secrets to GitHub.
-- Configure Cloudflare access policy and ChatGPT-compatible authentication; test the exact remote client authentication before adding a plugin. Bearer header support and Cloudflare Access policy configuration must be confirmed for the actual ChatGPT connector.
-- Verify TLS, authentication-denied probes, startup/reconnect and no leak of /mcp to unauthenticated callers.
-- Installer/autostart, tunnel process supervision and token rotation are **pending**, not silently satisfied by this example.
+```bash
+npm install --ignore-scripts
+npm test
+npm run prepare
+npm run mcp:http
+```
 
-## Human action needed later
-Cloudflare account and DNS authorization, host install, machine-local token provisioning, creating the actual dedicated tunnel, validating remote hostname, and only then registering the ChatGPT plugin.
+The `prepare` command generates a unique 48-byte random bearer secret under the user's host-owned application directory (Windows: LocalAppData/GSA-Localconnector; macOS: ~/Library/Application Support/GSA-Localconnector). It reuses the secret if already initialized and does not print its value. Do not commit, chat, screenshot, or upload that secret.
 
-## Unique endpoint identity
-Choose a dedicated DNS label such as `gsa-lc-<locally-generated-random-suffix>.<your-owned-domain>`; generate the suffix locally and confirm the exact FQDN is free in Cloudflare DNS before creating it. Do not hardcode a guessed hostname or reuse GPTWorker/CadGPT/RevitGPT ingress. Port 58347 is a project default, not a guarantee of availability: fail on EADDRINUSE and allow MCP_HTTP_PORT override. Keep the HTTP service bound to 127.0.0.1, not a public interface.
+HTTP MCP binds **127.0.0.1:58347** by default. Override the port with `MCP_HTTP_PORT` if the port is occupied. `/health` is unprivileged health only; `/mcp` requires a bearer token. Do not bind this local app to `0.0.0.0`.
+
+Open another terminal, check local health:
+```bash
+curl http://127.0.0.1:58347/health
+```
+
+No plugin or tunnel should be created until the server starts and the health test passes. The local token is not exposed by the health endpoint.
+
+## 2. Create a dedicated Cloudflare tunnel (human action)
+
+Use your own Cloudflare account and a DNS zone you control. Create a **new named Tunnel**, unique to this connector, using the Cloudflare Zero Trust dashboard. Choose a DNS label like `gsa-lc-<random-suffix>.<your-domain>`. Verify the name is unassigned before provisioning it. Set its public hostname service to `http://127.0.0.1:58347`.
+
+Follow Cloudflare's generated install/connector commands for the **actual target OS** (Windows or macOS); do not paste credentials into this repo or ChatGPT. A tunnel token/credentials are different from the local MCP bearer token. Never reuse GPTWorker/CadGPT/RevitGPT tunnel credentials, ports, startup registrations or hostname.
+
+Check Cloudflare route DNS, TLS, and the authenticated MCP initialize handshake from an **external** client. Choose a ChatGPT-compatible authentication/Access strategy; this read-only bootstrap currently requires a bearer header and **does not implement an OAuth authorization server**. If ChatGPT's plugin flow requires OAuth, stop at this gate rather than exposing an unauthenticated endpoint or inventing a token bypass.
+
+## 3. Human-ready checklist
+
+- [ ] Native local npm tests PASS on target OS
+- [ ] `npm run prepare` succeeded without exposing token
+- [ ] `npm run mcp:http` starts on loopback port, `/health` responds
+- [ ] Cloudflare named tunnel installed, distinct hostname mapped to 127.0.0.1:58347
+- [ ] Remote TLS valid; anonymous `/mcp` denied; authorized MCP handshake succeeds
+- [ ] Restart/reconnect and local supervision validated
+- [ ] Compatible authentication with ChatGPT verified before plugin registration
+
+## 4. Until the native sandbox is verified
+
+Only the status/workspace metadata tools are available. No execute, shell, write or Local CI is enabled. A READY tunnel **does not** imply Localconnector's coding tools are ready. Production startup, token rotation, secure authenticated control-session lease and native Windows/macOS sandbox remain separate unfinished tickets.
+
+See `.gsa/CURRENT_CHECKPOINT.md` for last verified code revision and test evidence.
