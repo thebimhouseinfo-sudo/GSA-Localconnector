@@ -192,3 +192,9 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - macOS Terminal `curl -i http://127.0.0.1:58348/readyz` returned `HTTP/1.1 200 OK`, response body `ready`, dated Fri 16 Oct 2026 04:11:52 GMT.
 - **MAC-TUNNEL-READY PASS** for local tunnel runtime health endpoint (independent new macOS tunnel per user setup). This alone does not prove correct tunnel ID/remote routing or live ChatGPT plugin invocation.
 - Windows plugin and tunnel already passed E2E; keep that installation unchanged. Next: create/connect macOS-specific private plugin `gsa-lc-mac` to NEW Mac tunnel, call `connector_status` and confirm `platform=darwin, arch=arm64`, then `list_workspaces`. Shell, CI and writes remain blocked.
+
+## macOS ChatGPT private plugin E2E PASS — 2026-10-16
+- User installed `gsa-lc-mac` plugin and invoked it. Live connector tool `mcp__gsa_lc_mac__connector_status({})` returned `ok=true`, `name=gsa-localconnector`, `apiVersion=1`, `capabilities.platform=macos`, `arch=arm64`, `shellIsolation=blocked`, `localCi=blocked`, `readyForShell=false`.
+- Live `mcp__gsa_lc_mac__list_workspaces({})` returned `ok=true`, empty `result=[]`.
+- **MAC CHATGPT -> DEDICATED OPENAI TUNNEL -> LOCAL MCP E2E PASS.** Windows plugin previously independently passed E2E. Two distinct installed plugins/tunnels now exist, but simultaneous cross-host work was not stress-tested.
+- Next: secure Workspace enrollment/grant persistence and native shell sandbox implementation; current tools remain read-only with no enrolled workspaces. Do not claim coding/CI readiness.
