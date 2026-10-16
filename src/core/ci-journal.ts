@@ -9,7 +9,7 @@ const transitions:Record<RunState,RunState[]>={
 export interface CiRunRecord {
  readonly run_id:string;readonly workspace_id:string;readonly workflow:string;
  readonly source_sha256:string;readonly created_at:string;readonly updated_at:string;
- readonly state:RunState;readonly revision:number;readonly evidence?:{exit_code:number;artifact_hashes:Readonly<Record<string,string>>};
+ readonly state:RunState;readonly revision:number;readonly rerun_of?:string;readonly evidence?:{exit_code:number;artifact_hashes:Readonly<Record<string,string>>};
 }
 export class CiStateError extends Error {constructor(message:string){super(message);this.name="CiStateError";}}
 export function sourceFingerprint(entries:ReadonlyArray<{path:string;sha256:string}>):string {
@@ -40,4 +40,12 @@ export function reconcileInterruptedRun(run:CiRunRecord,now=new Date()):CiRunRec
  if(run.state==="RUNNING"||run.state==="PREPARING")
    return transitionRun(run,"UNKNOWN",run.revision,now);
  return run;
+}
+
+/** Rerun is a NEW revision-bound queue record, never reuse the failed run ID.
+ * Caller must separately revalidate the immutable source snapshot fingerprint.
+ */
+export function prepareFailedRerun(failed:CiRunRecord,verifiedSourceSha:string):CiRunRecord{
+ if(failed.state!=="FAILED"||failed.source_sha256!==verifiedSourceSha)throw new CiStateError("RERUN_REQUIRES_FAILED_VERIFIED_SOURCE");
+ return Object.freeze({...createQueuedRun(failed.workspace_id,failed.workflow,verifiedSourceSha),rerun_of:failed.run_id});
 }
