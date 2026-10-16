@@ -44,3 +44,5 @@ jobs:
           grep -q '"errorCode":"INVALID_INPUT"' "$RUNNER_TEMP/gsa-json-denied.json"
       - name: Syntax-check opt-in Ubuntu image preparation (never download on CI)
         run: node --check scripts/prepare-ubuntu-arm64-image.mjs
+      - name: Syntax-check opt-in QCOW2 converter (no conversions on CI)
+        run: node --check scripts/convert-ubuntu-arm64-image.mjs
