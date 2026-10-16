@@ -41,3 +41,22 @@ export function requireNativeBackend<T>(backend:T|null|undefined):T{
  if(!backend)throw new NativeBackendUnavailable();
  return backend;
 }
+
+/** Optional durable-process extension. This contract alone confers no authority.
+ * Verified host implementation must own the OS process tree and per-Workspace lease.
+ */
+export interface NativeProcessStatus {
+ readonly state:"QUEUED"|"RUNNING"|"SUCCEEDED"|"FAILED"|"CANCELLED"|"UNKNOWN";
+ readonly exit_code:number|null;
+ readonly started_at:string;
+ readonly ended_at:string|null;
+}
+export interface VerifiedNativeProcessController {
+ readonly verified:true;
+ readonly platform:"windows"|"macos";
+ readonly policy_fingerprint:string;
+ start(request:SandboxedProcessRequest):Promise<{native_id:string}>;
+ status(nativeId:string):Promise<NativeProcessStatus>;
+ output(nativeId:string,cursor:number,limit:number):Promise<{stdout:string;stderr:string;next_cursor:number|null}>;
+ stop(nativeId:string):Promise<{stopped:boolean;state:NativeProcessStatus["state"]}>;
+}
