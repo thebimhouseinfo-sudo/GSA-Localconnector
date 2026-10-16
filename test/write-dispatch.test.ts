@@ -13,7 +13,7 @@ test("MCP write requires both grant and injected verified file backend",async()=
   const reg=new WorkspaceRegistry();await reg.enrollTrusted("a",tmp,["read"]);
   const blocked=createReadOnlyTools(reg);
   const denial=await blocked({name:"create_file",arguments:{workspace_id:"a",path:"f.txt",content:"x"}});
-  assert.equal(JSON.parse(denial.content[0].text).code,"OS-native root and process containment has not been verified");
+  assert.equal(JSON.parse(denial.content[0].text).code,"SECURITY_BLOCKED");
   const data=new Map<string,Uint8Array>();
   const k=(r:ScopedFileRef)=>r.workspace_id+"/"+r.path;
   const io:NativeScopedFiles={
@@ -24,7 +24,6 @@ test("MCP write requires both grant and injected verified file backend",async()=
   const call=createReadOnlyTools(reg,io);
   const noWrite=await call({name:"create_file",arguments:{workspace_id:"a",path:"f.txt",content:"x"}});
   assert.equal(noWrite.isError,true);
-  reg.enrollTrusted("a",tmp,["read","write"]);
   await reg.enrollTrusted("a",tmp,["read","write"]);
   const ok=await call({name:"create_file",arguments:{workspace_id:"a",path:"f.txt",content:"x"}});
   assert.equal(ok.isError,undefined);assert.equal(JSON.parse(ok.content[0].text).result.committed,false);
