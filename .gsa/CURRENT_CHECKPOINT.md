@@ -187,3 +187,8 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - macOS needs a distinct OpenAI tunnel ID and a second private ChatGPT plugin (suggested `gsa-lc-mac`). Different tunnel-client profiles and per-host secrets. Same source/runtime protocol; permissions/session/workspace root registries scoped to each host.
 - Both may run concurrently because **tunnel IDs differ**; never reuse same stdio tunnel ID on two machines. GSA routes each project explicitly through its corresponding plugin; no cluster/failover implemented.
 - Updated docs/tunnel/SETUP.md and implementation plan. macOS tunnel/plugin provision and dual-host parallel test **NOT YET PASS**.
+
+## macOS dedicated OpenAI Tunnel READY — native user evidence (2026-10-16)
+- macOS Terminal `curl -i http://127.0.0.1:58348/readyz` returned `HTTP/1.1 200 OK`, response body `ready`, dated Fri 16 Oct 2026 04:11:52 GMT.
+- **MAC-TUNNEL-READY PASS** for local tunnel runtime health endpoint (independent new macOS tunnel per user setup). This alone does not prove correct tunnel ID/remote routing or live ChatGPT plugin invocation.
+- Windows plugin and tunnel already passed E2E; keep that installation unchanged. Next: create/connect macOS-specific private plugin `gsa-lc-mac` to NEW Mac tunnel, call `connector_status` and confirm `platform=darwin, arch=arm64`, then `list_workspaces`. Shell, CI and writes remain blocked.
