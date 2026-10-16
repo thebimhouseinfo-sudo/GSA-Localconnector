@@ -102,3 +102,6 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           python3 -c 'import ast,pathlib;ast.parse(pathlib.Path("scripts/inspect-arm64-efi-files.py").read_text())'
+
+      - name: Regress FAT32 EFI file-chain traversal (no real image access)
+        run: python3 scripts/test-efi-fat32-inspector.py
