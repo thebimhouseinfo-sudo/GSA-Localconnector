@@ -32,6 +32,10 @@ export interface VerifiedNativeSandbox {
  readonly platform:"windows"|"macos";readonly policy_fingerprint:string;
  readonly verified:true;
  execute(request:SandboxedProcessRequest):Promise<SandboxedProcessReceipt>;
+ /** Optional native-only cancellation of the entire owned process tree.
+  * Implementations must verify the process ID belongs to the same sandbox session.
+  */
+ cancel?(process_id:string,workspace_id:string):Promise<boolean>;
 }
 export class NativeBackendUnavailable extends Error {
  readonly code="SECURITY_BLOCKED" as const;
