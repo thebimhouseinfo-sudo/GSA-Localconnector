@@ -46,7 +46,7 @@ test("Workspace metadata and search are bounded and reject traversal",async()=>{
   assert.equal(workflows.result.execution_allowed,false);
   await fs.writeFile(path.join(root,".gsa","ci.yaml"),[
     "name: yamlcheck","jobs:","  - id: verify","    steps:","      - id: node",
-    "        command: node","        args: [\\"--version\\"]",""
+    "        command: node","        args: [--version]",""
   ].join("\n"));
   const yaml=JSON.parse((await call({name:"ci_list_workflows",arguments:{workspace_id:"w"}})).content[0].text);
   assert.ok(yaml.result.workflows.some((x:any)=>x.path===".gsa/ci.yaml"&&x.name==="yamlcheck"));
