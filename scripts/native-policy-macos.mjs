@@ -12,12 +12,16 @@ const result={
  baseline_allowed:false,workspace_read_allowed:false,
  sibling_read_denied:false,sibling_write_denied:false,
  symlink_escape_denied:false,nested_child_denied:false,workspace_write_allowed:false,
- outcome:"SECURITY_BLOCKED",security_verified:false,\n positive_probe:{exit_code:null,signal:null,error_code:null,stderr_excerpt:""},\n temp_path_canonicalized:false
+ outcome:"SECURITY_BLOCKED",security_verified:false,
+ positive_probe:{exit_code:null,signal:null,error_code:null,stderr_excerpt:""},
+ temp_path_canonicalized:false
 };
 if(process.platform!=="darwin"){
  console.log(JSON.stringify({...result,outcome:"WRONG_PLATFORM"}));process.exit(0);
 }
-const createdRoot=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-policy-"));\nconst root=await fs.realpath(createdRoot);\nresult.temp_path_canonicalized=root!==createdRoot;
+const createdRoot=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-policy-"));
+const root=await fs.realpath(createdRoot);
+result.temp_path_canonicalized=root!==createdRoot;
 try{
  const own=path.join(root,"allowed"),other=path.join(root,"outside");
  await fs.mkdir(own);await fs.mkdir(other);await fs.mkdir(path.join(own,"tmp"));
@@ -34,7 +38,8 @@ try{
  result.baseline_allowed=base.status===0;
  if(result.baseline_allowed){
   const ok=call("/bin/cat",[path.join(own,"allowed.txt")]);
-  result.workspace_read_allowed=ok.status===0&&ok.stdout==="allowed";\n  result.positive_probe={exit_code:ok.status,signal:ok.signal,error_code:ok.error?.code??null,stderr_excerpt:String(ok.stderr??"").replaceAll(root,"<TEMP_ROOT>").slice(0,500)};
+  result.workspace_read_allowed=ok.status===0&&ok.stdout==="allowed";
+  result.positive_probe={exit_code:ok.status,signal:ok.signal,error_code:ok.error?.code??null,stderr_excerpt:String(ok.stderr??"").replaceAll(root,"<TEMP_ROOT>").slice(0,500)};
   if(result.workspace_read_allowed){
    const denied=call("/bin/cat",[path.join(other,"outside.txt")]);
    result.sibling_read_denied=denied.status!==0&&!denied.stdout?.includes("not-for-output");
