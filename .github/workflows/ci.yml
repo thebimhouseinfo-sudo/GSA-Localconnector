@@ -21,3 +21,8 @@ jobs:
         run: |
           swiftc -framework Virtualization native/macos-vm/CapabilityProbe.swift -o "$RUNNER_TEMP/gsa-vm-capability-probe"
           "$RUNNER_TEMP/gsa-vm-capability-probe"
+      - name: Compile native macOS VM worker preflight (no VM launch)
+        if: runner.os == 'macOS'
+        run: |
+          swiftc -framework Virtualization native/macos-vm/WorkerPreflight.swift -o "$RUNNER_TEMP/gsa-vm-worker-preflight"
+          printf '%s' '{"protocolVersion":"gsa-vm-worker-preflight-v1","workspaceID":"fixture","canonicalRoot":"/tmp","cpuCount":2,"memoryMiB":2048,"maxRuntimeMs":120000}' | "$RUNNER_TEMP/gsa-vm-worker-preflight"
