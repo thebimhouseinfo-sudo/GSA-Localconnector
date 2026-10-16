@@ -42,3 +42,5 @@ jobs:
           set -e
           test "$rc" -ne 0
           grep -q '"errorCode":"INVALID_INPUT"' "$RUNNER_TEMP/gsa-json-denied.json"
+      - name: Syntax-check opt-in Ubuntu image preparation (never download on CI)
+        run: node --check scripts/prepare-ubuntu-arm64-image.mjs
