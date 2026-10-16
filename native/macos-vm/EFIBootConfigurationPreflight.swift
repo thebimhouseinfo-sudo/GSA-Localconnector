@@ -18,11 +18,12 @@ struct Report: Encodable {
     let securityVerified: Bool
     let executionAuthorized: Bool
     let errorCode: String?
+    let diagnostic: String?
 }
-func output(_ state: String, _ valid: Bool, _ attached: Bool, _ error: String?) {
+func output(_ state: String, _ valid: Bool, _ attached: Bool, _ error: String?, _ diagnostic: String? = nil) {
     let item = Report(state: state, efiConfigurationValid: valid,
                       nativeDiskAttachedReadOnly: attached, vmStarted: false,
-                      securityVerified: false, executionAuthorized: false, errorCode: error)
+                      securityVerified: false, executionAuthorized: false, errorCode: error, diagnostic: diagnostic)
     if let bytes = try? JSONEncoder().encode(item) {
         print(String(decoding: bytes, as: UTF8.self))
     }
@@ -57,6 +58,8 @@ do {
     try config.validate()
     output("CANDIDATE_ONLY", true, true, "BOOT_AND_SEC01_NOT_VERIFIED")
 } catch {
-    output("BLOCKED", false, false, "EFI_CONFIGURATION_FAILED")
+    let failure = error as NSError
+    let detail = "\(failure.domain):\(failure.code):\(failure.localizedDescription)"
+    output("BLOCKED", false, false, "EFI_CONFIGURATION_FAILED", String(detail.prefix(512)))
     exit(2)
 }
