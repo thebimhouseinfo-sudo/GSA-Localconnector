@@ -92,3 +92,8 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - **NEXT HUMAN ACTION:** install Node/Git on the chosen host, clone/pull repo, run `npm install --ignore-scripts; npm test; npm run prepare; npm run mcp:http`, then check local `/health`. Create a NEW Cloudflare named tunnel + distinct DNS label in user's account; map to localhost:58347. Verify remote authenticated MCP request *before* creating any ChatGPT plugin.
 - **STOP CONDITIONS:** no cloudflared or DNS/tunnel credentials available to this GitHub-only environment; no remote MCP OAuth/client compatibility proof; do not register plugin yet. Keep shell/write/CI disabled because OS sandbox P2 not verified.
 - On resume: inspect HEAD, this checkpoint, actual native test logs, tunnel install status and authentication method. Proceed with Cloudflare external validation only after host endpoint is ready.
+
+## Windows native install evidence — user-provided (2026-10-16)
+- Windows PowerShell `Invoke-RestMethod http://127.0.0.1:58347/health` returned `status=alive`, `name=gsa-localconnector`, `exposedTools=read-only`.
+- **WIN-HEALTH PASS** (user-supplied live machine evidence). This does **not** prove `npm test`, bearer enforcement, MCP initialize, tunnel connectivity or startup persistence.
+- Windows next: anonymous POST `/mcp` must return 401, then authorized MCP handshake and `npm test` evidence. macOS native installation/health test pending. Cloudflare plugin must not be created yet.
