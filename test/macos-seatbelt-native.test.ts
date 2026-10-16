@@ -24,7 +24,7 @@ test("Seatbelt native candidate permits own workspace and denies sibling read/wr
    return spawnSync(p.command,[...p.argv],{cwd:work,encoding:"utf8",timeout:10000,maxBuffer:65536,env:{PATH:"/usr/bin:/bin"}});
   };
   const positive=run("/bin/cat",[path.join(work,"in.txt")]);
-  assert.equal(positive.status,0,positive.stderr);
+  assert.equal(positive.status,0,JSON.stringify({status:positive.status,signal:positive.signal,error:String(positive.error),stdout:positive.stdout,stderr:positive.stderr}));
   assert.equal(positive.stdout,"ALLOWED");
   const forbidden=run("/bin/cat",[path.join(outside,"private.txt")]);
   assert.notEqual(forbidden.status,0,"forbidden sibling read succeeded");
