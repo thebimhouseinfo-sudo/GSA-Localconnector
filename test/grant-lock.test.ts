@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import {enrollReadOnly,revokeTrusted,loadTrustedRegistry} from "../src/local/grants.js";
+import {enrollReadOnly,enrollReadOnlyBatch,revokeTrusted,loadTrustedRegistry} from "../src/local/grants.js";
 
 test("grant enroll/revoke are serialized and persisted",async()=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-grantlock-"));
@@ -20,5 +20,18 @@ test("grant enroll/revoke are serialized and persisted",async()=>{
   await assert.rejects(enrollReadOnly("a",rootA,store),/GRANT_STORE_BUSY/);
   await fs.rm(path.join(store,".trusted-workspaces.lock"));
   assert.deepEqual((await loadTrustedRegistry(store)).list().map(x=>x.id),["b"]);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test("multi-root enrollment is atomic on invalid root",async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-batch-grants-"));
+ try{
+  const root=path.join(dir,"valid"),store=path.join(dir,"store");
+  await fs.mkdir(root);
+  await assert.rejects(enrollReadOnlyBatch([{id:"valid",root},{id:"missing",root:path.join(dir,"missing")}],store));
+  assert.deepEqual((await loadTrustedRegistry(store)).list(),[]);
+  const result=await enrollReadOnlyBatch([{id:"valid",root}],store);
+  assert.equal(result.length,1);
+  assert.equal((await loadTrustedRegistry(store)).list().length,1);
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
