@@ -59,7 +59,27 @@ export function createReadOnlyTools(registry: WorkspaceRegistry) {
            const entries=await fs.readdir(target,{withFileTypes:true});
            result=entries.slice(0,500).map(e=>({name:e.name,kind:e.isDirectory()?"directory":e.isFile()?"file":"other"}));
           }break;
-        case "ci_validate_workflow":
+        case "ci_list_workflows":
+          if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1)throw Error("INVALID_ARGUMENTS");
+          {registry.requireGrant(args.workspace_id,"read");
+           const candidates=[".gsa/ci.json",".gsa/ci.yaml"];
+           const workflows=[];
+           for(const relative of candidates){
+             let target:string;
+             try{target=await registry.resolveExistingRead(args.workspace_id,relative);}
+             catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")continue;throw e;}
+             const stat=await fs.stat(target);
+             if(!stat.isFile())continue;
+             if(stat.size>65536)throw Error("CI_MANIFEST_TOO_LARGE");
+             if(relative.endsWith(".yaml")){workflows.push({path:relative,format:"yaml",validation:"UNSUPPORTED_FORMAT"});continue;}
+             try{
+               const parsed=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(await fs.readFile(target))) as unknown;
+               workflows.push({path:relative,format:"json",...validateWorkflow(parsed)});
+             }catch(e){workflows.push({path:relative,format:"json",validation:"INVALID",reason:e instanceof Error?e.message:"UNKNOWN_ERROR"});}
+           }
+           result={workflows,execution_allowed:false};
+          }break;
+        case "ci_validate_workflow","ci_list_workflows":
           if(typeof args.workspace_id!=="string"||typeof args.workflow!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
           {const file=await registry.resolveExistingRead(args.workspace_id,args.workflow);
            const stat=await fs.stat(file);
@@ -72,7 +92,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry) {
         case "list_capabilities":
           if(Object.keys(args).some(k=>k!=="workspace_id")||(args.workspace_id!==undefined&&typeof args.workspace_id!=="string"))throw Error("INVALID_ARGUMENTS");
           {if(typeof args.workspace_id==="string"&&!registry.get(args.workspace_id))throw Error("WORKSPACE_NOT_FOUND");
-           result={read:["connector_status","list_workspaces","get_workspace","bind_workspaces","list_directory","fetch_file","get_file_info","search","glob","list_capabilities","ci_validate_workflow"],blocked:plannedTools.map(t=>t.name).filter(n=>n!=="glob"&&n!=="list_capabilities"&&n!=="ci_validate_workflow"),shellIsolation:"blocked",reason:"Native OS sandbox and write grants are not verified"};
+           result={read:["connector_status","list_workspaces","get_workspace","bind_workspaces","list_directory","fetch_file","get_file_info","search","glob","list_capabilities","ci_validate_workflow"],blocked:plannedTools.map(t=>t.name).filter(n=>n!=="glob"&&n!=="list_capabilities"&&n!=="ci_validate_workflow"&&n!=="ci_list_workflows"),shellIsolation:"blocked",reason:"Native OS sandbox and write grants are not verified"};
           }break;
         case "glob":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||typeof args.pattern!=="string"||Object.keys(args).length!==3||args.pattern.length>160||!args.pattern)throw Error("INVALID_ARGUMENTS");
