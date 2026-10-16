@@ -4,7 +4,7 @@ import { WorkspaceRegistry } from "../core/workspace.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {createHash} from "node:crypto";
-import {enrollReadOnly,revokeTrusted} from "../local/grants.js";
+import {enrollReadOnlyBatch,revokeTrusted} from "../local/grants.js";
 import {plannedTools,plannedToolNames} from "./catalog.js";
 import {validateWorkflow} from "../core/ci-dag.js";
 import {parseCiManifest} from "../core/ci-manifest.js";
@@ -51,16 +51,20 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           result={workspace_id:g.id,permissions:g.permissions,revision:g.revision};}break;
         case "bind_workspaces":
           if(Object.keys(args).length!==1||!Array.isArray(args.paths)||args.paths.length<1||args.paths.length>16||args.paths.some(p=>typeof p!=="string"||!path.isAbsolute(p)))throw Error("INVALID_ARGUMENTS");
-          {const outputs=[];
+          {const requests=[];
            for(const root of args.paths as string[]){
              const stat=await fs.stat(root);
              if(!stat.isDirectory())throw Error("WORKSPACE_NOT_DIRECTORY");
              const canonical=await fs.realpath(root);
              const existing=registry.list().find(g=>g.canonicalRoot===canonical);
-             const id=existing?.id??"ws-"+(await import("node:crypto")).createHash("sha256").update(canonical).digest("hex").slice(0,16);
-             await enrollReadOnly(id,canonical);
-             await registry.enrollTrusted(id,canonical,["read"]);
-             outputs.push({workspace_id:id,root:canonical,permissions:["read"]});
+             const id=existing?.id??"ws-"+createHash("sha256").update(canonical).digest("hex").slice(0,16);
+             requests.push({id,root:canonical});
+           }
+           const bound=await enrollReadOnlyBatch(requests);
+           const outputs=[];
+           for(const item of bound){
+             await registry.enrollTrusted(item.id,item.root,["read"]);
+             outputs.push({workspace_id:item.id,root:item.root,permissions:["read"]});
            }
            result=outputs;
           }break;
