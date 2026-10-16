@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {randomBytes} from "node:crypto";
 import {identityDirectory} from "./identity.js";
-import {reconcileInterruptedRun,type CiRunRecord} from "../core/ci-journal.js";
+import {reconcileInterruptedRun,transitionRun,type CiRunRecord} from "../core/ci-journal.js";
 
 /** Supervisor-owned CI journal. No child process may be granted access here.
  * Atomic updates within one filesystem; concurrent writers need revision guards.
@@ -55,6 +55,17 @@ export class CiJournalStore {
  /** Recovery is an explicit supervisor operation; each transition is persisted with
   * revision preconditions. A stale lock or conflicting writer stops recovery.
   */
+ /** No native process kill is claimed: only not-yet-started jobs can be cancelled
+  * at this layer. Running jobs require host-owned process-tree cancellation.
+  */
+ async cancelQueued(runId:string,workspaceId:string):Promise<CiRunRecord>{
+  const previous=await this.load(runId);
+  if(previous.workspace_id!==workspaceId)throw new CiStoreError("RUN_NOT_FOUND","Run not owned by Workspace");
+  if(previous.state!=="QUEUED")throw new CiStoreError("RUN_REVISION_CONFLICT","Cancellation requires native process supervisor");
+  const updated=transitionRun(previous,"CANCELLED",previous.revision);
+  await this.save(updated,previous.revision);
+  return updated;
+ }
  async reconcileInterrupted():Promise<{recovered:string[];unchanged:number}>{
   let files:string[];
   try{files=await fs.readdir(this.root);}
