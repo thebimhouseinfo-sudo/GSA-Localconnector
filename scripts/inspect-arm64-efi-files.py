@@ -3,7 +3,6 @@
 import json
 import hashlib
 import os
-import re
 import struct
 import uuid
 from pathlib import Path
@@ -77,13 +76,14 @@ def ext_filesystem_uuid(f, first_lba, last_lba, disk_size):
 def grub_target_uuid(config_text):
     if not isinstance(config_text,str):
         return None
-    match = re.search(r"(?m)^\\s*search\\.fs_uuid\\s+([0-9a-fA-F-]{36})(?:\\s|$)",config_text)
-    if not match:
-        return None
-    try:
-        return str(uuid.UUID(match.group(1)))
-    except ValueError:
-        return None
+    for line in config_text.splitlines():
+        parts=line.strip().split()
+        if len(parts)>=2 and parts[0]=="search.fs_uuid":
+            try:
+                return str(uuid.UUID(parts[1]))
+            except ValueError:
+                return None
+    return None
 
 def main():
     if IMAGE.is_symlink() or not IMAGE.is_file() or IMAGE.stat().st_size != SIZE:
