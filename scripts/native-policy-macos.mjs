@@ -10,7 +10,8 @@ import {planMacSeatbelt} from "../dist/src/hosts/macos-seatbelt-candidate.js";
 const result={
  platform:"macos",profile_version:"seatbelt-candidate-v1",
  baseline_allowed:false,workspace_read_allowed:false,
- sibling_read_denied:false,sibling_write_denied:false,\n symlink_escape_denied:false,nested_child_denied:false,workspace_write_allowed:false,
+ sibling_read_denied:false,sibling_write_denied:false,
+ symlink_escape_denied:false,nested_child_denied:false,workspace_write_allowed:false,
  outcome:"SECURITY_BLOCKED",security_verified:false
 };
 if(process.platform!=="darwin"){
