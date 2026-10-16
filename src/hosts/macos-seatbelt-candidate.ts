@@ -23,7 +23,6 @@ export const MACOS_SEATBELT_PROFILE=[
  "  (subpath \"/usr\")",
  "  (subpath \"/bin\")",
  "  (subpath \"/sbin\")",
- "  (subpath \"/Library\")",
  "  (literal \"/dev/null\")",
  "  (literal \"/dev/urandom\"))",
  "(allow file-write* (subpath (param \"WORKSPACE\")))",
