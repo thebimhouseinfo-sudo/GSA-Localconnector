@@ -327,3 +327,16 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Native Mac Seatbelt test `test/macos-seatbelt-native.test.ts` produced SIGABRT for an allowed `/bin/cat` under sandbox-exec on GitHub's macOS runner (GitHub Actions run `38862428495` and `38862518500`). Restoring expected system read roots did not resolve it. The test now separately probes an allow-default baseline and SKIPS security proof with a diagnostic when the baseline is unavailable; **skip is NOT PASS**. Run `38862598349` (source `0cdb367`): test suite completed successfully on Windows/macOS/Ubuntu but native Mac sandbox proof remains UNVERIFIED.
 - Windows AppContainer experimental API source is a policy planner only; no OS worker or native confinement proof. Docker CLI absent in user PowerShell and Mac Terminal; Docker is not required.
 - HUMAN GATE: determine on user's Mac whether `/usr/bin/sandbox-exec` is actually runnable and native feature viability, and on Windows whether native sandbox substrate/OS version supports isolation. Run only the read-only preflight scripts or paste their commands; no SDK installation, UAC changes, elevated writes or tunnel restarts until results. Do not enable Git/shell/CI/process write capabilities on live plugin yet. Continue after user returns preflight output; plan alternative isolation on macOS if sandbox-exec remains unsupported.
+
+## Consolidated CI implementation + native human gate — 2026-10-16
+- User directed autonomous implementation until a genuine Human Gate, no one-off local tool tests.
+- Implemented argument NUL validation, oversized CI evidence => UNKNOWN, deterministic immutable source manifest and protected source snapshot store with SHA-256 verification.
+- Added durable async process controller contract and Workspace-specific IDs. Consolidated overlapping concurrent start/stop handlers. Native process backend is still NOT validated.
+- Added ci_cancel for QUEUED-only (active run cancellation requires native process-tree proof); ci_rerun_failed creates fresh ID only with verified source fingerprint.
+- Added native-gated ci_prepare_source, ci_run, CI run coordinator, strict source ownership and immutable source snapshots. Live plugins remain SECURITY_BLOCKED without verified native workers.
+- Windows AppContainer and macOS Seatbelt manifest candidates present, NOT actual verified native sandboxes. Windows candidate syntax corrected.
+- Read-only native capability preflight script added: npm run native:probe. No shell execution or credential read by this command; security_verified is always false.
+- Source commit 9544e7d66dacf9b4ec8a717bed57b52199cecea2: GitHub Actions run 38862675054 PASS Windows/macOS/Ubuntu for unit and transport contracts. NOT user-host SEC01 native sandbox proof.
+- HUMAN GATE: run native:probe on both local Windows and macOS checkouts and return JSON to determine actual runtime substrate capabilities. Do NOT install Docker or restart tunnels; no other apps altered.
+- Windows source D:\\00 Other Works\\Vibecode\\GSA-Localconnector; macOS ~/GSA-Localconnector. Local code update by git pull --ff-only origin main; npm ci; npm run native:probe.
+- Remaining OS-native confined execution, reparse-point-safe write backend, secure process tree cancellation and true SEC01 tests are blocked pending native host proof. Do not claim full tool set ready.
