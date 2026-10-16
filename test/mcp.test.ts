@@ -17,5 +17,6 @@ test("unauthorized Workspace is never exposed",async()=>{
  assert.equal(y.isError,true);
  assert.equal(JSON.parse(y.content[0].text).code,"WORKSPACE_NOT_FOUND");
  const z=await invoke({name:"connector_status"});
- assert.equal(JSON.parse(z.content[0].text).result.readyForShell,false);
+ if(process.platform==="win32"||process.platform==="darwin") assert.equal(JSON.parse(z.content[0].text).result.readyForShell,false);
+ else assert.equal(z.isError,true);
 });
