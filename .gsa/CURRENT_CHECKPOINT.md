@@ -121,3 +121,9 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Response: `protocolVersion=2025-03-26`, `serverInfo.name=gsa-localconnector`, `serverInfo.version=0.1.0`, `capabilities.tools.listChanged=false`.
 - **WIN-AUTH-INITIALIZE PASS**; macOS authenticated initialize also PASS. Health and anonymous-denial tests already PASS on both systems.
 - NEXT: verify authenticated `tools/list` on Windows and macOS, then native tunnel preparation; Cloudflare and plugin still not created.
+
+## Windows authenticated tools/list — user-provided native evidence (2026-10-16)
+- Windows authenticated POST `/mcp` with `MCP-Protocol-Version: 2025-03-26` and JSON-RPC `tools/list` succeeded.
+- Exact three tools returned: `connector_status`, `list_workspaces`, `get_workspace`; descriptions reflect read-only scope.
+- **WIN-TOOLS-LIST PASS**. The MCP catalog exposes no shell/write/CI tools.
+- macOS authenticated tools/list still PENDING. Tunnel and ChatGPT plugin not created. Next: macOS authenticated tools/list; then install dedicated tunnel and confirm external HTTPS authentication.
