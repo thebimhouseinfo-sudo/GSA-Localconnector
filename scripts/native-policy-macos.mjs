@@ -10,7 +10,7 @@ import {planMacSeatbelt} from "../dist/src/hosts/macos-seatbelt-candidate.js";
 const result={
  platform:"macos",profile_version:"seatbelt-candidate-v1",
  baseline_allowed:false,workspace_read_allowed:false,
- sibling_read_denied:false,sibling_write_denied:false,
+ sibling_read_denied:false,sibling_write_denied:false,\n symlink_escape_denied:false,nested_child_denied:false,workspace_write_allowed:false,
  outcome:"SECURITY_BLOCKED",security_verified:false
 };
 if(process.platform!=="darwin"){
@@ -41,10 +41,18 @@ try{
    let fileExists=true;
    try{await fs.stat(path.join(other,"new.txt"));}catch{fileExists=false;}
    result.sibling_write_denied=blocked.status!==0&&!fileExists;
+   await fs.symlink(path.join(other,"outside.txt"),path.join(own,"outside-link"));
+   const linked=call("/bin/cat",[path.join(own,"outside-link")]);
+   result.symlink_escape_denied=linked.status!==0&&!linked.stdout?.includes("not-for-output");
+   const child=call("/bin/sh",["-c",'/bin/cat "$1"',"gsa-child",path.join(other,"outside.txt")]);
+   result.nested_child_denied=child.status!==0&&!child.stdout?.includes("not-for-output");
+   const write=call("/usr/bin/touch",[path.join(own,"inside-created.txt")]);
+   result.workspace_write_allowed=write.status===0;
+
   }
  }
- if(result.workspace_read_allowed&&result.sibling_read_denied&&result.sibling_write_denied)
-  result.outcome="BASIC_POLICY_NEGATIVE_CONTROLS_PASS";
+ if(result.workspace_read_allowed&&result.workspace_write_allowed&&result.sibling_read_denied&&result.sibling_write_denied&&result.symlink_escape_denied&&result.nested_child_denied)
+  result.outcome="EXTENDED_POLICY_NEGATIVE_CONTROLS_PASS";
 }finally{
  await fs.rm(root,{recursive:true,force:true});
 }
