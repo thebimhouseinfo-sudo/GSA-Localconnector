@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {createQueuedRun,transitionRun} from "../src/core/ci-journal.js";
 import {CiJournalStore} from "../src/local/ci-store.js";
+import {CiSnapshotStore} from "../src/local/ci-snapshot-store.js";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
 import {createReadOnlyTools} from "../src/mcp/server.js";
 test("CI journal persists revisions and rejects stale updates",async()=>{
@@ -79,5 +80,31 @@ test("queued CI can be cancelled, running CI cannot fake cancellation",async()=>
   await journal.save(transitionRun(active,"PREPARING",1),1);
   const notPretended=await invoke({name:"ci_cancel",arguments:{workspace_id:"A",run_id:active.run_id}});
   assert.equal(notPretended.isError,true);
+ }finally{await fs.rm(tmp,{recursive:true,force:true});}
+});
+
+test("failed CI may be prepared for rerun only with pinned source bytes",async()=>{
+ const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"ci-rerun-"));
+ try{
+  const journal=new CiJournalStore(path.join(tmp,"journal"));
+  const snapshots=new CiSnapshotStore(path.join(tmp,"snapshot"));
+  const source=[{path:"README.md",bytes:Buffer.from("hello")}];
+  const verifiedSource=await snapshots.persist((()=>{const x=createQueuedRun("X","test","a".repeat(64));return x.run_id;})(),source);
+  // Bind a run to the exact manifest fingerprint and verified snapshot.
+  const start=createQueuedRun("A","test",verifiedSource.source_sha256);
+  await journal.save(start,null);
+  await snapshots.persist(start.run_id,source);
+  const preparing=transitionRun(start,"PREPARING",1);await journal.save(preparing,1);
+  const running=transitionRun(preparing,"RUNNING",2);await journal.save(running,2);
+  const failed=transitionRun(running,"FAILED",3,undefined,{exit_code:1,artifact_hashes:{}});await journal.save(failed,3);
+  const reg=new WorkspaceRegistry();await reg.enrollTrusted("A",tmp,["read","execute"]);
+  const invoke=createReadOnlyTools(reg,null,null,journal,null,null,null,snapshots);
+  const response=JSON.parse((await invoke({name:"ci_rerun_failed",arguments:{workspace_id:"A",run_id:start.run_id}})).content[0].text);
+  assert.equal(response.ok,true);
+  assert.equal(response.result.state,"QUEUED");
+  assert.equal(response.result.rerun_of,start.run_id);
+  assert.equal((await snapshots.verify(response.result.run_id)).source_sha256,verifiedSource.source_sha256);
+  const duplicate=await invoke({name:"ci_rerun_failed",arguments:{workspace_id:"A",run_id:response.result.run_id}});
+  assert.equal(duplicate.isError,true);
  }finally{await fs.rm(tmp,{recursive:true,force:true});}
 });
