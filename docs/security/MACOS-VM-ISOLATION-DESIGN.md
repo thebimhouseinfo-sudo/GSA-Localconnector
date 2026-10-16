@@ -51,3 +51,21 @@ This is not a functioning VM worker or a communications channel. A future
 signed Swift worker must receive a freshly generated challenge from a trusted
 host supervisor and prove actual VM measurements, host share controls, and
 revocation independently. Never accept a user-provided nonce as host authority.
+
+## User-approved image preparation (2026-10-16)
+
+Human approved downloading/preparing a Linux ARM64 guest image **for the test project**.
+Implementation: `scripts/prepare-ubuntu-arm64-image.mjs` is an explicit opt-in command on the
+user's Mac (not run by the connector), downloads from Canonical's official Ubuntu 24.04
+release endpoint over HTTPS, reads its contemporaneous SHA256SUMS, streams and verifies
+the image into the connector-owned directory using no overwrite. No VM boot or system
+install, login, entitlement, network bridge or privileged action occurs.
+
+**Image format warning:** `ubuntu-24.04-server-cloudimg-arm64.img` is an Ubuntu cloud image
+and must NOT be treated as a verified raw disk compatible with the earlier
+`gsa-linux-arm64-raw-v1` manifest. Acquisition writes a separate
+`gsa-linux-arm64-cloudimg-qcow2-candidate-v1` manifest marked
+`boot_ready:false`; later image format validation/conversion, kernel/initramfs
+(or verified EFI boot configuration), guest console/bootstrap, and SEC01 remain to do.
+The release alias can change; provenance is HTTPS + downloaded SHA256SUMS, *not* an
+independent signature verification or immutable distribution pin.
