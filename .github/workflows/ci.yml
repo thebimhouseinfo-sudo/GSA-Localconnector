@@ -60,3 +60,20 @@ jobs:
           set -e
           test "$rc" -ne 0
           grep -q '"errorCode":"DIGEST_MISMATCH"' "$RUNNER_TEMP/gsa-raw-denied.json"
+
+      - name: Compile EFI guest configuration feasibility probe (no VM boot)
+        if: runner.os == 'macOS'
+        run: |
+          swiftc -framework Virtualization native/macos-vm/EFIBootConfigurationPreflight.swift -o "$RUNNER_TEMP/gsa-efi-config"
+          export EFI_FIXTURE="$RUNNER_TEMP/gsa-efi-fixture.raw"
+          dd if=/dev/zero of="$EFI_FIXTURE" bs=4096 count=1
+          printf '{"protocolVersion":"gsa-vm-efi-config-v1","rawImagePath":"%s","expectedBytes":4096}' "$EFI_FIXTURE" | "$RUNNER_TEMP/gsa-efi-config" > "$RUNNER_TEMP/gsa-efi-result.json"
+          grep -q '"state":"CANDIDATE_ONLY"' "$RUNNER_TEMP/gsa-efi-result.json"
+          grep -q '"efiConfigurationValid":true' "$RUNNER_TEMP/gsa-efi-result.json"
+          grep -q '"executionAuthorized":false' "$RUNNER_TEMP/gsa-efi-result.json"
+          set +e
+          printf '{"protocolVersion":"gsa-vm-efi-config-v1","rawImagePath":"/","expectedBytes":4096}' | "$RUNNER_TEMP/gsa-efi-config" > "$RUNNER_TEMP/gsa-efi-reject.json"
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          grep -q '"state":"BLOCKED"' "$RUNNER_TEMP/gsa-efi-reject.json"
