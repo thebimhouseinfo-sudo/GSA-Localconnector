@@ -20,3 +20,10 @@ test("CI reports failed step, does not run dependents",async()=>{
  const result=await scheduleValidatedCI(native,"w",workflow,hash);
  assert.deepEqual(cmds,["compiler"]);assert.equal(result.record.state,"FAILED");
 });
+
+test("CI excessive output cannot yield a false PASS",async()=>{
+ const native:VerifiedNativeSandbox={platform:"windows",verified:true,policy_fingerprint:"test-stub",execute:async()=>({exit_code:0,signal:null,stdout:"x".repeat(70000),stderr:"",cancelled:false,timed_out:false})};
+ const result=await scheduleValidatedCI(native,"w",workflow,hash);
+ assert.equal(result.record.state,"UNKNOWN");
+ assert.deepEqual(result.finished_jobs,[]);
+});
