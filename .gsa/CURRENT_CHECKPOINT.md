@@ -238,3 +238,9 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 
 ## CI confirmation — file discovery batch
 - GitHub Actions run [38851369558](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/38851369558), commit `b00741fa362590557d232e01f9e6f28fa36805e7`: **Windows PASS, macOS PASS, Ubuntu PASS**. Unit and MCP contract tests only; native plugin Workspace bind and OS isolation still pending. Latest subsequent commits only checkpoint documentation.
+
+## User directive: finish all tool implementation before any local tests (2026-10-16)
+- User explicitly directed: WRITE **ALL** planned tools before asking for Windows/macOS local testing. No partial-phase native smoke-test requests. GitHub CI/build/unit checks continue during implementation.
+- Added full direct tool schema catalog `src/mcp/catalog.ts`: filesystem mutations, process/shell, Git and local CI. All unimplemented/unsafe tools currently return `SECURITY_BLOCKED` (discoverability is NOT execution readiness). Existing read-only tools continue working. New `list_capabilities`, bounded `glob` added, with expanded catalog contract tests.
+- Windows/macOS native isolation remains unverified; no claim that registering these APIs constitutes actual implementation. Current source batch has ongoing CI after fixing glob escaping (`7e8debd`).
+- Next milestones: implement real file write/edit/patch and Git operations behind defensible scoped grants, implement safe process containment and CI DAG/evidence, complete all tool handlers and automated negative tests. Only THEN ask human for a consolidated local test on Windows/macOS. Keep two dedicated plugins/tunnels unaffected until that point.
