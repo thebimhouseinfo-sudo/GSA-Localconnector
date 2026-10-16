@@ -29,6 +29,7 @@ export class WorkspaceRegistry {
   /** Read-only bootstrap resolver; writes/CI need handle-relative protection and native isolation. */
   async resolveExistingRead(id: string, relative: string): Promise<string> {
     const grant = this.requireGrant(id, "read");
+    if (relative === ".") return grant.canonicalRoot;
     if (!relative || this.pathApi.isAbsolute(relative) || this.pathApi.win32.isAbsolute(relative) || relative.includes("\\") && process.platform !== "win32")
       throw new ConnectorError("PATH_OUTSIDE_SCOPE", "Path must be workspace-relative");
     const parts = relative.split(/[\\/]/);
