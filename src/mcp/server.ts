@@ -4,7 +4,7 @@ import { WorkspaceRegistry } from "../core/workspace.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {createHash} from "node:crypto";
-import {enrollReadOnly} from "../local/grants.js";
+import {enrollReadOnly,revokeTrusted} from "../local/grants.js";
 import {plannedTools,plannedToolNames} from "./catalog.js";
 import {validateWorkflow} from "../core/ci-dag.js";
 import {dispatchFileMutation} from "./write-dispatch.js";
@@ -22,6 +22,7 @@ const definitions = [
   {name:"get_workspace",description:"Inspect trusted workspace metadata",inputSchema:{type:"object",properties:{workspace_id:{type:"string"}},required:["workspace_id"],additionalProperties:false}},
   {name:"list_directory",description:"Read immediate directory entries in an enrolled read-only workspace",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"}},required:["workspace_id","path"],additionalProperties:false}},
   {name:"bind_workspaces",description:"Bind user-provided absolute directory paths as read-only workspaces on this host. Requires explicit user-provided paths; never discover or widen roots automatically.",inputSchema:{type:"object",properties:{paths:{type:"array",items:{type:"string"},minItems:1,maxItems:16}},required:["paths"],additionalProperties:false}},
+  {name:"unbind_workspace",description:"Revoke a previously bound workspace on the selected host; subsequent calls lose the grant",inputSchema:{type:"object",properties:{workspace_id:{type:"string"}},required:["workspace_id"],additionalProperties:false}},
   {name:"get_file_info",description:"Metadata and SHA256 of a file within a bound workspace; max 8 MiB hash",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"}},required:["workspace_id","path"],additionalProperties:false}},
   {name:"search",description:"Search UTF-8 text across bounded files under a workspace-relative directory; no external grep subprocess",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},query:{type:"string"}},required:["workspace_id","path","query"],additionalProperties:false}},
   {name:"fetch_file",description:"Read UTF-8 text from an enrolled read-only workspace (maximum 64 KiB)",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},start_line:{type:"integer",minimum:1},max_lines:{type:"integer",minimum:1,maximum:500}},required:["workspace_id","path"],additionalProperties:false}}
@@ -59,6 +60,12 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            }
            result=outputs;
           }break;
+        case "unbind_workspace":
+          if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1)throw Error("INVALID_ARGUMENTS");
+          if(!registry.get(args.workspace_id))throw Error("WORKSPACE_NOT_FOUND");
+          await revokeTrusted(args.workspace_id);
+          registry.revoke(args.workspace_id);
+          result={workspace_id:args.workspace_id,revoked:true};break;
         case "list_directory":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
           {const target=await registry.resolveExistingRead(args.workspace_id,args.path);
