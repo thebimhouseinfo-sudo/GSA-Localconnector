@@ -38,6 +38,7 @@ test("Seatbelt native candidate permits own workspace and denies sibling read/wr
   assert.equal(positive.stdout,"ALLOWED");
   const forbidden=run("/bin/cat",[path.join(outside,"private.txt")]);
   assert.notEqual(forbidden.status,0,"forbidden sibling read succeeded");
+  assert.notEqual(forbidden.signal,"SIGABRT","sandbox runtime crashed instead of enforcing a clean denied read");
   assert.ok(!forbidden.stdout.includes("DENIED"),"secret was read");
   const write=run("/usr/bin/touch",[path.join(outside,"created.txt")]);
   assert.notEqual(write.status,0,"forbidden sibling write succeeded");
