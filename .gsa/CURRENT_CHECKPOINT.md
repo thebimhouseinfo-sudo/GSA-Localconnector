@@ -83,3 +83,12 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Default HTTP loopback port changed from 43281 to **58347**; MCP_HTTP_PORT remains configurable. The previous 43281 references above are historical.
 - Bind address stays 127.0.0.1 (security), and Cloudflare hostname must use an independently generated suffix under the user's authorized domain, checked for DNS collisions before creation.
 - Change requires cross-platform CI verification. Real hostname/tunnel does not exist yet; do not invent one.
+
+## Human installation handoff — secret bootstrap + tunnel provisioning (2026-10-16)
+- Source implementation revision `7397d4fd146e4e3cde1e6aeea657d6faf8f67c59`.
+- Added per-install random bearer token creation under host-owned Application Support/LocalAppData, via `npm run prepare`. Token is not printed; `npm run mcp:http` reads it automatically if MCP_HTTP_TOKEN is not set.
+- [Cross-platform CI run 38843055075](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/38843055075): **Windows PASS / macOS PASS / Ubuntu PASS**. This verifies unit/test suite for that source revision, not actual local installation.
+- Updated `docs/tunnel/SETUP.md` for human operating steps and Cloudflare hostname authentication boundary. Port **58347**, bind **127.0.0.1**.
+- **NEXT HUMAN ACTION:** install Node/Git on the chosen host, clone/pull repo, run `npm install --ignore-scripts; npm test; npm run prepare; npm run mcp:http`, then check local `/health`. Create a NEW Cloudflare named tunnel + distinct DNS label in user's account; map to localhost:58347. Verify remote authenticated MCP request *before* creating any ChatGPT plugin.
+- **STOP CONDITIONS:** no cloudflared or DNS/tunnel credentials available to this GitHub-only environment; no remote MCP OAuth/client compatibility proof; do not register plugin yet. Keep shell/write/CI disabled because OS sandbox P2 not verified.
+- On resume: inspect HEAD, this checkpoint, actual native test logs, tunnel install status and authentication method. Proceed with Cloudflare external validation only after host endpoint is ready.
