@@ -162,3 +162,9 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Found existing `D:\00 Other Works\Vibecode\chatgpt-local-worker\bin\tunnel-client.exe`, version `0.0.14+0f870e50a973fa820d4c409000059e181e8d242b`.
 - **WIN-TUNNEL-BINARY-REUSE PASS**, no new installation needed. This is executable discovery, not a tunnel connection, doctor or plugin PASS.
 - Next: provision distinct GSA OpenAI Tunnel ID and scoped runtime key; verify dedicated profile/doctor/run without disturbing GPTWorker; validate macOS existing client separately.
+
+## Windows OpenAI tunnel doctor/runtime failure and code fix — 2026-10-16
+- User provided actual Windows doctor/run logs. Doctor PASS config_source, profile_load, tunnel_id, CONTROL_PLANE_API_KEY reference, stdio MCP target declaration and health listener. Doctor FAIL `mcp_command_executable`; tunnel run failed immediately while spawning local MCP, before ready, with `fork/exec C:Program Filesnodejsnode.exe` file not found.
+- Root cause: GSA launcher generated stdio command containing Windows `C:\Program Files\nodejs\node.exe`; tunnel-client 0.0.14 command parser removes backslashes as escapes, leaving invalid `C:Program Filesnodejsnode.exe`.
+- Fix commit `c4a124407d312f4c27b718e3e65b9fba9c75744d`: normalize Windows node executable and MCP script paths to forward-slash form while quoting whitespace-sensitive arguments in dedicated YAML profile.
+- **FIX NOT LIVE VERIFIED YET.** User must pull updated main and rerun `-Action doctor` then `-Action run` only if doctor PASS. Avoid claiming tunnel READY or plugin LIVE before ready confirmation. The runtime stopped after failed spawn; GPTWorker was not modified.
