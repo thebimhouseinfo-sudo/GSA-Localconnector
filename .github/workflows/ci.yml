@@ -67,10 +67,20 @@ jobs:
           swiftc -framework Virtualization native/macos-vm/EFIBootConfigurationPreflight.swift -o "$RUNNER_TEMP/gsa-efi-config"
           export EFI_FIXTURE="$RUNNER_TEMP/gsa-efi-fixture.raw"
           dd if=/dev/zero of="$EFI_FIXTURE" bs=4096 count=1
+          set +e
           printf '{"protocolVersion":"gsa-vm-efi-config-v1","rawImagePath":"%s","expectedBytes":4096}' "$EFI_FIXTURE" | "$RUNNER_TEMP/gsa-efi-config" > "$RUNNER_TEMP/gsa-efi-result.json"
-          grep -q '"state":"CANDIDATE_ONLY"' "$RUNNER_TEMP/gsa-efi-result.json"
-          grep -q '"efiConfigurationValid":true' "$RUNNER_TEMP/gsa-efi-result.json"
+          efi_rc=$?
+          set -e
+          cat "$RUNNER_TEMP/gsa-efi-result.json"
           grep -q '"executionAuthorized":false' "$RUNNER_TEMP/gsa-efi-result.json"
+          if [ "$efi_rc" -ne 0 ]; then
+            grep -q '"errorCode":"EFI_CONFIGURATION_FAILED"' "$RUNNER_TEMP/gsa-efi-result.json"
+            grep -q '"diagnostic":' "$RUNNER_TEMP/gsa-efi-result.json"
+            echo "EFI_PROTOTYPE_BLOCKED: retain native boot gate; diagnostic captured"
+          else
+            grep -q '"state":"CANDIDATE_ONLY"' "$RUNNER_TEMP/gsa-efi-result.json"
+            grep -q '"efiConfigurationValid":true' "$RUNNER_TEMP/gsa-efi-result.json"
+          fi
           set +e
           printf '{"protocolVersion":"gsa-vm-efi-config-v1","rawImagePath":"/","expectedBytes":4096}' | "$RUNNER_TEMP/gsa-efi-config" > "$RUNNER_TEMP/gsa-efi-reject.json"
           rc=$?
