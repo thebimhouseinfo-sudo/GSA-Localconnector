@@ -13,7 +13,7 @@ import {planMacSeatbelt} from "../src/hosts/macos-seatbelt-candidate.js";
 test("Seatbelt native candidate permits own workspace and denies sibling read/write",{
  skip:process.platform!=="darwin"||!existsSync("/usr/bin/sandbox-exec")
 },async(t)=>{
- const baseline=spawnSync("/usr/bin/sandbox-exec",["-p","(version 1)\\n(allow default)","/bin/true"],{encoding:"utf8",timeout:10000,maxBuffer:65536});
+ const baseline=spawnSync("/usr/bin/sandbox-exec",["-p",["(version 1)","(allow default)"].join(String.fromCharCode(10)),"/bin/true"],{encoding:"utf8",timeout:10000,maxBuffer:65536});
  if(baseline.status!==0){
   t.diagnostic("Native sandbox-exec baseline unavailable: "+JSON.stringify({status:baseline.status,signal:baseline.signal,stderr:baseline.stderr}));
   t.skip("macOS host runner lacks operational sandbox-exec; NOT a native security PASS");
