@@ -16,7 +16,7 @@ ChatGPT private plugin -> OpenAI-hosted tunnel endpoint -> `tunnel-client` on on
 Windows installation path: `D:\00 Other Works\Vibecode\GSA-Localconnector`.
 macOS installation path: `~/GSA-Localconnector`.
 
-Windows and macOS are **alternate single-host installations**, not one cluster. Create separate OpenAI tunnels and private ChatGPT plugin entries per machine if both are to be reachable independently. Keep the one active GSA controller rule. Do not point both live clients at the same tunnel ID.
+Windows and macOS are **alternate single-host installations**, not one cluster. Use ONE OpenAI tunnel ID and ONE private ChatGPT plugin for this connector. Install local profiles on both platforms referencing the SAME tunnel ID, but NEVER run two tunnel-client instances simultaneously. Only one active host. To switch: stop and verify old tunnel-client is stopped, wait for pending requests to settle, then start the second host and verify doctor/ready and connector_status. If old host is inaccessible, explicitly fence/revoke its runtime authorization before activating replacement; do not assume inactivity. Do not change the plugin or tunnel ID while switching.
 
 ## Prerequisites (human/Platform authorization)
 
@@ -37,7 +37,7 @@ npm run build
 tunnel-client help quickstart
 # Set CONTROL_PLANE_API_KEY using the client's supported local secure method;
 # do not include the actual secret in a pasted command or chat transcript.
-tunnel-client init --sample sample_mcp_stdio_local --profile gsa-lc-windows --tunnel-id <WINDOWS_TUNNEL_ID> --mcp-command "node D:\00 Other Works\Vibecode\GSA-Localconnector\dist\src\mcp\cli.js"
+tunnel-client init --sample sample_mcp_stdio_local --profile gsa-lc-windows --tunnel-id <SHARED_GSA_TUNNEL_ID> --mcp-command "node D:\00 Other Works\Vibecode\GSA-Localconnector\dist\src\mcp\cli.js"
 tunnel-client doctor --profile gsa-lc-windows --explain
 tunnel-client run --profile gsa-lc-windows
 ```
@@ -55,7 +55,7 @@ npm run build
 # Install tunnel-client via official release and ensure it is on PATH.
 tunnel-client help quickstart
 # Set CONTROL_PLANE_API_KEY using the client's supported local secure method.
-tunnel-client init --sample sample_mcp_stdio_local --profile gsa-lc-macos --tunnel-id <MACOS_TUNNEL_ID> --mcp-command "node $HOME/GSA-Localconnector/dist/src/mcp/cli.js"
+tunnel-client init --sample sample_mcp_stdio_local --profile gsa-lc-macos --tunnel-id <SHARED_GSA_TUNNEL_ID> --mcp-command "node $HOME/GSA-Localconnector/dist/src/mcp/cli.js"
 tunnel-client doctor --profile gsa-lc-macos --explain
 tunnel-client run --profile gsa-lc-macos
 ```
@@ -64,7 +64,7 @@ tunnel-client run --profile gsa-lc-macos
 
 1. Doctor passes; `tunnel-client` is healthy, ready and polling. It exposes local `/healthz`, `/readyz`, `/metrics` and `/ui` for diagnostics.
 2. In ChatGPT **Plugins > + > Add custom MCP server**, set Connection **Tunnel**. Select the matching tunnel or paste its ID, configure auth and confirm the warning.
-3. Confirm discovery of the three read-only tools `connector_status`, `list_workspaces`, `get_workspace`; invoke `connector_status` and verify the expected host. **Only after that** mark the plugin connection PASS.
+3. Create ONE private ChatGPT plugin named `GSA-Localconnector` referencing `<SHARED_GSA_TUNNEL_ID>`. Confirm discovery of the three read-only tools `connector_status`, `list_workspaces`, `get_workspace`; invoke `connector_status` and verify the expected host. **Only after that** mark the plugin connection PASS.
 4. If tunnel is not visible, inspect Platform organization + ChatGPT workspace associations and Tunnels Read+Use permissions. Do not substitute a public unauthenticated HTTP endpoint.
 
 OpenAI Secure MCP Tunnel is for private MCP connections, **not public plugin submission**. Its default per-request deadline is 120s, including queue time: future Local CI/shell work MUST be asynchronous with durable run IDs and short MCP polling calls; don't run long jobs inside one MCP request.
@@ -74,3 +74,14 @@ OpenAI Secure MCP Tunnel is for private MCP connections, **not public plugin sub
 - As of this document, no Platform tunnel ID or runtime key has been provisioned, and no native tunnel-client installation has been evidenced.
 - No real plugin exists. Production OS sandbox, authenticated single-controller lease, shell/write, and Local CI remain **blocked**.
 - Cloudflare remains an optional future multi-provider transport; not part of the current onboarding critical path.
+
+## Single-plugin host handoff (mandatory)
+
+- One `tunnel_id`, one ChatGPT plugin, two local installations and profiles, **exactly one RUNNING tunnel-client instance**.
+- Windows -> macOS: stop Windows `tunnel-client` (and its supervisor if any), confirm stopped and no in-flight requests, then start macOS profile using the same tunnel ID, run `doctor` and confirm ready before issuing tool calls.
+- macOS -> Windows: reverse the procedure.
+- If the old host is unreachable, disable/revoke its tunnel runtime capability before bringing up the replacement. Never use simultaneous starts or rolling restarts; a shared tunnel queue does not pin stdio sessions to a host.
+- Verify tool `connector_status` identifies the expected active OS after each handoff. This proves selected runtime; it does not confer workspace grants on another machine.
+- Design is intentionally **manual handoff initially**. Cross-host automated election/fencing is outside MVP and MUST NOT be fabricated as an existing feature.
+
+OpenAI stdio concurrency limitation: https://github.com/openai/tunnel-client/blob/master/docs/configuration.md#stdio-deployment-limits
