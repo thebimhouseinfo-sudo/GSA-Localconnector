@@ -1,3 +1,4 @@
+import {plannedTools} from "../src/mcp/catalog.js";
 import assert from "node:assert/strict";
 import {spawn} from "node:child_process";
 import {fileURLToPath} from "node:url";
@@ -31,7 +32,7 @@ test("real stdio JSON-RPC initialize, list and tool calls", async () => {
   assert.equal(init.result.serverInfo.name,"gsa-localconnector");
   child.stdin.write(JSON.stringify({jsonrpc:"2.0",method:"notifications/initialized"})+"\n");
   const tools=await call("tools/list");
-  assert.deepEqual(tools.result.tools.map((v:any)=>v.name),["connector_status","list_workspaces","get_workspace","list_directory","bind_workspaces","get_file_info","search","fetch_file"]);
+  assert.deepEqual(tools.result.tools.map((v:any)=>v.name),[..."connector_status","list_workspaces","get_workspace","list_directory","bind_workspaces","get_file_info","search","fetch_file",...plannedTools.map(t=>t.name)]);
   const res=await call("tools/call",{name:"list_workspaces",arguments:{}});
   assert.deepEqual(JSON.parse(res.result.content[0].text).result,[]);
   const denied=await call("tools/call",{name:"get_workspace",arguments:{workspace_id:"unknown"}});
