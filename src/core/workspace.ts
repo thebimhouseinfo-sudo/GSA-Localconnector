@@ -1,5 +1,6 @@
 import path from "node:path";
 import fs from "node:fs/promises";
+import {validateWorkspaceRelative} from "./workspace-path.js";
 import { ConnectorError, type WorkspaceGrant, type WorkspacePermission } from "./contracts.js";
 
 /** Use platform path rules; canonicalize EXISTING targets. Never treat this alone as a sandbox. */
@@ -29,11 +30,8 @@ export class WorkspaceRegistry {
   /** Read-only bootstrap resolver; writes/CI need handle-relative protection and native isolation. */
   async resolveExistingRead(id: string, relative: string): Promise<string> {
     const grant = this.requireGrant(id, "read");
-    if (relative === ".") return grant.canonicalRoot;
-    if (!relative || this.pathApi.isAbsolute(relative) || this.pathApi.win32.isAbsolute(relative) || relative.includes("\\") && process.platform !== "win32")
-      throw new ConnectorError("PATH_OUTSIDE_SCOPE", "Path must be workspace-relative");
-    const parts = relative.split(/[\\/]/);
-    if (parts.some(p => p === ".." || p === "." || p === "")) throw new ConnectorError("PATH_OUTSIDE_SCOPE", "Unsafe relative path");
+    validateWorkspaceRelative(relative,true);
+    if(relative===".")return grant.canonicalRoot;
     const candidate = await fs.realpath(this.pathApi.join(grant.canonicalRoot, relative));
     const rel = this.pathApi.relative(grant.canonicalRoot, candidate);
     if (rel === ".." || rel.startsWith(".." + this.pathApi.sep) || this.pathApi.isAbsolute(rel))
