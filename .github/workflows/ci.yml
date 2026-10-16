@@ -65,6 +65,9 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           swiftc -framework Virtualization native/macos-vm/EFIBootConfigurationPreflight.swift -o "$RUNNER_TEMP/gsa-efi-config"
+          codesign --force --sign - --entitlements native/macos-vm/Virtualization.entitlements "$RUNNER_TEMP/gsa-efi-config"
+          codesign --verify --strict "$RUNNER_TEMP/gsa-efi-config"
+          codesign -d --entitlements - "$RUNNER_TEMP/gsa-efi-config"
           export EFI_FIXTURE="$RUNNER_TEMP/gsa-efi-fixture.raw"
           dd if=/dev/zero of="$EFI_FIXTURE" bs=4096 count=1
           set +e
