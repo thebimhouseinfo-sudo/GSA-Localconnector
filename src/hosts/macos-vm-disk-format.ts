@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import {createHash} from "node:crypto";
 
 /** Read-only header inspection. Does not attach disks, convert, or boot a VM. */
 export interface DiskFormatInspection {
