@@ -32,6 +32,8 @@ func report(_ state: String, _ imageVerified: Bool, _ vmStarted: Bool,
         fflush(stdout)
     }
 }
+func phase(_ name: String) { fputs("GSA_VM_PHASE="+name+"\n", stderr); fflush(stderr) }
+phase("INPUT")
 let data = FileHandle.standardInput.readDataToEndOfFile()
 guard data.count > 0, data.count <= 4096,
       let request = try? JSONDecoder().decode(Request.self, from: data),
@@ -56,6 +58,7 @@ var fdst = stat()
 guard fstat(fd,&fdst) == 0, fdst.st_dev == st.st_dev, fdst.st_ino == st.st_ino else {
     close(fd); report("BLOCKED",false,false,detail:"IMAGE_RACE"); exit(2)
 }
+phase("IMAGE_HASH")
 var hash = SHA256()
 let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: 1024*1024)
 defer { buf.deallocate() }
@@ -75,7 +78,9 @@ let digest = hash.finalize().map{String(format:"%02x",$0)}.joined()
 guard stable && digest == request.expectedSHA256 else {
     report("BLOCKED",false,false,detail:"IMAGE_DIGEST_OR_IDENTITY_MISMATCH"); exit(2)
 }
+phase("IMAGE_VERIFIED")
 do {
+    phase("SCRATCH_CREATE")
     let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("gsa-vm-probe-"+UUID().uuidString,isDirectory:true)
     try FileManager.default.createDirectory(at:scratch,withIntermediateDirectories:false)
     defer { try? FileManager.default.removeItem(at:scratch) }
@@ -84,6 +89,7 @@ do {
     let serialFile = try FileHandle(forWritingTo:serialURL)
     let nullInput = try FileHandle(forReadingFrom:URL(fileURLWithPath:"/dev/null"))
     defer { try? serialFile.close(); try? nullInput.close() }
+    phase("EFI_VARIABLE_STORE")
     let efi = VZEFIBootLoader()
     efi.variableStore = try VZEFIVariableStore(
         creatingVariableStoreAt:scratch.appendingPathComponent("nvram"),options:[])
@@ -92,25 +98,33 @@ do {
     config.bootLoader = efi
     config.cpuCount = 2
     config.memorySize = 2*1024*1024*1024
+    phase("DISK_ATTACHMENT")
     let disk = try VZDiskImageStorageDeviceAttachment(url:imageURL,readOnly:true)
     config.storageDevices = [VZVirtioBlockDeviceConfiguration(attachment:disk)]
+    phase("SERIAL_ATTACHMENT")
     let serial = VZVirtioConsoleDeviceSerialPortConfiguration()
     serial.attachment = VZFileHandleSerialPortAttachment(
         fileHandleForReading:nullInput,fileHandleForWriting:serialFile)
     config.serialPorts = [serial]
     config.networkDevices = []
     config.directorySharingDevices = []
+    phase("CONFIG_VALIDATE")
     try config.validate()
+    phase("CONFIG_VALIDATED")
+    phase("VM_CONSTRUCT")
     let vm = VZVirtualMachine(configuration:config)
+    phase("VM_CONSTRUCTED")
     var started = false
     var completed = false
     var failure: String? = nil
+    phase("VM_START_REQUEST")
     vm.start { result in
         switch result {
         case .success: started = true
         case .failure(let error): failure = String(describing:error).prefix(300).description
         }
         completed = true
+        phase("VM_START_CALLBACK")
     }
     let startDeadline = Date().addingTimeInterval(20)
     while !completed && Date() < startDeadline {
@@ -124,9 +138,11 @@ do {
         }
         report("BLOCKED",true,false,detail:"START_TIMEOUT"); exit(2)
     }
+    phase("START_WAIT_COMPLETE")
     if !started {
         report("BLOCKED",true,false,detail:"VM_START_FAILED: "+(failure ?? "unknown")); exit(2)
     }
+    phase("VM_STARTED")
     let deadline = Date().addingTimeInterval(TimeInterval(request.timeoutSeconds))
     while Date() < deadline && vm.state != .stopped && vm.state != .error {
         RunLoop.main.run(mode:.default,before:Date().addingTimeInterval(0.1))
