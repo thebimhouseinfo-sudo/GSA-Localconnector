@@ -117,3 +117,12 @@ Every ticket's evidence includes exact source commit, test commands, logs, platf
 ## 10. Review history
 
 See `docs/reviews/2026-10-16-CR-ARCHITECTURE.md`, `2026-10-16-CR-ROUND2-SINGLE-HOST.md`, and Planner RL reports. This unified document **replaces** the accumulated superseding appendices of earlier revisions. Source code implementation and native Windows/macOS security tests are still pending.
+
+## Transport decision — 2026-10-16 (supersedes Cloudflare-first onboarding)
+
+- **Primary:** OpenAI Secure MCP Tunnel for a private ChatGPT/GSA plugin. Use the verified native stdio MCP entrypoint `node dist/src/mcp/cli.js` as `tunnel-client --mcp-command`, avoiding HTTP bearer forwarding.
+- **Fallback/test:** Retain 127.0.0.1:58347 HTTP MCP and per-install secret. Both Windows and macOS completed `/health`, anonymous 401, authenticated `initialize`, and authenticated `tools/list` native tests (8/8).
+- **Optional future:** Cloudflare only for non-OpenAI client interop (Claude, others); not required for ChatGPT MVP. The decision does not replace or relax workspace, session, native sandbox, write, shell, CI, process, and proof gates.
+- **Platform limitations:** OpenAI-hosted secure tunnel is for private MCP, not public plugin distribution. Tunnel-client needs Platform Tunnels permissions, a tunnel ID, an API key provided securely on each local host, and workspace association. Human must install the official client and create the private plugin after observing ready/doctor PASS. Windows and macOS require distinct tunnel identities when independently connected.
+- **Deadline:** OpenAI tunnel default request deadline 120s end-to-end, including queue time. Model long-running local CI and processes as durable asynchronous operations, exposing short MCP calls rather than blocking transport requests.
+- Operational commands and human gates in `docs/tunnel/SETUP.md`. No live tunnel or plugin is claimed by this plan.
