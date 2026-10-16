@@ -14,6 +14,8 @@ import {CiJournalStore} from "../local/ci-store.js";
 import {CiArtifactStore} from "../local/ci-artifacts.js";
 import {CiLogStore} from "../local/ci-log-store.js";
 import {CiSnapshotStore} from "../local/ci-snapshot-store.js";
+import {CiSourceCaptureService,type VerifiedWorkspaceSourceCapture} from "../core/ci-source-capture.js";
+import {CiRunService,type VerifiedCiExecutor} from "../core/ci-run-service.js";
 import {requireNativeBackend,type NativeScopedFiles,type VerifiedNativeSandbox,type VerifiedNativeProcessController} from "../core/native-io.js";
 import {executeGit} from "../core/git-engine.js";
 import {ProcessManager} from "../core/process-manager.js";
@@ -34,9 +36,11 @@ const definitions = [
   {name:"fetch_file",description:"Read UTF-8 text from an enrolled read-only workspace (maximum 64 KiB)",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},start_line:{type:"integer",minimum:1},max_lines:{type:"integer",minimum:1,maximum:500}},required:["workspace_id","path"],additionalProperties:false}}
 ] as const;
 export function toolDefinitions() {return [...definitions,...plannedTools];}
-export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null, logs:CiLogStore|null=null, nativeProcesses:VerifiedNativeProcessController|null=null, snapshots:CiSnapshotStore|null=null) {
+export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null, logs:CiLogStore|null=null, nativeProcesses:VerifiedNativeProcessController|null=null, snapshots:CiSnapshotStore|null=null, sourceCapture:VerifiedWorkspaceSourceCapture|null=null, ciExecutor:VerifiedCiExecutor|null=null) {
   const processes=new ProcessManager(sandbox);
   const durable=new DurableProcessManager(nativeProcesses);
+  const sourceService=new CiSourceCaptureService(sourceCapture,snapshots??new CiSnapshotStore(),ciStore??new CiJournalStore());
+  const ciService=new CiRunService(ciStore??new CiJournalStore(),snapshots??new CiSnapshotStore(),ciExecutor);
   return async (call:ToolCall):Promise<ToolResult> => {
     try {
       const args=call.arguments??{};
@@ -87,6 +91,22 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1)throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"read");
           result=(await (ciStore??new CiJournalStore()).list()).filter(r=>r.workspace_id===args.workspace_id);break;
+        case "ci_prepare_source":
+          if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1)throw Error("INVALID_ARGUMENTS");
+          requireNativeBackend(sourceCapture);
+          registry.requireGrant(args.workspace_id,"read");
+          result=await sourceService.prepare(args.workspace_id);break;
+        case "ci_run":
+          if(typeof args.workspace_id!=="string"||typeof args.workflow!=="string"||typeof args.source_run_id!=="string"||Object.keys(args).length!==3)throw Error("INVALID_ARGUMENTS");
+          requireNativeBackend(ciExecutor);
+          registry.requireGrant(args.workspace_id,"execute");
+          await sourceService.requireOwned(args.workspace_id,args.source_run_id);
+          {const file=await registry.resolveExistingRead(args.workspace_id,args.workflow);
+           const stat=await fs.stat(file);
+           if(!stat.isFile()||stat.size>65536)throw Error("CI_MANIFEST_TOO_LARGE");
+           const workflow=parseCiManifest(new TextDecoder("utf-8",{fatal:true}).decode(await fs.readFile(file)));
+           result=await ciService.submit(args.workspace_id,workflow,args.source_run_id);
+          }break;
         case "ci_rerun_failed":
           if(typeof args.workspace_id!=="string"||typeof args.run_id!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"execute");
@@ -156,7 +176,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
         case "list_capabilities":
           if(Object.keys(args).some(k=>k!=="workspace_id")||(args.workspace_id!==undefined&&typeof args.workspace_id!=="string"))throw Error("INVALID_ARGUMENTS");
           {if(typeof args.workspace_id==="string"&&!registry.get(args.workspace_id))throw Error("WORKSPACE_NOT_FOUND");
-           result={read:["connector_status","list_workspaces","get_workspace","bind_workspaces","unbind_workspace","list_directory","fetch_file","get_file_info","search","glob","list_capabilities","ci_validate_workflow","ci_list_workflows","ci_list_runs","ci_status","ci_artifacts","ci_read_artifact","ci_logs","ci_cancel","ci_rerun_failed"],blocked:plannedTools.map(t=>t.name).filter(n=>n!=="glob"&&n!=="list_capabilities"&&n!=="ci_validate_workflow"&&n!=="ci_list_workflows"&&n!=="ci_list_runs"&&n!=="ci_status"&&n!=="ci_artifacts"&&n!=="ci_read_artifact"&&n!=="ci_logs"&&n!=="ci_cancel"&&n!=="ci_rerun_failed"),shellIsolation:"blocked",reason:"Native OS sandbox and write grants are not verified"};
+           result={read:["connector_status","list_workspaces","get_workspace","bind_workspaces","unbind_workspace","list_directory","fetch_file","get_file_info","search","glob","list_capabilities","ci_validate_workflow","ci_list_workflows","ci_list_runs","ci_status","ci_artifacts","ci_read_artifact","ci_logs","ci_cancel","ci_rerun_failed","ci_prepare_source","ci_run"],blocked:plannedTools.map(t=>t.name).filter(n=>n!=="glob"&&n!=="list_capabilities"&&n!=="ci_validate_workflow"&&n!=="ci_list_workflows"&&n!=="ci_list_runs"&&n!=="ci_status"&&n!=="ci_artifacts"&&n!=="ci_read_artifact"&&n!=="ci_logs"&&n!=="ci_cancel"&&n!=="ci_rerun_failed"&&n!=="ci_prepare_source"&&n!=="ci_run"),shellIsolation:"blocked",reason:"Native OS sandbox and write grants are not verified"};
           }break;
         case "glob":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||typeof args.pattern!=="string"||Object.keys(args).length!==3||args.pattern.length>160||!args.pattern)throw Error("INVALID_ARGUMENTS");
