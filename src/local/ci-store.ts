@@ -2,7 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {randomBytes} from "node:crypto";
 import {identityDirectory} from "./identity.js";
-import {reconcileInterruptedRun,transitionRun,type CiRunRecord} from "../core/ci-journal.js";
+import type {CiSnapshotStore} from "./ci-snapshot-store.js";
+import {reconcileInterruptedRun,transitionRun,prepareFailedRerun,type CiRunRecord} from "../core/ci-journal.js";
 
 /** Supervisor-owned CI journal. No child process may be granted access here.
  * Atomic updates within one filesystem; concurrent writers need revision guards.
@@ -58,6 +59,18 @@ export class CiJournalStore {
  /** No native process kill is claimed: only not-yet-started jobs can be cancelled
   * at this layer. Running jobs require host-owned process-tree cancellation.
   */
+ /** Source-verified reruns are distinct queued records. If native execution is
+  * not authorized, this does NOT start or schedule a child process.
+  */
+ async prepareRerun(runId:string,workspaceId:string,snapshots:CiSnapshotStore):Promise<CiRunRecord>{
+  const previous=await this.load(runId);
+  if(previous.workspace_id!==workspaceId)throw new CiStoreError("RUN_NOT_FOUND","Run not owned by Workspace");
+  const source=await snapshots.verify(runId);
+  const next=prepareFailedRerun(previous,source.source_sha256);
+  await snapshots.duplicateVerified(runId,next.run_id);
+  await this.save(next,null);
+  return next;
+ }
  async cancelQueued(runId:string,workspaceId:string):Promise<CiRunRecord>{
   const previous=await this.load(runId);
   if(previous.workspace_id!==workspaceId)throw new CiStoreError("RUN_NOT_FOUND","Run not owned by Workspace");
