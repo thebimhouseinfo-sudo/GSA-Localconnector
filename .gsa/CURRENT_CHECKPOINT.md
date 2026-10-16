@@ -251,3 +251,9 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Implemented `list_capabilities` and bounded `glob`, retained prior read-only `bind_workspaces`, `list_directory`, `fetch_file`, `get_file_info`, `search`. Added test verifying unsafe `run_command` fails with `SECURITY_BLOCKED`. Updated HTTP/stdio catalogs and corrected test assertions for discoverable-but-blocked APIs.
 - CI at source `e7b6cd929b777db9545afe167160334b544451a8`: run 38851918346 in progress when written (Ubuntu, macOS passed; Windows pending). No source rollout requested from human.
 - Continue remaining actual implementations (not schemas) and OS-native sandbox tests; do not ask for local test before all planned tools are implemented or explicitly report hard security blocker preventing completion.
+
+## Automated implementation continuation — 2026-10-16 (no human gate yet)
+- User asked to proceed autonomously and stop ONLY when a human-required local action or decision is reached. Work so far remains on GitHub repo; no native installs or restarts requested.
+- Added `src/core/edit-guards.ts` pure SHA256 precondition and unique exact text edit planner. Rejects stale expected hash, ambiguous match, invalid UTF8; produces before/after hashes and `committed:false` without writing. `test/edit-guards.test.ts` passes in GitHub Actions run 38854433950 on Windows/macOS/Ubuntu.
+- Added `src/core/ci-dag.ts` strict pure dependency DAG parser with missing-dependency/cycle/unknown-key rejection, plus `test/ci-dag.test.ts`; CI run 38854501279 underway at checkpoint time.
+- Neither module confers filesystem write or shell authority; security gates still block unverified execution. User requires full tools before local test.
