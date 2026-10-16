@@ -2,11 +2,11 @@
 
 ## GOAL
 
-Build **GSA-Localconnector**, a standalone Windows **Local MCP Connector** for GSA, by reusing proven local execution code from [chatgpt-local-worker](https://github.com/thebimhouseinfo-sudo/chatgpt-local-worker) and adopting the machine-first MCP-tool ergonomics of GitHub Connector.
+Build **GSA-Localconnector**, a standalone cross-platform **Windows/macOS Local MCP Connector** for GSA, by reusing proven local execution code from [chatgpt-local-worker](https://github.com/thebimhouseinfo-sudo/chatgpt-local-worker) and adopting the machine-first MCP-tool ergonomics of GitHub Connector.
 
 GSA must be able to read, edit, patch, search, run terminal commands, inspect processes, build, test, and use local Git across **multiple explicitly authorized folders simultaneously**. The connector has **no Job Pack, Builder, Planner, Coder, fake CLI, or local Job lifecycle**. GSA alone owns reasoning, Project/Job/Task/Run, review and test decisions; its existing private online GitHub Memory Repo remains the durable control plane.
 
-**Scope of this document:** architectural baseline, two-repository implementation/migration plan, exact acceptance criteria. **No source implementation has been performed by writing this plan.**
+**Scope of this document:** architectural baseline, two-repository implementation/migration plan, exact acceptance criteria. Deployment model: one physical host, one operating-system user and one active GSA connection/session at a time; multiple authorized Workspace roots on that host remain supported. **No source implementation has been performed by writing this plan.**
 
 **Reviewed source baselines:** GPTWorker `thebimhouseinfo-sudo/chatgpt-local-worker` and GSA `thebimhouseinfo-sudo/GPT-supper-agent` on their default branches, investigated 2026-10-16. Re-check exact SHAs, interfaces and callers before coding.
 
@@ -530,3 +530,59 @@ Both PX-04 and PX-05 are hard gates before a **Windows + macOS** release can be 
 - XP10: GSA connects to either host using the same API and does not assume shared filesystem paths or OS identities.
 
 **Status:** Cross-platform design requirement recorded; Windows/macOS implementation and native validation remain pending.
+
+
+## 14. PLANNER REVISION — Single-host single-user, resolved CR findings (2026-10-16)
+
+**Authoritative deployment contract:** One installed connector on one machine, one OS user, and one active GSA session at any point in time. Windows and macOS are supported as alternative host OSes, **not** a distributed simultaneous host fleet. Multiple local workspace roots within that machine remain mandatory. This section replaces any earlier suggestions of multi-host routing, per-host fleet discovery, tenant isolation or multi-user orchestration.
+
+### CR-01 resolved — Main phases are cross-platform deliverables
+- P0: portable API, host abstraction, platform-specific threat models and source SHAs.
+- P1: independent server and autostart on *both* Windows Task Scheduler and macOS launchd; one-active-session lease.
+- P2: per-OS trusted Workspace registration, strict path checking, OS-isolation feasibility spikes; platform that cannot enforce policy stays BLOCKED for shell/CI.
+- P3: portable file/search/patch APIs with platform path tests.
+- P4A/B: CI and shell/process/Git implemented and tested on both platforms.
+- P5: GSA discovers local target from the one connected host, checks workspace identity/grants and consumes CI evidence; no host fleet router.
+- P6: native install/reboot/session/reconnect/security/CI acceptance for both.
+No Phase is globally PASS until both supported platforms meet its required tests; an OS-specific partial status is allowed.
+
+### CR-02 addressed in design, implementation feasibility still a hard gate
+- Select sandbox implementation separately on Windows and macOS using a native, deny-by-default proof-of-concept before exposing arbitrary untrusted shell/CI.
+- A dedicated macOS user by itself is not automatically sufficient: inspect inherited credentials, traversable system/home paths, TCC, shared caches, subprocesses, symlink and mount behavior. Prefer an isolated execution account with restricted filesystem ACL and runner-owned scratch or an auditable isolated VM/container with scoped mounts, based on actual prototype results.
+- Validate both allowed project compile and forbidden direct/child reads/writes; include network policy explicitly. If no viable mechanism is verified, **SECURITY_BLOCKED**, not silent relaxation.
+- One-user deployment does **not** reduce the security requirement against accidental or malicious shell escapes.
+
+### CR-03 resolved — CI privilege and evidence separation
+| Identity/context | Workspace source | Build output / ephemeral scratch | Trusted registry/secrets | Durable CI evidence |
+| --- | --- | --- | --- | --- |
+| GSA MCP session | Via validated typed tools | Via typed tools | No direct access | Read by run-scoped APIs |
+| Connector supervisor | Authorized read/write mediation | Lifecycle and cleanup authority | Allowed and protected | Sole trusted writer |
+| Untrusted CI/shell child | Minimum declared read; scoped write outputs | Own per-run scratch and explicit outputs | Denied | Denied direct mutation |
+- Runner snapshots must be immutable to child processes; artifact ingestion copies/hashes outputs into supervisor-owned storage. Evidence writer is separate from test scripts. Revocation terminates affected process trees and invalidates their capability leases.
+
+### CR-04 simplified — One local host, one active session
+- Maintain a locally generated stable connector installation ID solely for reconnect integrity and avoiding stale target mismatch, **not** for discovery or routing among multiple machines.
+- One active GSA session lease at a time; new connections must replace an expired lease or explicitly disconnect the previous session. Reject competing simultaneous control sessions. Token credentials bound to this installed connector, stored outside Workspaces.
+- Each tool call selects a registered `workspace_id` on the same host. No host_id argument in ordinary file/process/CI tools, no distributed scheduler, no shared-network workspace assumptions.
+- Reconnect verifies installation identity, active lease and grant revisions; stale authority may not silently resume.
+- Cross-platform means separate Windows and Mac installations work with the same GSA API contract, not simultaneous access to both machines.
+
+### CR-05 resolved — CI source-consistency contract
+- For revision-bound CI PASS, execute commands against an immutable, verified input snapshot or a protected per-run workspace copy that preserves the full declared source input set. Build outputs live in a separate writable overlay/scratch. Hash the manifest, snapshot and declared dependency/toolchain inputs where feasible.
+- If an incompatible toolchain requires in-place building, classify results as `SOURCE_UNVERIFIED` until pre/post input equivalence and output exclusions are proven; never claim an immutable revision that was not actually executed.
+- Store exact runner version, OS/arch, toolchain metadata, workflow digest, snapshot hash, step exit codes and artifact hashes. If inputs change, start a new CI run and revision; no reuse of old PASS evidence.
+
+### CR-06 resolved — macOS supported lifecycle
+- macOS baseline is LaunchAgent in the logged-in user's graphical/login session. Pre-login daemon operation is out of scope. App need not show a terminal. `launchd` restart behavior and startup registration must be tested natively.
+- Sleep suspends local execution. On wake, reconcile process/run state, reconnect and report interrupted/unknown honestly. Continuous compute while the machine sleeps is explicitly **not guaranteed**; optional user-approved macOS power settings are external to connector policy.
+- Windows baseline is user-session autostart with Task Scheduler; no claim of system-service behavior before user login.
+- Document packaging architecture support using tested Apple Silicon first; Intel availability only after native tests.
+
+### Planner implementation ordering & gates
+1. P0-01 pin GPTWorker/GSA/source SHAs, publish common API and per-OS threat model.
+2. PX-01 portable core interfaces + typed contracts.
+3. PX-04/PX-05 security feasibility prototype using disposable Windows/macOS fixtures (**HARD GATE for shell/CI release**).
+4. PX-02/PX-03 independent startup supervisors and session lease implementation.
+5. P3 tools, CI snapshot engine and durable journal; P4A CI engine; P4B Git/process tooling.
+6. P5 GSA target integration (single host) and P6 cross-platform E2E + packaging.
+7. All gates require actual native test evidence; architecture/document review PASS is not runtime PASS.
