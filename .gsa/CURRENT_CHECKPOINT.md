@@ -340,3 +340,7 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - HUMAN GATE: run native:probe on both local Windows and macOS checkouts and return JSON to determine actual runtime substrate capabilities. Do NOT install Docker or restart tunnels; no other apps altered.
 - Windows source D:\\00 Other Works\\Vibecode\\GSA-Localconnector; macOS ~/GSA-Localconnector. Local code update by git pull --ff-only origin main; npm ci; npm run native:probe.
 - Remaining OS-native confined execution, reparse-point-safe write backend, secure process tree cancellation and true SEC01 tests are blocked pending native host proof. Do not claim full tool set ready.
+
+## Human macOS Seatbelt baseline — resolved (2026-10-16)
+- User verified on actual MacBook macOS 26.6.2 / arm64: `/usr/bin/sandbox-exec` exists; `/usr/bin/sandbox-exec -p '(version 1) (allow default)' /usr/bin/true` returned exit code 0. This resolves only the executable availability/baseline human gate, NOT deny-policy confinement, negative-control or nested-process proof. GitHub runner had SIGABRT in stricter policy earlier, thus real host SEC01 remains pending.
+- Resume coding and targeted policy-negative tests, do not claim OS sandbox verified or activate shell/Git/CI based on this baseline alone.
