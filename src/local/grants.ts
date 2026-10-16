@@ -41,7 +41,7 @@ async function withGrantLock<T>(dir:string,fn:()=>Promise<T>):Promise<T>{
 async function persistEntries(dir:string,entries:Entry[]):Promise<void>{
  const tmp=path.join(dir,".workspaces-"+randomBytes(8).toString("hex"));
  try{
-  await fs.writeFile(tmp,JSON.stringify(entries,null,2)+"\\n",{flag:"wx",mode:0o600});
+  await fs.writeFile(tmp,JSON.stringify(entries,null,2)+"\n",{flag:"wx",mode:0o600});
   await fs.rename(tmp,grantPath(dir));
  }finally{await fs.rm(tmp,{force:true});}
 }
