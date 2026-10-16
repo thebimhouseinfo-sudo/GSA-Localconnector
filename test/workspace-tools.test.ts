@@ -36,6 +36,14 @@ test("Workspace metadata and search are bounded and reject traversal",async()=>{
   const validation=JSON.parse((await call({name:"ci_validate_workflow",arguments:{workspace_id:"w",workflow:"ci.json"}})).content[0].text);
   assert.deepEqual(validation.result.job_order,["build"]);
   assert.equal(validation.result.execution_allowed,false);
+  const emptyWorkflows=JSON.parse((await call({name:"ci_list_workflows",arguments:{workspace_id:"w"}})).content[0].text);
+  assert.deepEqual(emptyWorkflows.result.workflows,[]);
+  await fs.mkdir(path.join(root,".gsa"));
+  await fs.writeFile(path.join(root,".gsa","ci.json"),JSON.stringify({name:"build",jobs:[{id:"compile",steps:[{id:"check",command:"node"}]}]}));
+  const workflows=JSON.parse((await call({name:"ci_list_workflows",arguments:{workspace_id:"w"}})).content[0].text);
+  assert.equal(workflows.result.workflows[0].name,"build");
+  assert.deepEqual(workflows.result.workflows[0].job_order,["compile"]);
+  assert.equal(workflows.result.execution_allowed,false);
   const invalid=await call({name:"search",arguments:{workspace_id:"w",path:".",query:""}});
   assert.equal(invalid.isError,true);
  } finally {await fs.rm(tmp,{recursive:true,force:true});}
