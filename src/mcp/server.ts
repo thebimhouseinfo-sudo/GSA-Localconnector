@@ -10,6 +10,7 @@ import {validateWorkflow} from "../core/ci-dag.js";
 import {dispatchFileMutation} from "./write-dispatch.js";
 import {batchFileOperations} from "./batch-dispatch.js";
 import {CiJournalStore} from "../local/ci-store.js";
+import {CiArtifactStore} from "../local/ci-artifacts.js";
 import {requireNativeBackend,type NativeScopedFiles,type VerifiedNativeSandbox} from "../core/native-io.js";
 import {executeGit} from "../core/git-engine.js";
 import {ProcessManager} from "../core/process-manager.js";
@@ -29,7 +30,7 @@ const definitions = [
   {name:"fetch_file",description:"Read UTF-8 text from an enrolled read-only workspace (maximum 64 KiB)",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},start_line:{type:"integer",minimum:1},max_lines:{type:"integer",minimum:1,maximum:500}},required:["workspace_id","path"],additionalProperties:false}}
 ] as const;
 export function toolDefinitions() {return [...definitions,...plannedTools];}
-export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore=new CiJournalStore()) {
+export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore=new CiJournalStore(), artifacts:CiArtifactStore=new CiArtifactStore()) {
   const processes=new ProcessManager(sandbox);
   return async (call:ToolCall):Promise<ToolResult> => {
     try {
@@ -84,6 +85,20 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            if(record.workspace_id!==args.workspace_id)throw Error("RUN_NOT_FOUND");
            result=record;
           }break;
+        case "ci_artifacts":case "ci_read_artifact":
+          if(typeof args.workspace_id!=="string"||typeof args.run_id!=="string"||Object.keys(args).some(k=>!["workspace_id","run_id","artifact"].includes(k)))throw Error("INVALID_ARGUMENTS");
+          registry.requireGrant(args.workspace_id,"read");
+          {const run=await ciStore.load(args.run_id);
+           if(run.workspace_id!==args.workspace_id)throw Error("RUN_NOT_FOUND");
+           if(call.name==="ci_artifacts"){
+            if(args.artifact!==undefined)throw Error("INVALID_ARGUMENTS");
+            result=await artifacts.list(args.run_id);
+           }else{
+            if(typeof args.artifact!=="string")throw Error("INVALID_ARGUMENTS");
+            const data=await artifacts.read(args.run_id,args.artifact);
+            result={...data.metadata,base64:Buffer.from(data.bytes).toString("base64")};
+           }
+          }break;
         case "ci_list_workflows":
           if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1)throw Error("INVALID_ARGUMENTS");
           {registry.requireGrant(args.workspace_id,"read");
@@ -117,7 +132,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
         case "list_capabilities":
           if(Object.keys(args).some(k=>k!=="workspace_id")||(args.workspace_id!==undefined&&typeof args.workspace_id!=="string"))throw Error("INVALID_ARGUMENTS");
           {if(typeof args.workspace_id==="string"&&!registry.get(args.workspace_id))throw Error("WORKSPACE_NOT_FOUND");
-           result={read:["connector_status","list_workspaces","get_workspace","bind_workspaces","unbind_workspace","list_directory","fetch_file","get_file_info","search","glob","list_capabilities","ci_validate_workflow","ci_list_workflows","ci_list_runs","ci_status"],blocked:plannedTools.map(t=>t.name).filter(n=>n!=="glob"&&n!=="list_capabilities"&&n!=="ci_validate_workflow"&&n!=="ci_list_workflows"&&n!=="ci_list_runs"&&n!=="ci_status"),shellIsolation:"blocked",reason:"Native OS sandbox and write grants are not verified"};
+           result={read:["connector_status","list_workspaces","get_workspace","bind_workspaces","unbind_workspace","list_directory","fetch_file","get_file_info","search","glob","list_capabilities","ci_validate_workflow","ci_list_workflows","ci_list_runs","ci_status","ci_artifacts","ci_read_artifact"],blocked:plannedTools.map(t=>t.name).filter(n=>n!=="glob"&&n!=="list_capabilities"&&n!=="ci_validate_workflow"&&n!=="ci_list_workflows"&&n!=="ci_list_runs"&&n!=="ci_status"&&n!=="ci_artifacts"&&n!=="ci_read_artifact"),shellIsolation:"blocked",reason:"Native OS sandbox and write grants are not verified"};
           }break;
         case "glob":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||typeof args.pattern!=="string"||Object.keys(args).length!==3||args.pattern.length>160||!args.pattern)throw Error("INVALID_ARGUMENTS");
