@@ -1,6 +1,6 @@
 import {WorkspaceRegistry} from "../core/workspace.js";
 import {requireNativeBackend,type NativeScopedFiles,type ScopedFileRef} from "../core/native-io.js";
-import {createFile,updateFile,editFile,createDirectory,trashFile,copyFile,moveFile} from "../core/write-engine.js";
+import {createFile,updateFile,editFile,applyPatch,createDirectory,trashFile,copyFile,moveFile} from "../core/write-engine.js";
 const str=(v:unknown):string=>{if(typeof v!=="string")throw Error("INVALID_ARGUMENTS");return v;};
 const fields=(args:Record<string,unknown>,keys:readonly string[])=>{
  if(Object.keys(args).some(k=>!keys.includes(k))||keys.some(k=>typeof args[k]!=="string"))throw Error("INVALID_ARGUMENTS");
@@ -28,6 +28,11 @@ export async function dispatchFileMutation(name:string,args:Record<string,unknow
    fields(args,["workspace_id","path","old_text","new_text","expected_sha256"]);
    const file=ref(registry,str(args.workspace_id),str(args.path),"write");
    return editFile(io,file,str(args.old_text),str(args.new_text),str(args.expected_sha256));
+  }
+  case "apply_patch":{
+   fields(args,["workspace_id","path","patch","expected_sha256"]);
+   const file=ref(registry,str(args.workspace_id),str(args.path),"write");
+   return applyPatch(io,file,str(args.patch),str(args.expected_sha256));
   }
   case "create_directory":{
    fields(args,["workspace_id","path"]);
