@@ -7,7 +7,7 @@ import {CiSnapshotStore} from "./ci-snapshot-store.js";
 export class CiWorkingCopyError extends Error {
  constructor(public readonly code:"INVALID_ROOT"|"WORKING_COPY_EXISTS"|"SOURCE_CHANGED",message:string){super(message);}
 }
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function isSubdir(parent:string,child:string):boolean{
  const r=path.relative(parent,child);
  return r===""||(!r.startsWith(".."+path.sep)&&r!==".."&&!path.isAbsolute(r));
