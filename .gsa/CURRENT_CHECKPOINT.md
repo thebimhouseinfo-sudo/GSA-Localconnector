@@ -210,3 +210,9 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 ## Phase 2 source CI verified — 2026-10-16
 - GitHub Actions [run 38850073521](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/38850073521) for source revision `c2429a52535806c4456911e282cf5a2ae107ed6a`: **Windows PASS, macOS PASS, Ubuntu PASS**. This verifies unit and E2E stdio contract tests for read-only Workspace support, NOT native directory enrollment on user's machines.
 - Follow-up checkpoint-only commits did not alter TypeScript source. Local Windows/macOS smoke after git pull and restart still PENDING.
+
+## macOS native Workspace enrollment — verified local, tunnel reload pending (2026-10-16)
+- User Mac at `~/GSA-Localconnector` pulled source through commit `482fc6d`, ran `npm test`: **10/10 PASS**, zero failed, including trusted grant persistence, invalid-store fail-closed, stdio, HTTP and path escape tests.
+- User ran `npm run workspace -- enroll-read gsa-source "$HOME/GSA-Localconnector"`: success. Local `npm run workspace -- list` returned `workspace_id=gsa-source`, canonical root `/Users/nam/GSA-Localconnector`, permissions `[read]`.
+- Direct **live** `mcp__gsa_lc_mac__list_workspaces({})` still returns `[]`: existing tunnel MCP process has not reloaded host grants. **MAC LOCAL ENROLL PASS; MAC REMOTE GRANT VISIBILITY PENDING**.
+- NEXT HUMAN: restart ONLY macOS GSA-Localconnector tunnel-client (not GPTWorker/Windows tunnel), preserving Mac runtime credentials in the new process environment; then call `list_workspaces`, `list_directory` and `fetch_file` via Mac plugin. Do not mark remote file tools PASS prematurely.
