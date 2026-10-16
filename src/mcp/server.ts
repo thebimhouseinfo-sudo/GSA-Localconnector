@@ -227,32 +227,24 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           result=await processes.run({workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:false});break;
         case "start_process":
           if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string")||Object.keys(args).length!==3)throw Error("INVALID_ARGUMENTS");
-          requireNativeBackend(sandbox);
+          if(!nativeProcesses)requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,"execute");
-          result=processes.start({workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:false});break;
-        case "start_process":
-          if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string")||Object.keys(args).some(k=>!["workspace_id","command","args"].includes(k)))throw Error("INVALID_ARGUMENTS");
-          requireNativeBackend(nativeProcesses);
-          registry.requireGrant(args.workspace_id,"execute");
-          result=await durable.start({workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:".",time_limit_ms:120000,max_output_bytes:65536,network_allowed:false});break;
+          {const request={workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:"." as const,time_limit_ms:30000,max_output_bytes:65536,network_allowed:false};
+           result=nativeProcesses?await durable.start(request):processes.start(request);
+          }break;
         case "stop_process":
           if(typeof args.workspace_id!=="string"||typeof args.process_id!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
-          requireNativeBackend(nativeProcesses);
+          if(!nativeProcesses)requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,"execute");
-          result=await durable.stop(args.workspace_id,args.process_id);break;
+          result=nativeProcesses?await durable.stop(args.workspace_id,args.process_id):await processes.stop(args.workspace_id,args.process_id);break;
         case "list_processes":
-          if(typeof args.workspace_id!=="string")throw Error("INVALID_ARGUMENTS");
+          if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1)throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"execute");
           result=nativeProcesses?durable.list(args.workspace_id):processes.list(args.workspace_id);break;
         case "process_status":case "process_output":
-          if(typeof args.workspace_id!=="string"||typeof args.process_id!=="string")throw Error("INVALID_ARGUMENTS");
+          if(typeof args.workspace_id!=="string"||typeof args.process_id!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"execute");
           result=nativeProcesses?(call.name==="process_status"?await durable.status(args.workspace_id,args.process_id):await durable.output(args.workspace_id,args.process_id)):processes.get(args.workspace_id,args.process_id);break;
-        case "stop_process":
-          if(typeof args.workspace_id!=="string"||typeof args.process_id!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
-          requireNativeBackend(sandbox);
-          registry.requireGrant(args.workspace_id,"execute");
-          result=await processes.stop(args.workspace_id,args.process_id);break;
         case "batch_file_operations":
           if(typeof args.workspace_id!=="string"||Object.keys(args).some(k=>!["workspace_id","operations"].includes(k)))throw Error("INVALID_ARGUMENTS");
           result=await batchFileOperations(registry,nativeFiles,args.workspace_id,args.operations);break;
