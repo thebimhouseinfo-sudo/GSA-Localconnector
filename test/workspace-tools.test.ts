@@ -29,6 +29,10 @@ test("Workspace metadata and search are bounded and reject traversal",async()=>{
   const blocked=await call({name:"run_command",arguments:{workspace_id:"w",command:"node",args:[]}});
   assert.equal(blocked.isError,true);
   assert.equal(JSON.parse(blocked.content[0].text).code,"SECURITY_BLOCKED");
+  await fs.writeFile(path.join(root,"ci.json"),JSON.stringify({name:"check",jobs:[{id:"build",steps:[{id:"s",command:"node",args:["--version"]}]}]}));
+  const validation=JSON.parse((await call({name:"ci_validate_workflow",arguments:{workspace_id:"w",workflow:"ci.json"}})).content[0].text);
+  assert.deepEqual(validation.result.job_order,["build"]);
+  assert.equal(validation.result.execution_allowed,false);
   const invalid=await call({name:"search",arguments:{workspace_id:"w",path:".",query:""}});
   assert.equal(invalid.isError,true);
  } finally {await fs.rm(tmp,{recursive:true,force:true});}
