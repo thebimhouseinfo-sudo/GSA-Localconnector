@@ -39,7 +39,7 @@ try{
  const ladders=[
   {id:"allow_default_cat",profile:"(version 1)\\n(allow default)"},
   {id:"deny_default_exec_read",profile:"(version 1)\\n(deny default)\\n(allow process-exec)\\n(allow process-fork)\\n(allow file-read*)"},
-  {id:"deny_default_workspace_write",profile:"(version 1)\\n(deny default)\\n(allow process-exec)\\n(allow process-fork)\\n(allow file-read*)\\n(allow file-write* (subpath (param \\"WORKSPACE\\")))"}
+  {id:"deny_default_workspace_write",profile:["(version 1)","(deny default)","(allow process-exec)","(allow process-fork)","(allow file-read*)",'(allow file-write* (subpath (param "WORKSPACE")))'].join(String.fromCharCode(10))}
  ];
  result.policy_ladder=[];
  for(const rung of ladders){
