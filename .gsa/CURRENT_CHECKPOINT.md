@@ -235,3 +235,6 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - Caught CI failure for Workspace root child-path `./src` rejection; fixed to normalize root child paths in commit `8baba006`, updated test expected normalized path in `b00741fa`. **Latest CI on `b00741fa` pending final result at time of checkpoint; do not declare PASS until complete**.
 - Shell/process, Git mutation, local CI and write operations remain SECURITY_BLOCKED pending OS-native confinement and dedicated grants; cross-host live plugin tool testing requires human to pull/restart separately.
 - Next: verify final CI, add bounded read-only source discovery / paginated file ranges and tests, then evaluate Windows/macOS isolation prototyping against SEC01 before any shell tool is exposed. No local test required yet.
+
+## CI confirmation — file discovery batch
+- GitHub Actions run [38851369558](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/38851369558), commit `b00741fa362590557d232e01f9e6f28fa36805e7`: **Windows PASS, macOS PASS, Ubuntu PASS**. Unit and MCP contract tests only; native plugin Workspace bind and OS isolation still pending. Latest subsequent commits only checkpoint documentation.
