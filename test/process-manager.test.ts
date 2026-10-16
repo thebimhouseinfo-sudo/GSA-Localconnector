@@ -27,3 +27,22 @@ test("process request network and output limits fail closed",async()=>{
  assert.equal(result.state,"UNKNOWN");
  assert.equal(calls.length,1);
 });
+
+test("nonblocking sandbox process supports owned status and eventual receipt",async()=>{
+ let release!:()=>void;
+ const gate=new Promise<void>(resolve=>{release=resolve;});
+ const native:VerifiedNativeSandbox={platform:"windows",verified:true,policy_fingerprint:"synthetic",execute:async()=>{await gate;return {exit_code:0,signal:null,stdout:"OK",stderr:"",cancelled:false,timed_out:false};}};
+ const manager=new ProcessManager(native);
+ const started=manager.start(req);
+ assert.equal(started.state,"RUNNING");
+ assert.equal(manager.get("a",started.process_id).state,"RUNNING");
+ assert.throws(()=>manager.get("other",started.process_id),(e:any)=>e.code==="PROCESS_NOT_FOUND");
+ release();
+ const done=await manager.settle("a",started.process_id);
+ assert.equal(done.state,"SUCCEEDED");
+ assert.equal(done.receipt?.stdout,"OK");
+});
+test("unverified process start never invokes host process",()=>{
+ const manager=new ProcessManager(null);
+ assert.throws(()=>manager.start(req),(e:any)=>e.code==="SECURITY_BLOCKED");
+});
