@@ -44,10 +44,10 @@ def sha256(path):
             h.update(chunk)
     return h.hexdigest()
 
-def patch_esp(fd):
+def patch_esp(fd, expected_bytes=SOURCE_BYTES, grub_digest=GRUB_SHA256):
     """Modify only a disposable clone; verify expected signed Ubuntu GRUB bytes."""
     def read_at(off, size):
-        require(off >= 0 and size >= 0 and off + size <= SOURCE_BYTES, "READ_BOUNDS")
+        require(off >= 0 and size >= 0 and off + size <= expected_bytes, "READ_BOUNDS")
         data = os.pread(fd, size, off)
         require(len(data) == size, "SHORT_READ")
         return data
@@ -66,7 +66,7 @@ def patch_esp(fd):
         ent = read_at(lba*512 + i*entry_size,entry_size)
         if ent[:16] == ESP_GUID:
             first,last=struct.unpack_from("<QQ",ent,32)
-            require(0 < first <= last and (last+1)*512 <= SOURCE_BYTES, "INVALID_ESP")
+            require(0 < first <= last and (last+1)*512 <= expected_bytes, "INVALID_ESP")
             esps.append((first*512,(last+1)*512))
     require(len(esps) == 1, "ESP_NOT_UNIQUE")
     esp_start,esp_end=esps[0]
@@ -156,7 +156,7 @@ def patch_esp(fd):
     for c in chain(grub_start,grub_size):
         grub.extend(read_at(cluster_off(c),cluster_bytes))
     grub=bytes(grub[:grub_size])
-    require(hashlib.sha256(grub).hexdigest() == GRUB_SHA256, "GRUB_DIGEST_MISMATCH")
+    require(hashlib.sha256(grub).hexdigest() == grub_digest, "GRUB_DIGEST_MISMATCH")
     pe=u32(grub,0x3c)
     require(grub[:2] == b"MZ" and grub[pe:pe+4] == bytes((80,69,0,0)) and
             u16(grub,pe+4) == 0xaa64, "GRUB_NOT_ARM64")
@@ -198,9 +198,16 @@ def patch_esp(fd):
     struct.pack_into("<H",entry,26,first&0xffff)
     struct.pack_into("<I",entry,28,grub_size)
     write_at(slot,entry)
+    stored_start,stored_size=get(boot,NAME,False)
+    require(stored_start == first and stored_size == grub_size, "GRUB_ENTRY_VERIFY_FAILED")
+    restored=bytearray()
+    for c in chain(stored_start,stored_size):
+        restored.extend(read_at(cluster_off(c),cluster_bytes))
+    require(hashlib.sha256(bytes(restored[:stored_size])).hexdigest() == grub_digest,
+            "GRUB_FILE_VERIFY_FAILED")
     os.fsync(fd)
     return {"addedEFIPath":"EFI/BOOT/grubaa64.efi",
-            "addedBytes":grub_size,"grubSHA256":GRUB_SHA256,
+            "addedBytes":grub_size,"grubSHA256":grub_digest,
             "allocatedClusters":count_needed,"clusterBytes":cluster_bytes}
 
 def cluster_off_for_slot(slot,data_off,cluster_bytes):
