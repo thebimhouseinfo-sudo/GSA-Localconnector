@@ -13,9 +13,10 @@ import {batchFileOperations} from "./batch-dispatch.js";
 import {CiJournalStore} from "../local/ci-store.js";
 import {CiArtifactStore} from "../local/ci-artifacts.js";
 import {CiLogStore} from "../local/ci-log-store.js";
-import {requireNativeBackend,type NativeScopedFiles,type VerifiedNativeSandbox} from "../core/native-io.js";
+import {requireNativeBackend,type NativeScopedFiles,type VerifiedNativeSandbox,type VerifiedNativeProcessController} from "../core/native-io.js";
 import {executeGit} from "../core/git-engine.js";
 import {ProcessManager} from "../core/process-manager.js";
+import {DurableProcessManager} from "../core/durable-process.js";
 
 /** Read-only file surface with explicit caller-authorized absolute-root binding; no shell or CI. */
 export interface ToolCall { name: string; arguments?: Record<string, unknown> }
@@ -32,8 +33,9 @@ const definitions = [
   {name:"fetch_file",description:"Read UTF-8 text from an enrolled read-only workspace (maximum 64 KiB)",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},start_line:{type:"integer",minimum:1},max_lines:{type:"integer",minimum:1,maximum:500}},required:["workspace_id","path"],additionalProperties:false}}
 ] as const;
 export function toolDefinitions() {return [...definitions,...plannedTools];}
-export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null, logs:CiLogStore|null=null) {
+export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null, logs:CiLogStore|null=null, nativeProcesses:VerifiedNativeProcessController|null=null) {
   const processes=new ProcessManager(sandbox);
+  const durable=new DurableProcessManager(nativeProcesses);
   return async (call:ToolCall):Promise<ToolResult> => {
     try {
       const args=call.arguments??{};
@@ -228,6 +230,16 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,"execute");
           result=processes.start({workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:false});break;
+        case "start_process":
+          if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string")||Object.keys(args).some(k=>!["workspace_id","command","args"].includes(k)))throw Error("INVALID_ARGUMENTS");
+          requireNativeBackend(nativeProcesses);
+          registry.requireGrant(args.workspace_id,"execute");
+          result=await durable.start({workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:".",time_limit_ms:120000,max_output_bytes:65536,network_allowed:false});break;
+        case "stop_process":
+          if(typeof args.workspace_id!=="string"||typeof args.process_id!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
+          requireNativeBackend(nativeProcesses);
+          registry.requireGrant(args.workspace_id,"execute");
+          result=await durable.stop(args.workspace_id,args.process_id);break;
         case "list_processes":
           if(typeof args.workspace_id!=="string")throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"execute");
