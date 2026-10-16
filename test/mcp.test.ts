@@ -6,7 +6,7 @@ import {WorkspaceRegistry} from "../src/core/workspace.js";
 
 test("full direct tool catalog is discoverable but unsafe operations are blocked",()=>{
  const names: string[]=toolDefinitions().map(t=>t.name);
- assert.deepEqual(names,["connector_status","list_workspaces","get_workspace","list_directory","bind_workspaces","get_file_info","search","fetch_file",...plannedTools.map(t=>t.name)]);
+ assert.deepEqual(names,["connector_status","list_workspaces","get_workspace","list_directory","bind_workspaces","unbind_workspace","get_file_info","search","fetch_file",...plannedTools.map(t=>t.name)]);
  assert.equal(names.includes("run_command"),true);
  assert.equal(names.includes("ci_run"),true);
 });
