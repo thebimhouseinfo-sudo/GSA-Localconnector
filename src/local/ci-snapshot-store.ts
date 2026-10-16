@@ -30,6 +30,24 @@ export class CiSnapshotStore{
   }catch(e){await fs.rm(destination,{recursive:true,force:true});throw e;}
   return manifest;
  }
+ /** Duplicate a VERIFIED reference into a new run-owned immutable source.
+  * The caller must create the new journal record separately; crashes cannot
+  * cause a false PASS because no process has been executed here.
+  */
+ async duplicateVerified(oldRunId:string,newRunId:string){
+  const verified=await this.verify(oldRunId);
+  if(!UUID.test(oldRunId)||!UUID.test(newRunId)||oldRunId===newRunId)
+   throw new SnapshotStoreError("INVALID_RUN_ID","Invalid snapshot reference");
+  const entries=[];
+  for(const item of verified.files){
+   const full=path.join(this.root,oldRunId,"files",...item.path.split("/"));
+   entries.push({path:item.path,bytes:await fs.readFile(full)});
+  }
+  const copy=await this.persist(newRunId,entries);
+  if(copy.source_sha256!==verified.source_sha256)
+   throw new SnapshotStoreError("SNAPSHOT_INTEGRITY","Duplicated source differs");
+  return copy;
+ }
  async verify(runId:string){
   if(!UUID.test(runId))throw new SnapshotStoreError("INVALID_RUN_ID","Invalid CI run ID");
   const destination=path.join(this.root,runId);
