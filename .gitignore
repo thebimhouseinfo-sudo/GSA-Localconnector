@@ -1,6 +1,56 @@
+# Dependencies and generated output (keep package-lock.json tracked)
 node_modules/
 dist/
 coverage/
+*.tsbuildinfo
+
+# Local credentials; sanitized examples may be committed
 .env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.key
+*.pem
+*.p12
+*.pfx
+.npmrc.local
+
+# Machine-specific connector, agent and tunnel state
+/.continue/
+/bin/tunnel-client
+/bin/tunnel-client.exe
+/.gsa/local-state/
+/.codex/*.local.toml
+/.codex/cache/
+/.codex/sessions/
+
+# Harness evidence/state and recovery copies; scripts/templates stay tracked
+/harness/state.json
+/harness/snapshots/
+/harness/local-state/
+/harness/reports/
+
+# VM media and runtime state; keep native source and entitlements tracked
+*.raw
+*.qcow2
+*.vhd
+*.vhdx
+*.vmdk
+*.iso
+*.nvram
+*.efivars
+*.dmg
+*.sparseimage
+*.sparsebundle/
+
+# Logs and language/tool caches
 *.log
-.gsa/local-state/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.build/
+.swiftpm/
+.DS_Store
+._*
