@@ -1,4 +1,3 @@
-import {randomUUID} from "node:crypto";
 import {createSnapshotManifest} from "./ci-snapshot.js";
 import {NativeBackendUnavailable} from "./native-io.js";
 import type {CiSnapshotStore} from "../local/ci-snapshot-store.js";

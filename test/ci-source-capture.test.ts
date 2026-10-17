@@ -28,7 +28,7 @@ test("MCP CI source + run never executes unless both native verifiers are inject
  const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"ci-mcp-integrated-"));
  try{
   const journal=new CiJournalStore(path.join(tmp,"run")),snapshots=new CiSnapshotStore(path.join(tmp,"snapshot"));
-  const native:VerifiedWorkspaceSourceCapture={verified:true,platform:"windows",policy_fingerprint:"test",capture:async()=>[{path:"index.ts",bytes:Buffer.from("ok")}]};
+  const native:VerifiedWorkspaceSourceCapture={verified:true,platform:"windows",policy_fingerprint:"test",capture:async()=>[{path:"index.ts",bytes:Buffer.from("ok")},{path:"ci.json",bytes:await fs.readFile(path.join(tmp,"ci.json"))}]};
   const executor:VerifiedCiExecutor={verified:true,policy_fingerprint:"stub-only",execute:async()=>({exit_code:0,source_verified:true})};
   const reg=new WorkspaceRegistry();await reg.enrollTrusted("A",tmp,["read","execute"]);await reg.enrollTrusted("B",tmp,["read","execute"]);
   await fs.writeFile(path.join(tmp,"ci.json"),JSON.stringify({name:"check",jobs:[{id:"test",steps:[{id:"one",command:"node"}]}]}));
@@ -36,6 +36,7 @@ test("MCP CI source + run never executes unless both native verifiers are inject
   const prepared=JSON.parse((await call({name:"ci_prepare_source",arguments:{workspace_id:"A"}})).content[0].text);
   assert.equal(prepared.ok,true);
   const id=prepared.result.source_run_id;
+  await fs.writeFile(path.join(tmp,"ci.json"),"host changed after capture");
   assert.equal((await call({name:"ci_run",arguments:{workspace_id:"B",workflow:"ci.json",source_run_id:id}})).isError,true);
   const started=JSON.parse((await call({name:"ci_run",arguments:{workspace_id:"A",workflow:"ci.json",source_run_id:id}})).content[0].text);
   assert.equal(started.ok,true);

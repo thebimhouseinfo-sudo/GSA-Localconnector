@@ -4,14 +4,20 @@ import {requireNativeBackend} from "./native-io.js";
 export class DurableProcessError extends Error{
  constructor(public readonly code:"PROCESS_NOT_FOUND"|"PROCESS_LIMIT"|"INVALID_PROCESS_REQUEST"|"PROCESS_ALREADY_FINISHED",message:string){super(message);}
 }
-type Entry={workspace_id:string;native_id:string;public_id:string};
+type Entry={workspace_id:string;native_id:string;public_id:string;active:boolean;expired?:boolean};
 export class DurableProcessManager{
  private readonly owned=new Map<string,Entry>();
+ private readonly pending=new Map<string,number>();
+ private observe(entry:Entry,status:NativeProcessStatus):NativeProcessStatus{
+  if(["SUCCEEDED","FAILED","CANCELLED"].includes(status.state))entry.active=false;
+  return status;
+ }
  constructor(private readonly backend:VerifiedNativeProcessController|null,private readonly maxActive=16){}
  list(workspaceId:string){return [...this.owned.values()].filter(x=>x.workspace_id===workspaceId).map(x=>({process_id:x.public_id,workspace_id:x.workspace_id}));}
  private get(workspaceId:string,publicId:string):Entry{
   const e=this.owned.get(publicId);
   if(!e||e.workspace_id!==workspaceId)throw new DurableProcessError("PROCESS_NOT_FOUND","Process not owned by workspace");
+  if(e.expired)throw new DurableProcessError("PROCESS_NOT_FOUND","Native process history expired; outcome unavailable");
   return e;
  }
  async start(request:SandboxedProcessRequest):Promise<{process_id:string;state:"RUNNING"}>{
@@ -21,17 +27,38 @@ export class DurableProcessManager{
     !Number.isInteger(request.max_output_bytes)||request.max_output_bytes<1||request.max_output_bytes>2097152||
     !Array.isArray(request.argv)||request.argv.some(a=>typeof a!=="string"||a.includes(String.fromCharCode(0))))
     throw new DurableProcessError("INVALID_PROCESS_REQUEST","Unacceptable process request");
-  if([...this.owned.values()].filter(x=>x.workspace_id===request.workspace_id).length>=this.maxActive)
-    throw new DurableProcessError("PROCESS_LIMIT","Process registry quota exhausted");
-  const started=await native.start(request);
-  if(!started.native_id)throw new DurableProcessError("INVALID_PROCESS_REQUEST","Native backend omitted process identity");
-  const public_id=randomUUID();
-  this.owned.set(public_id,{public_id,workspace_id:request.workspace_id,native_id:started.native_id});
-  return {process_id:public_id,state:"RUNNING"};
+  // Refresh completed entries without dropping their ownership or historical output.
+  const entries=[...this.owned.values()].filter(x=>x.workspace_id===request.workspace_id&&x.active);
+  await Promise.all(entries.map(async entry=>{
+   try{this.observe(entry,await native.status(entry.native_id));}
+   catch(error){
+    // Only an explicit native missing-identity response retires stale ownership.
+    // Transport failures and UNKNOWN states still retain their authority slot.
+    if((error as {code?:unknown}|null)?.code!=="PROCESS_NOT_FOUND")throw error;
+    entry.active=false;entry.expired=true;
+   }
+  }));
+  const active=[...this.owned.values()].filter(x=>x.workspace_id===request.workspace_id&&x.active).length;
+  const pending=this.pending.get(request.workspace_id)??0;
+  if(active+pending>=this.maxActive)
+    throw new DurableProcessError("PROCESS_LIMIT","Active process quota exhausted");
+  // Reserve before awaiting native.start so simultaneous starts share the same quota.
+  this.pending.set(request.workspace_id,pending+1);
+  try{
+   const started=await native.start(request);
+   if(!started.native_id)throw new DurableProcessError("INVALID_PROCESS_REQUEST","Native backend omitted process identity");
+   const public_id=randomUUID();
+   this.owned.set(public_id,{public_id,workspace_id:request.workspace_id,native_id:started.native_id,active:true});
+   return {process_id:public_id,state:"RUNNING"};
+  }finally{
+   const remaining=(this.pending.get(request.workspace_id)??1)-1;
+   if(remaining)this.pending.set(request.workspace_id,remaining);else this.pending.delete(request.workspace_id);
+  }
  }
  async status(workspaceId:string,id:string):Promise<NativeProcessStatus>{
   const native=requireNativeBackend(this.backend);
-  return native.status(this.get(workspaceId,id).native_id);
+  const entry=this.get(workspaceId,id);
+  return this.observe(entry,await native.status(entry.native_id));
  }
  async output(workspaceId:string,id:string,cursor=0,limit=65536){
   const native=requireNativeBackend(this.backend);
@@ -45,6 +72,9 @@ export class DurableProcessManager{
  async stop(workspaceId:string,id:string){
   const native=requireNativeBackend(this.backend);
   const entry=this.get(workspaceId,id);
-  return native.stop(entry.native_id);
+  const result=await native.stop(entry.native_id);
+  // Confirmed termination releases authority even when the outcome is UNKNOWN.
+  if(result.stopped)entry.active=false;
+  return result;
  }
 }

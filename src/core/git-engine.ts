@@ -16,7 +16,8 @@ export async function executeGit(sandbox:VerifiedNativeSandbox|null,workspaceId:
   time_limit_ms:30000,max_output_bytes:1024*1024,network_allowed:false
  };
  const result=await native.execute(request);
- if(result.cancelled||result.timed_out||result.exit_code===null)throw new GitExecutionError("GIT_UNKNOWN","Git process outcome is unresolved");
+ if(result.output_limited||Buffer.byteLength(result.stdout)+Buffer.byteLength(result.stderr)>request.max_output_bytes)throw new GitExecutionError("GIT_OUTPUT_LIMIT","Git output is incomplete");
+ if(result.cancelled||result.timed_out||result.signal!==null||result.exit_code===null)throw new GitExecutionError("GIT_UNKNOWN","Git process outcome is unresolved");
  if(result.exit_code!==0)throw new GitExecutionError("GIT_FAILED",result.stderr.slice(0,512));
  return {workspace_id:workspaceId,command:plan.argv,exit_code:result.exit_code,output:result.stdout,stderr:result.stderr,mutates:plan.mutates,network:false,committed:false};
 }

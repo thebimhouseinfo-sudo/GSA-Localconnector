@@ -97,6 +97,7 @@ jobs:
           swiftc -framework Virtualization -framework AppKit native/macos-vm/BootProbe.swift -o "$RUNNER_TEMP/gsa-vm-boot-probe"
           codesign --force --sign - --entitlements native/macos-vm/Virtualization.entitlements "$RUNNER_TEMP/gsa-vm-boot-probe"
           codesign --verify --strict "$RUNNER_TEMP/gsa-vm-boot-probe"
+          python3 scripts/test-vm-boot-preflight.py "$RUNNER_TEMP/gsa-vm-boot-probe"
 
       - name: Syntax-check read-only EFI bootchain inspector (never mount disk)
         if: runner.os == 'macOS'
@@ -115,3 +116,35 @@ jobs:
         run: |
           python3 -c 'import ast,pathlib;ast.parse(pathlib.Path("scripts/prepare-arm64-efi-fallback-candidate.py").read_text())'
           bash -n scripts/test-macos-vm-boot.sh
+
+      - name: Verify offline NoCloud smoke seed (no VM starts or downloads)
+        run: python3 scripts/test-vm-smoke-seed.py
+
+      - name: Verify worker snapshot seed (no VM starts or downloads)
+        run: python3 scripts/test-vm-worker-seed.py
+
+      - name: Verify Linux worker protocol and bounded subprocess capture
+        if: runner.os != 'Windows'
+        run: python3 scripts/test-vm-guest-worker.py
+
+      - name: Verify descriptor-native source capture fixtures
+        if: runner.os == 'macOS'
+        run: python3 scripts/test-native-source-capture.py
+
+      - name: Compile worker and reject malformed input before VM construction
+        if: runner.os == 'macOS'
+        run: |
+          swiftc -framework Virtualization native/macos-vm/WorkerHost.swift -o "$RUNNER_TEMP/gsa-worker-host"
+          codesign --force --sign - --entitlements native/macos-vm/Virtualization.entitlements "$RUNNER_TEMP/gsa-worker-host"
+          codesign --verify --strict "$RUNNER_TEMP/gsa-worker-host"
+          set +e
+          printf '%s\n' 'invalid-json' | "$RUNNER_TEMP/gsa-worker-host" > "$RUNNER_TEMP/gsa-worker-invalid.json"
+          rc=$?
+          set -e
+          test "$rc" -eq 2
+          grep -q 'INVALID_CONFIG' "$RUNNER_TEMP/gsa-worker-invalid.json"
+
+      - name: Syntax-check explicit native install and runtime test entrypoints
+        run: |
+          node --check scripts/install-native-vm.mjs
+          node --check scripts/test-vm-runtime-native.mjs

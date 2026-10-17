@@ -1,4 +1,6 @@
 import fs from "node:fs/promises";
+import {validateWorkflow} from "../core/ci-dag.js";
+import {validateWorkspaceRelative} from "../core/workspace-path.js";
 import path from "node:path";
 import {randomBytes} from "node:crypto";
 import {identityDirectory} from "./identity.js";
@@ -16,6 +18,14 @@ const assertId=(id:string)=>{if(!UUID.test(id))throw new CiStoreError("INVALID_R
 function checkRecord(r:CiRunRecord):void {
  assertId(r.run_id);
  if(!r.workspace_id||!r.workflow||!Number.isSafeInteger(r.revision)||r.revision<1||!/^[a-f0-9]{64}$/.test(r.source_sha256))throw new CiStoreError("INVALID_RUN_RECORD","Invalid CI record");
+ if(r.source_run_id!==undefined)assertId(r.source_run_id);
+ if(r.workflow_binding!==undefined){
+  const binding=r.workflow_binding;
+  try{
+   validateWorkspaceRelative(binding.path);validateWorkflow(binding.document);
+   if(!/^[a-f0-9]{64}$/.test(binding.sha256)||binding.document.name!==r.workflow)throw Error();
+  }catch{throw new CiStoreError("INVALID_RUN_RECORD","Invalid workflow provenance");}
+ }
 }
 export class CiJournalStore {
  constructor(private readonly root=path.join(identityDirectory(),"ci-runs")){}
@@ -46,6 +56,10 @@ export class CiJournalStore {
   try{
    const previous=await this.load(record.run_id);
    if(previous.revision!==expectedRevision||record.revision!==expectedRevision+1)throw new CiStoreError("RUN_REVISION_CONFLICT","Stale revision");
+   if(previous.workspace_id!==record.workspace_id||previous.source_sha256!==record.source_sha256||
+      previous.workflow!==record.workflow||previous.source_run_id!==record.source_run_id||
+      JSON.stringify(previous.workflow_binding)!==JSON.stringify(record.workflow_binding))
+    throw new CiStoreError("INVALID_RUN_RECORD","Run provenance is immutable");
    const tmp=path.join(this.root,".run-"+randomBytes(12).toString("hex"));
    try{
     await fs.writeFile(tmp,JSON.stringify(record)+"\n",{flag:"wx",mode:0o600});
@@ -65,6 +79,7 @@ export class CiJournalStore {
  async prepareRerun(runId:string,workspaceId:string,snapshots:CiSnapshotStore):Promise<CiRunRecord>{
   const previous=await this.load(runId);
   if(previous.workspace_id!==workspaceId)throw new CiStoreError("RUN_NOT_FOUND","Run not owned by Workspace");
+  if(!previous.workflow_binding)throw Error("WORKFLOW_PROVENANCE_REQUIRED");
   const source=await snapshots.verify(runId);
   const next=prepareFailedRerun(previous,source.source_sha256);
   await snapshots.duplicateVerified(runId,next.run_id);

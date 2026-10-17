@@ -1,3 +1,4 @@
+import {protectedStateCapability,requireProtectedState} from "../local/protected-state.js";
 import { createRequire } from "node:module";
 import { connectorStatus } from "../index.js";
 import { WorkspaceRegistry } from "../core/workspace.js";
@@ -5,7 +6,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {createHash} from "node:crypto";
 import {enrollReadOnlyBatch,revokeTrusted} from "../local/grants.js";
-import {plannedTools,plannedToolNames} from "./catalog.js";
+import {plannedTools,plannedToolNames,controlledToolNames} from "./catalog.js";
 import {validateWorkflow} from "../core/ci-dag.js";
 import {parseCiManifest} from "../core/ci-manifest.js";
 import {dispatchFileMutation} from "./write-dispatch.js";
@@ -19,6 +20,8 @@ import {CiRunService,type VerifiedCiExecutor} from "../core/ci-run-service.js";
 import {requireNativeBackend,type NativeScopedFiles,type VerifiedNativeSandbox,type VerifiedNativeProcessController} from "../core/native-io.js";
 import {executeGit} from "../core/git-engine.js";
 import {ProcessManager} from "../core/process-manager.js";
+import {ControlLeaseError,type ControlLeaseStore} from "../local/control-lease.js";
+import {withControlToken} from "./control-context.js";
 import {DurableProcessManager} from "../core/durable-process.js";
 
 /** Read-only file surface with explicit caller-authorized absolute-root binding; no shell or CI. */
@@ -35,21 +38,44 @@ const definitions = [
   {name:"search",description:"Search UTF-8 text across bounded files under a workspace-relative directory; no external grep subprocess",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},query:{type:"string"}},required:["workspace_id","path","query"],additionalProperties:false}},
   {name:"fetch_file",description:"Read UTF-8 text from an enrolled read-only workspace (maximum 64 KiB)",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},start_line:{type:"integer",minimum:1},max_lines:{type:"integer",minimum:1,maximum:500}},required:["workspace_id","path"],additionalProperties:false}}
 ] as const;
-export function toolDefinitions() {return [...definitions,...plannedTools];}
-export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null, logs:CiLogStore|null=null, nativeProcesses:VerifiedNativeProcessController|null=null, snapshots:CiSnapshotStore|null=null, sourceCapture:VerifiedWorkspaceSourceCapture|null=null, ciExecutor:VerifiedCiExecutor|null=null) {
+function validPage(args:Record<string,unknown>,maxLimit:number):boolean{
+  return (args.cursor===undefined||(Number.isSafeInteger(args.cursor)&&Number(args.cursor)>=0))&&
+    (args.limit===undefined||(Number.isSafeInteger(args.limit)&&Number(args.limit)>=1&&Number(args.limit)<=maxLimit));
+}
+export function toolDefinitions() {return [...definitions,...plannedTools].map(definition=>({
+ ...definition,inputSchema:{...definition.inputSchema,
+  properties:{...definition.inputSchema.properties,...(controlledToolNames.has(definition.name)?{control_token:{type:"string"}}:{})},
+  required:[...("required" in definition.inputSchema?definition.inputSchema.required:[]),...(controlledToolNames.has(definition.name)?["control_token"]:[])]}
+ }));}
+export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null, logs:CiLogStore|null=null, nativeProcesses:VerifiedNativeProcessController|null=null, snapshots:CiSnapshotStore|null=null, sourceCapture:VerifiedWorkspaceSourceCapture|null=null, ciExecutor:VerifiedCiExecutor|null=null, controlStore:ControlLeaseStore|null=null) {
   const processes=new ProcessManager(sandbox);
   const durable=new DurableProcessManager(nativeProcesses);
   const sourceService=()=>new CiSourceCaptureService(sourceCapture,snapshots??new CiSnapshotStore(),ciStore??new CiJournalStore());
   let coordinator:CiRunService|null=null;
   const ciService=()=>coordinator??(coordinator=new CiRunService(ciStore??new CiJournalStore(),snapshots??new CiSnapshotStore(),ciExecutor));
-  return async (call:ToolCall):Promise<ToolResult> => {
+  const invoke=async (call:ToolCall):Promise<ToolResult> => {
     try {
       const args=call.arguments??{};
       let result:unknown;
       switch(call.name) {
+        case "acquire_control":
+          if(Object.keys(args).length)throw Error("INVALID_ARGUMENTS");
+          if(!controlStore)throw Error("SECURITY_BLOCKED");
+          result=await controlStore.acquire();break;
+        case "renew_control":case "release_control":
+          if(typeof args.control_token!=="string"||Object.keys(args).length!==1)throw Error("INVALID_ARGUMENTS");
+          if(!controlStore)throw Error("SECURITY_BLOCKED");
+          if(call.name==="renew_control")result=await controlStore.renew(args.control_token);
+          else{await controlStore.release(args.control_token);result={released:true};}
+          break;
         case "connector_status":
           if(Object.keys(args).length) throw Error("INVALID_ARGUMENTS");
-          result=connectorStatus();break;
+          {const base=connectorStatus(),protectedStorage=protectedStateCapability();result={...base,
+           protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,
+           capabilities:{...base.capabilities,shellIsolation:sandbox?.verified?"verified":"blocked",localCi:ciExecutor?.verified?"available":"blocked"},
+           readyForShell:!!sandbox?.verified,executionEnvironment:sandbox?.verified?"linux-arm64-vm":null,
+           workspaceMode:sandbox?.verified?"disposable-snapshot":null,hostFileWrites:!!nativeFiles,git:"blocked",
+           processHistory:"current-server-only; newest 128 terminal native receipts",restartRecovery:"blocked"};}break;
         case "list_workspaces":
           if(Object.keys(args).length) throw Error("INVALID_ARGUMENTS");
           result=registry.list().map(g=>({workspace_id:g.id,permissions:g.permissions,revision:g.revision}));break;
@@ -58,6 +84,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           {const g=registry.get(args.workspace_id);if(!g) throw Error("WORKSPACE_NOT_FOUND");
           result={workspace_id:g.id,permissions:g.permissions,revision:g.revision};}break;
         case "bind_workspaces":
+          requireProtectedState();
           if(Object.keys(args).length!==1||!Array.isArray(args.paths)||args.paths.length<1||args.paths.length>16||args.paths.some(p=>typeof p!=="string"||!path.isAbsolute(p)))throw Error("INVALID_ARGUMENTS");
           {const requests=[];
            for(const root of args.paths as string[]){
@@ -71,12 +98,13 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            const bound=await enrollReadOnlyBatch(requests);
            const outputs=[];
            for(const item of bound){
-             await registry.enrollTrusted(item.id,item.root,["read"]);
+             await registry.importTrusted(item.grant);
              outputs.push({workspace_id:item.id,root:item.root,permissions:["read"]});
            }
            result=outputs;
           }break;
         case "unbind_workspace":
+          requireProtectedState();
           if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1)throw Error("INVALID_ARGUMENTS");
           if(!registry.get(args.workspace_id))throw Error("WORKSPACE_NOT_FOUND");
           await revokeTrusted(args.workspace_id);
@@ -102,20 +130,16 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           requireNativeBackend(ciExecutor);
           registry.requireGrant(args.workspace_id,"execute");
           await sourceService().requireOwned(args.workspace_id,args.source_run_id);
-          {const file=await registry.resolveExistingRead(args.workspace_id,args.workflow);
-           const stat=await fs.stat(file);
-           if(!stat.isFile()||stat.size>65536)throw Error("CI_MANIFEST_TOO_LARGE");
-           const workflow=parseCiManifest(new TextDecoder("utf-8",{fatal:true}).decode(await fs.readFile(file)));
-           result=await ciService().submit(args.workspace_id,workflow,args.source_run_id);
-          }break;
+          result=await ciService().submit(args.workspace_id,args.workflow,args.source_run_id);break;
         case "ci_rerun_failed":
           if(typeof args.workspace_id!=="string"||typeof args.run_id!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"execute");
-          result=await (ciStore??new CiJournalStore()).prepareRerun(args.run_id,args.workspace_id,snapshots??new CiSnapshotStore());break;
+          requireNativeBackend(ciExecutor);
+          result=await ciService().rerunFailed(args.workspace_id,args.run_id);break;
         case "ci_cancel":
           if(typeof args.workspace_id!=="string"||typeof args.run_id!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"execute");
-          result=await (ciStore??new CiJournalStore()).cancelQueued(args.run_id,args.workspace_id);break;
+          result=await ciService().cancel(args.workspace_id,args.run_id);break;
         case "ci_status":
           if(typeof args.workspace_id!=="string"||typeof args.run_id!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"read");
@@ -124,11 +148,11 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            result=record;
           }break;
         case "ci_logs":
-          if(typeof args.workspace_id!=="string"||typeof args.run_id!=="string"||Object.keys(args).some(k=>!["workspace_id","run_id"].includes(k)))throw Error("INVALID_ARGUMENTS");
+          if(typeof args.workspace_id!=="string"||typeof args.run_id!=="string"||Object.keys(args).some(k=>!["workspace_id","run_id","cursor","limit"].includes(k))||!validPage(args,100))throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"read");
           {const run=await (ciStore??new CiJournalStore()).load(args.run_id);
            if(run.workspace_id!==args.workspace_id)throw Error("RUN_NOT_FOUND");
-           result=await (logs??new CiLogStore()).page(args.run_id);
+           result=await (logs??new CiLogStore()).page(args.run_id,Number(args.cursor??0),Number(args.limit??50));
           }break;
         case "ci_artifacts":case "ci_read_artifact":
           if(typeof args.workspace_id!=="string"||typeof args.run_id!=="string"||Object.keys(args).some(k=>!["workspace_id","run_id","artifact"].includes(k)))throw Error("INVALID_ARGUMENTS");
@@ -177,7 +201,13 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
         case "list_capabilities":
           if(Object.keys(args).some(k=>k!=="workspace_id")||(args.workspace_id!==undefined&&typeof args.workspace_id!=="string"))throw Error("INVALID_ARGUMENTS");
           {if(typeof args.workspace_id==="string"&&!registry.get(args.workspace_id))throw Error("WORKSPACE_NOT_FOUND");
-           result={read:["connector_status","list_workspaces","get_workspace","bind_workspaces","unbind_workspace","list_directory","fetch_file","get_file_info","search","glob","list_capabilities","ci_validate_workflow","ci_list_workflows","ci_list_runs","ci_status","ci_artifacts","ci_read_artifact","ci_logs","ci_cancel","ci_rerun_failed","ci_prepare_source","ci_run"],blocked:plannedTools.map(t=>t.name).filter(n=>n!=="glob"&&n!=="list_capabilities"&&n!=="ci_validate_workflow"&&n!=="ci_list_workflows"&&n!=="ci_list_runs"&&n!=="ci_status"&&n!=="ci_artifacts"&&n!=="ci_read_artifact"&&n!=="ci_logs"&&n!=="ci_cancel"&&n!=="ci_rerun_failed"&&n!=="ci_prepare_source"&&n!=="ci_run"),shellIsolation:"blocked",reason:"Native OS sandbox and write grants are not verified"};
+           const protectedStorage=protectedStateCapability();
+           const read=["connector_status","list_workspaces","get_workspace","bind_workspaces","unbind_workspace","list_directory","fetch_file","get_file_info","search","glob","list_capabilities","ci_validate_workflow","ci_list_workflows","ci_list_runs","ci_status","ci_artifacts","ci_read_artifact","ci_logs"].filter(name=>protectedStorage.available||!controlledToolNames.has(name));
+           const execution=sandbox?.verified?["run_command","start_process","stop_process","list_processes","process_status","process_output"]:[];
+           const ci=ciExecutor?.verified?["ci_run","ci_rerun_failed","ci_cancel"]:[];
+           if(sourceCapture?.verified)ci.push("ci_prepare_source");
+           const enabled=new Set([...read,...execution,...ci,...(controlStore&&protectedStorage.available?["acquire_control","renew_control","release_control"]:[])]);
+           result={protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,read,execution,ci,blocked:plannedTools.map(t=>t.name).filter(n=>!enabled.has(n)),shellIsolation:sandbox?.verified?"verified":"blocked",hostFileWrites:!!nativeFiles,git:"blocked",executionEnvironment:sandbox?.verified?"linux-arm64-vm":null,workspaceMode:sandbox?.verified?"disposable-snapshot":null,restartRecovery:"blocked"};
           }break;
         case "glob":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||typeof args.pattern!=="string"||Object.keys(args).length!==3||args.pattern.length>160||!args.pattern)throw Error("INVALID_ARGUMENTS");
@@ -272,9 +302,12 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           registry.requireGrant(args.workspace_id,"execute");
           result=nativeProcesses?durable.list(args.workspace_id):processes.list(args.workspace_id);break;
         case "process_status":case "process_output":
-          if(typeof args.workspace_id!=="string"||typeof args.process_id!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
+          if(typeof args.workspace_id!=="string"||typeof args.process_id!=="string"||
+            Object.keys(args).some(k=>!(call.name==="process_output"?["workspace_id","process_id","cursor","limit"]:["workspace_id","process_id"]).includes(k))||
+            !validPage(args,65536))throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"execute");
-          result=nativeProcesses?(call.name==="process_status"?await durable.status(args.workspace_id,args.process_id):await durable.output(args.workspace_id,args.process_id)):processes.get(args.workspace_id,args.process_id);break;
+          if(!nativeProcesses&&(args.cursor!==undefined||args.limit!==undefined))throw Error("SECURITY_BLOCKED");
+          result=nativeProcesses?(call.name==="process_status"?await durable.status(args.workspace_id,args.process_id):await durable.output(args.workspace_id,args.process_id,Number(args.cursor??0),Number(args.limit??65536))):processes.get(args.workspace_id,args.process_id);break;
         case "batch_file_operations":
           if(typeof args.workspace_id!=="string"||Object.keys(args).some(k=>!["workspace_id","operations"].includes(k)))throw Error("INVALID_ARGUMENTS");
           result=await batchFileOperations(registry,nativeFiles,args.workspace_id,args.operations);break;
@@ -285,34 +318,56 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
       return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:e&&typeof e==="object"&&"code" in e&&typeof e.code==="string"?e.code:e instanceof Error?e.message:"UNKNOWN_ERROR"})}]};
     }
   };
+  return async(call:ToolCall):Promise<ToolResult>=>{
+    if(!controlStore||!controlledToolNames.has(call.name))return invoke(call);
+    try{
+      const {control_token,...args}=call.arguments??{};
+      if(typeof control_token!=="string")throw new ControlLeaseError("SESSION_INVALID","Controller token is required");
+      return await withControlToken(controlStore,control_token,()=>invoke({...call,arguments:args}));
+    }catch(error){
+      return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:error&&typeof error==="object"&&"code" in error?error.code:"SESSION_INVALID"})}]};
+    }
+  };
 }
 
 /** JSON-RPC MCP stdio adapter; no external dependencies and no privileges.
  * Framing is newline-delimited JSON per MCP stdio transport.
  */
-export async function runStdio(registry=new WorkspaceRegistry()):Promise<void> {
+export async function runStdio(registry=new WorkspaceRegistry(),invoke:(call:ToolCall)=>Promise<ToolResult>=createReadOnlyTools(registry),streams:{input:import("node:stream").Readable;output:import("node:stream").Writable}={input:process.stdin,output:process.stdout}):Promise<void> {
   const {createInterface}=await import("node:readline");
-  const invoke=createReadOnlyTools(registry);
   const version="2025-03-26";
-  for await(const line of createInterface({input:process.stdin,crlfDelay:Infinity})) {
-    if(!line.trim()) continue;
+  const pending=new Set<Promise<void>>();
+  const urgentControls=new Set(["release_control","renew_control","stop_process","ci_cancel"]);
+  let activeCalls=0,activeControls=0;
+  const handle=async(line:string):Promise<void>=>{
     let id: unknown;
     try {
       const req=JSON.parse(line) as {jsonrpc?:string;id?:unknown;method?:string;params?:Record<string,unknown>};
       id=req.id;
       if(req.jsonrpc!=="2.0") throw Error("INVALID_REQUEST");
-      if(req.method==="notifications/initialized") continue;
+      if(req.method==="notifications/initialized") return;
       let result:unknown;
       if(req.method==="initialize") result={protocolVersion:version,capabilities:{tools:{listChanged:false}},serverInfo:{name:"gsa-localconnector",version:"0.1.0"}};
       else if(req.method==="ping") result={};
       else if(req.method==="tools/list") result={tools:toolDefinitions()};
       else if(req.method==="tools/call") {
         if(!req.params||typeof req.params.name!=="string")throw Error("INVALID_PARAMS");
-        result=await invoke({name:req.params.name,arguments:req.params.arguments as Record<string,unknown>});
+        const urgent=urgentControls.has(req.params.name);
+        if(urgent?activeControls>=4:activeCalls>=32)throw Error("SERVER_BUSY");
+        if(urgent)activeControls++;else activeCalls++;
+        try{result=await invoke({name:req.params.name,arguments:req.params.arguments as Record<string,unknown>});}
+        finally{if(urgent)activeControls--;else activeCalls--;}
       } else throw Error("METHOD_NOT_FOUND");
-      if(id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:"2.0",id,result})+"\n");
+      if(id!==undefined)streams.output.write(JSON.stringify({jsonrpc:"2.0",id,result})+"\n");
     } catch(e) {
-      if(id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:"2.0",id,error:{code:-32603,message:e instanceof Error?e.message:"Internal error"}})+"\n");
+      if(id!==undefined)streams.output.write(JSON.stringify({jsonrpc:"2.0",id,error:{code:-32603,message:e instanceof Error?e.message:"Internal error"}})+"\n");
     }
+  };
+  for await(const line of createInterface({input:streams.input,crlfDelay:Infinity})) {
+    if(!line.trim())continue;
+    // JSON-RPC IDs correlate responses; held jobs must not serialize controls.
+    const task=handle(line);pending.add(task);
+    void task.then(()=>pending.delete(task),()=>pending.delete(task));
   }
+  await Promise.allSettled(pending);
 }

@@ -50,3 +50,37 @@ test("MCP native durable process registration is gated and workspace-owned",asyn
   assert.equal(stopped.result.stopped,true);
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
+test("expired native history after 129 shared completions releases capacity without success claims",async()=>{
+ let serial=0;const retained=new Set<string>();
+ const missing=()=>Object.assign(new Error("Native terminal history expired"),{code:"PROCESS_NOT_FOUND"});
+ const native:VerifiedNativeProcessController={verified:true,platform:"macos",policy_fingerprint:"bounded-history",
+  start:async()=>{const native_id=String(++serial);retained.add(native_id);if(retained.size>128)retained.delete(retained.values().next().value!);return {native_id};},
+  status:async id=>{if(!retained.has(id))throw missing();return {state:"SUCCEEDED",exit_code:0,started_at:"start",ended_at:"end"};},
+  output:async id=>{if(!retained.has(id))throw missing();return {stdout:"done",stderr:"",next_cursor:null};},
+  stop:async id=>{if(!retained.has(id))throw missing();return {stopped:true,state:"SUCCEEDED"};}};
+ const manager=new DurableProcessManager(native,1),first=await manager.start(request);
+ for(let i=0;i<129;i++)await native.start(request);
+ const next=await manager.start(request);assert.notEqual(next.process_id,first.process_id);
+ for(const query of [()=>manager.status("A",first.process_id),()=>manager.output("A",first.process_id),()=>manager.stop("A",first.process_id)]){
+  await assert.rejects(query(),(e:any)=>e.code==="PROCESS_NOT_FOUND"&&/expired/.test(e.message));
+ }
+ assert.equal((await manager.output("A",next.process_id)).stdout,"done");
+});
+test("unexpected native status errors never reclaim process authority",async()=>{
+ let calls=0;const native:VerifiedNativeProcessController={verified:true,platform:"macos",policy_fingerprint:"fixture",
+  start:async()=>({native_id:String(++calls)}),status:async()=>{throw Object.assign(new Error("backend unavailable"),{code:"IO_ERROR"});},
+  output:async()=>({stdout:"",stderr:"",next_cursor:null}),stop:async()=>({stopped:false,state:"UNKNOWN"})};
+ const manager=new DurableProcessManager(native,1);await manager.start(request);
+ await assert.rejects(manager.start(request),/backend unavailable/);assert.equal(calls,1);
+});
+test("confirmed UNKNOWN stop releases capacity while unconfirmed UNKNOWN remains reserved",async()=>{
+ let serial=0,confirmed=false;
+ const native:VerifiedNativeProcessController={verified:true,platform:"macos",policy_fingerprint:"fixture",start:async()=>({native_id:String(++serial)}),
+  status:async()=>({state:"UNKNOWN",exit_code:null,started_at:"start",ended_at:"end"}),output:async()=>({stdout:"",stderr:"",next_cursor:null}),stop:async()=>({stopped:confirmed,state:"UNKNOWN"})};
+ const manager=new DurableProcessManager(native,1),first=await manager.start(request);
+ assert.deepEqual(await manager.stop("A",first.process_id),{stopped:false,state:"UNKNOWN"});
+ await assert.rejects(manager.start(request),(e:any)=>e.code==="PROCESS_LIMIT");
+ confirmed=true;assert.deepEqual(await manager.stop("A",first.process_id),{stopped:true,state:"UNKNOWN"});
+ const second=await manager.start(request);assert.notEqual(second.process_id,first.process_id);
+ assert.equal((await manager.status("A",first.process_id)).state,"UNKNOWN");
+});
