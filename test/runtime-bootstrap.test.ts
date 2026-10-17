@@ -16,7 +16,12 @@ test("production bootstrap keeps controller enforcement when native installation
   const {invoke,nativeAvailable}=await bootstrapMcpTools(new WorkspaceRegistry(),identity);
   assert.equal(nativeAvailable,false);
   const call=async(name:string,args:Record<string,unknown>={})=>JSON.parse((await invoke({name,arguments:args})).content[0].text);
-  const status=await call("connector_status");assert.equal(status.result.readyForShell,false);
+  const status=await call("connector_status");
+  if(process.platform==="darwin"){
+   assert.equal(status.ok,true);assert.equal(status.result.readyForShell,false);
+  }else{
+   assert.equal(status.ok,false);assert.equal(status.code,"UNSUPPORTED_PLATFORM");
+  }
   const control=await call("acquire_control");assert.equal(control.ok,true);
   const denied=await call("run_command",{workspace_id:"fixture",command:"/bin/echo",args:[]});assert.equal(denied.code,"SESSION_INVALID");
   const blocked=await call("git_status",{workspace_id:"fixture",control_token:control.result.control_token});assert.equal(blocked.code,"SECURITY_BLOCKED");

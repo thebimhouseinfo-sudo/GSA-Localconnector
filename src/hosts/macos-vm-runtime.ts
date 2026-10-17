@@ -29,7 +29,7 @@ function sha(data:Uint8Array|string){return createHash("sha256").update(data).di
 export function validateMacVmInstallBody(value:unknown):InstallBody{
  const b=object(value);
  if(b.format!=="gsa-native-vm-v1"||b.platform!=="darwin"||b.arch!=="arm64"||b.hostRelease!==os.release()||
- typeof b.imagePath!=="string"||!path.isAbsolute(b.imagePath)||path.normalize(b.imagePath)!==b.imagePath||/[\0\r\n]/.test(b.imagePath)||
+ typeof b.imagePath!=="string"||!path.posix.isAbsolute(b.imagePath)||path.posix.normalize(b.imagePath)!==b.imagePath||/[\0\r\n]/.test(b.imagePath)||
  b.imageSHA256!==MAC_VM_IMAGE_SHA256||b.imageBytes!==3758096384||!Array.isArray(b.checks)||
  !MAC_VM_REQUIRED_CHECKS.every(c=>b.checks.includes(c)))blocked("installation proof binding");
  const artifacts=object(b.artifacts);
