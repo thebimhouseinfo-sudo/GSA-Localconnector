@@ -1,0 +1,27 @@
+{
+  "planner": {
+    "model": "gpt-6.1-sol",
+    "effort": "medium",
+    "reason": "Cost-aware planning and task decomposition; raise effort only for demonstrated ambiguity."
+  },
+  "coder": {
+    "model": "gpt-6.1-sol",
+    "effort": "medium",
+    "reason": "Balanced default for implementation; explicit high-effort escalation for difficult native/security reasoning."
+  },
+  "tester": {
+    "model": "gpt-6-luna",
+    "effort": "medium",
+    "reason": "Focused test execution and evidence; escalate complex failures rather than speculative repairs."
+  },
+  "reviewer": {
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "reason": "Independent correctness review with deeper reasoning, avoiding Astra on routine review."
+  },
+  "critic": {
+    "model": "gpt-6-astra",
+    "effort": "low",
+    "reason": "Reserved for approved large/high-risk milestones; no automatic call after each small task."
+  }
+}

@@ -1,5 +1,17 @@
 # GSA-Localconnector — Current checkpoint
 
+## Harness integration / CLI handoff — 2026-10-17
+
+Main integration contains harness/model configuration and docs/CLI-HANDOFF.md only.
+Product source remains at b071308. The local native checkpoint passed macOS but its
+PR #1 failed Linux/Windows CI (run 39009452982); it is not merged or release-certified.
+The user explicitly requested no code repair and no integration of failing files.
+Read docs/CLI-HANDOFF.md before continuing: preserve the local native commit lineage
+and all 32 unpublished Mac files. Do not reset, clean, weaken tests or force-push.
+
+The older product/boot checkpoint follows; its pending status is retained accurately.
+
+
 Date: 2026-10-16
 Stage: P0-01 baseline recorded; PX-01 bootstrap source committed, **tests not yet verified**.
 

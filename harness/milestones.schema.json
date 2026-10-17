@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Harness milestone input (Planner-owned, no product milestones in bootstrap)",
+  "type": "object",
+  "required": ["version", "milestone"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"type":"string"},
+    "version": {"const":1},
+    "milestone": {
+      "oneOf": [
+        {"type":"null"},
+        {"type":"object", "required":["id","approval","tasks"], "properties":{
+          "id":{"type":"string","pattern":"^[A-Za-z0-9_-]+$"},
+          "approval":{"enum":["AWAITING_USER","SIMULATED"]},
+          "tasks":{"type":"array","minItems":1,"items":{"type":"object","required":["id","scope","criteria","event","gates"],"properties":{
+            "id":{"type":"string","pattern":"^[A-Za-z0-9_-]+$"},
+            "scope":{"type":"array","minItems":1,"items":{"type":"string"}},
+            "criteria":{"type":"array","minItems":1,"items":{"type":"string"}},
+            "event":{"enum":["plan_ready","task_code_ready","task_verified","feature_complete","milestone_complete","risk_escalated"]},
+            "profile":{"enum":["light","standard","heavy"]},
+            "gates":{"type":"array","minItems":1,"items":{"type":"object","required":["id","role","paths","depends"],"properties":{
+              "id":{"enum":["G0","G1","G2","G3","G4","G5","G6","G7","G8","G9","G10","G11","G12"]},
+              "role":{"enum":["planner","coder","tester","reviewer","critic","git-admin","user"]},
+              "paths":{"type":"array","minItems":1,"items":{"type":"string"}},
+              "depends":{"type":"array","items":{"type":"string"}}
+            }}}
+          }}}
+        }}
+      ]
+    }
+  }
+}
