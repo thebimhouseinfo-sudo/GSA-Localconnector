@@ -9,7 +9,7 @@ export function parseCiManifest(text:string):CiWorkflow {
   const parsed=JSON.parse(text) as CiWorkflow;validateWorkflow(parsed);return parsed;
  }
  const lines=text.replace(/\r\n/g,"\n").split("\n");
- const doc:{name?:string;jobs:CiJob[]}={jobs:[]};
+ const doc:{name?:string;jobs:CiJob[];artifacts?:string[]}={jobs:[]};
  let job:CiJob|null=null,step:{id:string;command:string;args?:string[]}|null=null;
  let area:"root"|"jobs"|"steps"="root";
  const scalar=(raw:string):string=>{
@@ -40,6 +40,7 @@ export function parseCiManifest(text:string):CiWorkflow {
   if(indent===0){
    const [k,v]=keyValue(content);
    if(k==="name"){if(doc.name!==undefined)throw new ManifestError("DUPLICATE_NAME");doc.name=scalar(v);}
+   else if(k==="artifacts"){if(doc.artifacts!==undefined)throw new ManifestError("DUPLICATE_ARTIFACTS");doc.artifacts=array(v);}
    else if(k==="jobs"&&!v){area="jobs";}
    else throw new ManifestError("UNKNOWN_ROOT_KEY");
   }else if(indent===2&&area!=="root"&&content.startsWith("- ")){
@@ -60,7 +61,7 @@ export function parseCiManifest(text:string):CiWorkflow {
    else throw new ManifestError("UNKNOWN_STEP_KEY");
   }else throw new ManifestError("INVALID_YAML_INDENT_OR_ORDER");
  }
- const result={name:doc.name??"",jobs:doc.jobs};
+ const result={name:doc.name??"",jobs:doc.jobs,...(doc.artifacts!==undefined?{artifacts:doc.artifacts}:{})};
  validateWorkflow(result);
  return result;
 }

@@ -1,4 +1,5 @@
-import {test} from "node:test";
+import {test as platformTest} from "node:test";
+const test=(name:string,fn:()=>void|Promise<void>)=>platformTest(name,{skip:process.platform==="win32"?"POSIX ownership/mode storage test; Windows ACL backend unverified":false},fn);
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -16,7 +17,7 @@ test("grant enroll/revoke are serialized and persisted",async()=>{
   await assert.rejects(enrollReadOnly("c",rootA,store),/WORKSPACE_DUPLICATE_ROOT/);
   await revokeTrusted("a",store);
   assert.deepEqual((await loadTrustedRegistry(store)).list().map(x=>x.id),["b"]);
-  await fs.writeFile(path.join(store,".trusted-workspaces.lock"),"held");
+  await fs.writeFile(path.join(store,".trusted-workspaces.lock"),"held",{mode:0o600});
   await assert.rejects(enrollReadOnly("a",rootA,store),/GRANT_STORE_BUSY/);
   await fs.rm(path.join(store,".trusted-workspaces.lock"));
   assert.deepEqual((await loadTrustedRegistry(store)).list().map(x=>x.id),["b"]);

@@ -23,11 +23,18 @@ export interface SandboxedProcessRequest {
  readonly process_id?:string; // supervisor-assigned stable cancellation identity
  readonly cwd_relative:string;readonly time_limit_ms:number;readonly max_output_bytes:number;
  readonly network_allowed:boolean;
+ readonly artifact_paths?:readonly string[];
+}
+export interface SandboxedProcessArtifact {
+ readonly path:string;readonly size:number;readonly sha256:string;readonly base64:string;
 }
 export interface SandboxedProcessReceipt {
  readonly exit_code:number|null;readonly signal:string|null;
  readonly stdout:string;readonly stderr:string;
  readonly cancelled:boolean;readonly timed_out:boolean;
+ readonly output_limited?:boolean;
+ readonly artifacts?:readonly SandboxedProcessArtifact[];
+ readonly artifact_error?:string|null;
 }
 export interface VerifiedNativeSandbox {
  readonly platform:"windows"|"macos";readonly policy_fingerprint:string;
@@ -55,6 +62,7 @@ export interface NativeProcessStatus {
  readonly exit_code:number|null;
  readonly started_at:string;
  readonly ended_at:string|null;
+ readonly stopped?:boolean;
 }
 export interface VerifiedNativeProcessController {
  readonly verified:true;
@@ -64,4 +72,5 @@ export interface VerifiedNativeProcessController {
  status(nativeId:string):Promise<NativeProcessStatus>;
  output(nativeId:string,cursor:number,limit:number):Promise<{stdout:string;stderr:string;next_cursor:number|null}>;
  stop(nativeId:string):Promise<{stopped:boolean;state:NativeProcessStatus["state"]}>;
+ wait?(nativeId:string):Promise<NativeProcessStatus>;
 }
