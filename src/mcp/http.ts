@@ -1,8 +1,10 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { connectorStatus } from "../index.js";
+import {loadTrustedRegistry} from "../local/grants.js";
 import { WorkspaceRegistry } from "../core/workspace.js";
-import { createReadOnlyTools, toolDefinitions } from "./server.js";
+import { createReadOnlyTools, toolDefinitions,type ToolCall,type ToolResult } from "./server.js";
+import {bootstrapMcpTools} from "./runtime-bootstrap.js";
 
 const DEFAULT_PORT = 58347;
 const MAX_REQUEST_BYTES = 1024 * 1024;
@@ -48,14 +50,15 @@ async function bodyJson(req: IncomingMessage): Promise<unknown> {
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-/** Read-only stateless Streamable HTTP MCP endpoint. Never bind publicly. */
-export function createHttpMcpServer(token: string, registry = new WorkspaceRegistry()) {
+/** Local stateless Streamable HTTP MCP endpoint. Production dispatch enforces
+ * Workspace grants, controller leases, and installed native capabilities.
+ */
+export function createHttpMcpServer(token: string, registry = new WorkspaceRegistry(),invoke:(call:ToolCall)=>Promise<ToolResult>=createReadOnlyTools(registry)) {
   if (token.length < 32) throw Error("MCP_HTTP_TOKEN must be at least 32 characters");
-  const invoke = createReadOnlyTools(registry);
   return createServer(async (req, res) => {
     if (!allowedOrigin(req)) { respond(res, 403, { error: "ORIGIN_FORBIDDEN" }); return; }
     if (req.url === "/health" && req.method === "GET") {
-      respond(res, 200, { status: "alive", name: "gsa-localconnector", exposedTools: "read-only" });
+      respond(res, 200, { status: "alive", name: "gsa-localconnector", exposedTools: "capability-gated" });
       return;
     }
     if (req.url !== "/mcp") { respond(res, 404, { error: "NOT_FOUND" }); return; }
@@ -112,7 +115,10 @@ export function createHttpMcpServer(token: string, registry = new WorkspaceRegis
 }
 export async function startHttpMcp(token: string, port = DEFAULT_PORT): Promise<void> {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw Error("Invalid HTTP MCP port");
-  const server = createHttpMcpServer(token);
+  const registry=process.platform==="win32"||process.platform==="darwin"?await loadTrustedRegistry():new WorkspaceRegistry();
+  const tools=process.platform==="darwin"?await bootstrapMcpTools(registry):null;
+  if(tools?.blockedReason)process.stderr.write("Native execution unavailable: "+tools.blockedReason+"\n");
+  const server = createHttpMcpServer(token,registry,tools?.invoke);
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, "127.0.0.1", () => { server.off("error", reject); resolve(); });

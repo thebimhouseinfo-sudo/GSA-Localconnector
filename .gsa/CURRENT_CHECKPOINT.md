@@ -1,7 +1,43 @@
 # GSA-Localconnector — Current checkpoint
 
-Date: 2026-10-16
-Stage: P0-01 baseline recorded; PX-01 bootstrap source committed, **tests not yet verified**.
+Date: 2026-10-17
+Stage: macOS offline snapshot runtime and local MCP native E2E PASS; full cross-platform implementation/release remains incomplete. Historical entries retain their original status.
+
+## Git integration and CLI handoff — 2026-10-17
+
+Latest integration boundary and local unpublished files: `docs/CLI-HANDOFF.md`.
+Only verified baseline + harness + handoff are being published. User explicitly said
+not to repair/push the failing Mac files. A clean committed export passes 140 product
+cases (137 PASS, 3 skips) and 29 harness cases. The local working tree still contains
+32 unfinished Mac files, including a TypeScript build failure, and must be preserved.
+No new native VM/release PASS is inferred from this integration. Remote CI/merge are
+verified by the actual PR state; do not infer them from this local checkpoint text.
+
+## Latest local evidence — native worker and MCP integration (2026-10-17)
+
+- Source base `b071308` plus uncommitted local fixes. Fetch confirmed `origin/main` has no newer revision; no remote CI PASS is claimed for this diff.
+- Final `npm test`: 140 total, 137 PASS, 0 failures, 3 platform/feasibility skips. Stdio now permits 32 ordinary calls and 4 reserved control calls, so active commands cannot serialize release/renew/cancel; confirmed stops reclaim process capacity even when the outcome remains UNKNOWN. `git diff --check` PASS.
+- Compiled, signed, tested and installed private VM artifacts using `node scripts/install-native-vm.mjs --install`. Exact installed artifacts passed guest identity/cgroup/denial tests, timeout, output cap, 1 MiB NUL output, clean stop and deliberate stdout backpressure cleanup. Descriptor-native source capture: 12 fixtures PASS.
+- `node scripts/test-vm-runtime-native.mjs --run`: `NATIVE_RUNTIME_MCP_TESTS_PASSED`, exit 0, six actual VM boots. Authenticated local HTTP MCP command/build, secret filtering, pinned source/workflow CI, failed pinned rerun, logs/artifacts, active controller release and persisted grant revocation all PASS. Neither guest jobs nor CI changed the host project.
+- Production stdio/HTTP startup now loads the verified runtime. Execution requires an explicit trusted local `enroll-execute` grant plus a current control lease. Ordinary MCP binding grants read only. Guest execution is Linux ARM64 against a disposable snapshot; host writes/Git remain blocked.
+- Durable grant identity/revision survives restart and revocation. Legacy unpinned grants grant no access until explicit local re-enrollment. Native jobs observe persisted revocation as well as lease expiry/release.
+- Original RAW SHA-256 remains `384f7eb9976ad155812b48efb1b780024c0748e35b5c3161c82c797578168e7e`; fallback candidate remains `9aca11f8edb5474df457c073dbfe140b27aa31f22e46ab1405bed089c5d57666` after native tests.
+- Evidence: `docs/reviews/2026-10-17-NATIVE-WORKER-INTEGRATION.md`; local ignored logs `.gsa/local-state/vm-smoke/worker-install-final.log` and `runtime-mcp-final.log`.
+- Remaining release gates: Windows native isolation/protected ACL state; native host file/Git mutation; process/server restart recovery and autostart lifecycle; general artifact export/dependency networking; GSA integration and full release E2E. Windows currently starts status-only rather than trusting POSIX permission checks. Both connected plugin status calls returned `Session terminated`; no live plugin/tunnel health PASS is claimed.
+
+## Earlier local evidence — connector fixes and offline guest smoke (2026-10-16)
+
+
+- Source base `b071308` plus current uncommitted local changes; no remote CI result for this diff.
+- Seven reviewed connector/test bugs fixed; additional AppKit event dispatch fixed. Local `npm test`: 93 total, 91 PASS, 0 failures, 2 skipped.
+- Native `bash scripts/test-macos-vm-boot.sh --offline-smoke`: `GUEST_SMOKE_PASSED_UNVERIFIED`, `guestSmokeResult:PASS`, `diskMode:disposable-clone`, `VM_STOPPED`; guest Python compile/run, nested processes, root writes and loopback-only interface checks passed over a fresh nonce-matching hvc0 result.
+- Both source images unchanged: original `384f7eb9976ad155812b48efb1b780024c0748e35b5c3161c82c797578168e7e`; EFI candidate `9aca11f8edb5474df457c073dbfe140b27aa31f22e46ab1405bed089c5d57666`.
+- Native fixture preflight 6/6, seed fixtures 3/3, EFI fixtures 9/9. Deliberate wrong-nonce VM timeout returns failure and removes scratch (`FAILURE_CLEANUP_PASSED`). Default boot modes remain read-only; only a private descriptor-cloned disk is writable in explicit offline-smoke mode.
+- No network adapters, host Workspace shares, credentials or production execution capability were enabled. SEC01 remains BLOCKED; this is guest workload evidence, not independent security certification.
+- Details: `docs/reviews/2026-10-16-BUGFIX-VM-SMOKE.md` and `docs/reviews/2026-10-16-OFFLINE-VM-SMOKE.md`; local command evidence in `.gsa/local-state/vm-smoke/`.
+- NEXT: continue PX-04/05 with an authenticated bounded worker channel and project-input transfer/share design; prove outside-root, symlink, secret/evidence and cancellation/recovery negative controls before injecting an executable backend. Windows native proof is separate. Do not reacquire/reconvert the baseline image, redo the already-passing fallback patch, or treat older pending entries below as current.
+
+## Historical checkpoint log
 
 ## Resume instructions
 1. Read `.gsa/BASELINE.md`, this checkpoint, and `docs/plans/GSA-LOCALCONNECTOR-IMPLEMENTATION-PLAN.md`.

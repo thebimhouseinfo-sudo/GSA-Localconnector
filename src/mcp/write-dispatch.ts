@@ -48,6 +48,7 @@ export async function dispatchFileMutation(name:string,args:Record<string,unknow
   case "move_file":{
    fields(args,["source_workspace_id","source_path","destination_workspace_id","destination_path","expected_sha256"]);
    const src=ref(registry,str(args.source_workspace_id),str(args.source_path),"read");
+   if(name==="move_file")registry.requireGrant(src.workspace_id,"write");
    const dst=ref(registry,str(args.destination_workspace_id),str(args.destination_path),"write");
    return name==="copy_file"?copyFile(io,src,dst,str(args.expected_sha256)):moveFile(io,src,dst,str(args.expected_sha256));
   }

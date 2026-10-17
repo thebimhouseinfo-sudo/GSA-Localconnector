@@ -28,6 +28,7 @@ export interface SandboxedProcessReceipt {
  readonly exit_code:number|null;readonly signal:string|null;
  readonly stdout:string;readonly stderr:string;
  readonly cancelled:boolean;readonly timed_out:boolean;
+ readonly output_limited?:boolean;
 }
 export interface VerifiedNativeSandbox {
  readonly platform:"windows"|"macos";readonly policy_fingerprint:string;

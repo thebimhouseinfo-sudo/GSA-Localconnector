@@ -1,6 +1,6 @@
 # GSA-Localconnector — Unified Implementation Plan
 
-Status: **PLANNING / implementation not started**  
+Status: **IMPLEMENTATION IN PROGRESS** — macOS offline snapshot runtime and local MCP native E2E verified; host mutation, Windows native security and cross-platform release remain incomplete
 Revision: 2026-10-16 — Planner response to CR Round 2  
 Scope: Windows + macOS, **one machine, one OS user, one active GSA control session**, multiple simultaneously authorized local Workspaces. Windows and macOS are alternate installations, not a multi-host cluster. Native security and runtime PASS remain unverified.
 
@@ -138,3 +138,13 @@ User changed requirement due to simultaneous independent projects on two machine
 ## User-corrected activation contract — GSA plugin + absolute Workspace roots (2026-10-16)
 
 GPTWorker remains **reference for its workspace/job initiation separation**, not a model to clone verbatim. GPTWorker selects a job and agent/runtime and passes workspace. GSA-Localconnector is ONLY a local MCP execution substrate: **no job creation, job catalog, agent spawning or job lifecycle**. GSA is already the active reasoning/planning agent. To start, human invokes the selected host plugin (`gsa-lc` Windows, `gsa-lc-mac` Mac) and supplies one or more absolute folder paths. Connector `bind_workspaces({paths:[...]})` checks the paths on its own host and registers them as that host's workspaces; GSA uses workspace IDs in subsequent file/git/shell tools. Multiple bound directories supported; explicitly selected plugin is the host boundary. Legacy terminal `npm run workspace enroll-read` is administrative fallback, not normal activation. A user's explicit supplied root is an approval for read-only binding only; write/shell authority remains blocked until native containment and separate grant gates. Never infer or add sibling/parent roots. This contract supersedes the earlier CLI-first enrollment design. See docs/workspaces/LOCAL-ENROLLMENT.md.
+
+## Implementation progress — native macOS offline smoke (2026-10-16)
+
+Current local changes on base b071308 verify an independent writable CoW guest disk, local read-only NoCloud bootstrap, bounded Python compile/run and nested subprocess checks, matching per-run serial result, clean stop, failure cleanup and unchanged baseline hashes. This advances the positive workload prerequisite of PX-04/05; it does not complete SEC01, enable MCP execution, or substitute for Windows native proof. Detailed current evidence and next worker/share/cancellation gates: `docs/reviews/2026-10-16-OFFLINE-VM-SMOKE.md` and `.gsa/CURRENT_CHECKPOINT.md` latest section. Earlier boot-pending entries are historical.
+
+## Implementation progress — native worker and MCP integration (2026-10-17)
+
+Supersedes the earlier worker-pending state above. The exact installed macOS VM worker now passed low-privilege/cgroup execution, outside read/write and credential denials, immutable source, timeout/output limits, normal shutdown and stdout-backpressure cleanup. Authenticated local HTTP MCP passed six actual VM boots covering command execution, pinned two-step CI, failed pinned rerun, logs/artifacts, controller release and durable grant revocation. Production stdio/HTTP composition loads this signed installation only; missing/tampered installations fail closed. Grants persist root identity and revision, and ordinary binding remains read-only.
+
+This is an offline Linux ARM64 disposable-snapshot backend, with no host mounts or network. It does not implement macOS SDK execution, host file/Git mutation, general generated artifact export, restart recovery, startup lifecycle or Windows native containment. Windows protected state remains explicitly unavailable until a native ACL implementation is verified; its server exposes status without importing unverified grants. Live connected plugin calls returned `Session terminated`, so tunnel/plugin health and cross-platform release are not PASS. See `docs/reviews/2026-10-17-NATIVE-WORKER-INTEGRATION.md` and the latest checkpoint for evidence and remaining gates.

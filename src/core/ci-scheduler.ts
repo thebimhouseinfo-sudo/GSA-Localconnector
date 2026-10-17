@@ -36,7 +36,7 @@ export async function scheduleValidatedCI(native:VerifiedNativeSandbox|null,work
     run=transitionRun(run,"UNKNOWN",run.revision);
     return {record:run,logs,finished_jobs:completed};
    }
-   if(out.exit_code===null){
+   if(out.exit_code===null||out.output_limited||out.signal!==null||(out.timed_out&&out.exit_code===0)){
     run=transitionRun(run,"UNKNOWN",run.revision);return {record:run,logs,finished_jobs:completed};
    }
    if(out.cancelled){

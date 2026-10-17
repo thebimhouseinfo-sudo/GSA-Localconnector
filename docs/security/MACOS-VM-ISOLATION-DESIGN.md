@@ -1,6 +1,16 @@
 # GSA-Localconnector — macOS alternate execution isolation
 
-Status: **DESIGN CANDIDATE ONLY**. No executable or security approval.
+Status: **OFFLINE SNAPSHOT BACKEND NATIVE-TESTED ON MACOS**. Full cross-platform security/release remains incomplete.
+
+## Current implementation — 2026-10-17
+
+The implemented worker uses **zero host shares**, superseding the earlier VirtioFS proposal below. Descriptor-native source capture transfers bounded, hash-checked project bytes through a private read-only NoCloud seed. A descriptor-cloned disposable disk contains the guest working copy and an immutable root-owned source reference. Root supervision owns the serial channel; jobs run as UID/GID 65534 with no-new-privileges and private cgroup v2 containment. The VM has no network adapters.
+
+Protected installation proof binds the exact tested helpers, guest worker, seed builder, image hash and host kernel. The production MCP bootstrap additionally checks durable controller leases and workspace root identity/revision, including persisted revocation while jobs run. Guest changes are discarded and never written back to the host workspace. Host file/Git mutations and native macOS SDK workflows remain blocked.
+
+Actual native evidence includes positive Python builds, forbidden sibling reads/writes, nested execution, protected source/configuration, credential sentinels, timeout/output limits, escaped descendant cleanup, normal shutdown and deliberate stdout-backpressure cleanup. Six authenticated HTTP MCP VM boots also verified pinned CI/rerun and active lease/grant revocation. See `../reviews/2026-10-17-NATIVE-WORKER-INTEGRATION.md`.
+
+Restart recovery, general artifact export, dependency network access, startup lifecycle and Windows native enforcement are separate uncompleted gates. The following candidate notes are historical context where superseded by this implementation.
 
 ## Decision
 The production-restricted Seatbelt candidate SIGABRTs on the actual macOS 26.6.2 arm64 host; static profile changes and widened read paths did not make the legitimate /bin/cat read work. The replacement candidate is a separately signed Swift worker built on Apple's Virtualization.framework, with an **ARM64 Linux guest**. This permits portable build tools, not native macOS GUI programs or host Swift/Xcode-only workflows. A macOS guest would be a separate, significantly heavier design and is not included here. Apple's framework is documented at https://developer.apple.com/documentation/virtualization.
@@ -125,3 +135,9 @@ read-only and Linux might fail to mount or operate a writable root filesystem.
 No cloud-init provisioning, host network, host share, credential pass-through,
 or connector shell/Git/CI permissions are enabled. Inspect graphical boot
 results before proposing a writable guest data-layer design.
+
+## Local writable-guest offline workload — 2026-10-16
+
+Native evidence supersedes the older boot-pending status above: the read-only fallback candidate reached Linux/systemd, and the explicit `--offline-smoke` mode now completed an installed-tool workload on a disposable APFS clone. The verified open source descriptor is cloned with `fclonefileat`, rehashed, and only the clone is writable. A local read-only NoCloud seed (fresh nonce, local datasource mode) provisions no passwords, SSH keys, package downloads, network adapter or host share. It compiles/executes Python, checks nested processes, temporary root writes and loopback-only networking, and reports a matching result over hvc0. Both baseline image hashes were verified unchanged after the final native run; the VM stopped and discarded its scratch. A wrong-nonce native timeout test confirms failure and cleanup. Default and `--fallback-candidate` modes remain read-only.
+
+This is a development-only guest workload result, not a verified execution backend, host share proof, trusted guest attestation or SEC01 certification. Next native gates are a bounded authenticated worker channel, project-input transfer/share containment, negative host sibling/symlink/secret/evidence controls and cancellation/recovery. See `docs/reviews/2026-10-16-OFFLINE-VM-SMOKE.md` for exact evidence and remaining limitations.

@@ -8,6 +8,7 @@ export type ConnectorErrorCode =
 export interface WorkspaceGrant {
   readonly id: string;
   readonly canonicalRoot: string;
+  readonly rootIdentity: Readonly<{device:string;inode:string}>;
   readonly permissions: readonly WorkspacePermission[];
   readonly revision: number;
 }
