@@ -194,14 +194,15 @@ instructions or connector approval gates. No completion is claimed by this propo
 
 ## Baseline/failure ledger — 2026-10-17
 
-The candidate source baseline consolidates local native checkpoint 19dac16 and later
-Mac WIP on top of main e5ba967. It is not a release. Historical native evidence covers
+The project-only source baseline consolidates local native checkpoint 19dac16 and later
+Mac WIP on top of main e5ba967 through PR #3. It is not a release. Historical native evidence covers
 offline Linux ARM64 VM/local HTTP MCP, not current WIP, host SDK/mutation or Windows.
 First native export de4f0a42/CI 39009452982 passed Mac but failed Windows installation-proof
 binding and Linux queued/running cancellation plus bootstrap readyForShell; that PR was
 not merged. Later local fixes addressed four TS18047 stream errors and terminal-journal
-immutability. Current Mac source verification passed 146 tests with 3 skips outside the
-restricted execution environment; fresh cross-platform candidate CI is still required.
+immutability. Source revision ab6acfa passed CI run 39015375272 on Mac, Windows and Ubuntu
+after fixture/path repairs and ownership-test readiness synchronization. Source success
+does not establish native containment or full criteria compliance.
 Both remote plugins returned Session terminated during native integration: current
 plugin health is unverified. [STATUS.md](../STATUS.md) records current evidence and gaps.
 Preserve original RAW/candidate media; native tests need scoped disposable disks.

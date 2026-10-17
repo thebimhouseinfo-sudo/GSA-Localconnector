@@ -4,7 +4,7 @@ This is a source checkpoint, not a production release. [Criteria](CRITERIA.md) d
 
 ## Baseline history
 
-Previous main product baseline: b071308, followed by harness-only integration e5ba967. This candidate consolidates local native checkpoint 19dac16 and subsequent Mac source changes into a product-only baseline. At the user's request, publication removes agent tooling from the current tree without rewriting history; local tooling and recovery copies remain on the development machine. Source, tests, product build/install scripts, CI and project documentation remain versioned. This is a fresh source starting point, not a reset of completed work or a production release.
+Previous main product baseline: b071308, followed by harness-only integration e5ba967. PR #3 consolidates local native checkpoint 19dac16 and subsequent Mac source changes into a product-only baseline. At the user's request, publication removes agent tooling from the current tree without rewriting history; local tooling and recovery copies remain on the development machine. Source, tests, product build/install scripts, CI and project documentation remain versioned. This is a fresh source starting point, not a reset of completed work or a production release.
 
 ## Current gaps
 
@@ -15,20 +15,24 @@ Previous main product baseline: b071308, followed by harness-only integration e5
 
 ## Verification
 
-Four TS18047 pipe errors were reproduced and fixed with checked streams; strict compiler settings remain. The existing process-journal regression exposed missing terminal immutability. Minimal repair preserves final output capture, then seals stopped records once output is complete.
+Source revision `ab6acfa10ca60019d0d17730af63838f218a52d9`, tree `cbf57453f231fb4ceb87bc1d074214153997d526`, passed Source Contract CI run **39015375272** on 2026-10-17. All three jobs completed successfully, including applicable later compilation and fixture checks. Each host ran `npm test` (TypeScript build plus source tests):
 
-Initial local suite after pipe fix: 147 total, 140 pass, 4 fail, 3 skip. Failures: two HTTP loopback listeners denied with EPERM by the execution environment, missing terminal-journal rejection, and a Node 24 async-ID assertion abort in review-regressions.test.js. Final verification and remote CI evidence must be recorded before calling the baseline green.
+| Host | Total | Pass | Fail | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| macOS | 149 | 146 | 0 | 3 |
+| Windows | 149 | 121 | 0 | 28 |
+| Ubuntu | 149 | 140 | 0 | 9 |
 
-After the journal repair and explicit socket-error handling in the test probe: build PASS, journal regressions 3/3 PASS. Full local suite: 149 total, 143 pass, 3 fail, 3 skip. All three remaining failures are HTTP loopback listen EPERM in this restricted environment; the Node assertion abort no longer occurs. No test was skipped or weakened to obtain these results. Cross-platform CI remains to be checked on the published commit.
+Skipped platform/feasibility cases remain explicit. Ubuntu source success does not add Linux native host support. Windows source success does not verify Windows ACL containment. Source CI compiles native helpers and exercises fixtures; it does not certify an actual VM boot, installed runtime, live plugin or complete product operation.
 
-Fresh continuation verification on 2026-10-17 reproduced those three loopback EPERM failures inside the sandbox. With explicit permission to rerun outside the sandbox, the local verification wrapper exited 0, including TypeScript build PASS and product tests 149 total / 146 PASS / 0 FAIL / 3 skipped. No source or test was changed during that continuation. This is LOCAL_ONLY evidence for the dirty tree at HEAD `9066e01f61f7cddce17c9c23f9ce3d9105685928`, not a clean-commit, cross-platform, native capability or live-plugin certification. The wrapper and its private evidence stay local; `npm test` is the product verification entrypoint.
+Baseline repairs retain strict compiler checks and terminal-journal immutability. Cross-platform repairs give cancellation fixtures private snapshot storage, assert Linux's explicit unsupported status while retaining controller/denial checks, and validate macOS manifest paths with POSIX semantics on every CI host. Drive/UNC/traversal paths remain rejected. Actual native runtime loading still requires darwin/arm64.
 
-Previously observed cross-platform failures remain relevant until a fresh candidate run proves otherwise: Windows VM installation-proof fixture binding, and Ubuntu queued/running cancellation and production-bootstrap status fixtures (CI run 39009452982, unmerged PR #1). Mac source success does not clear them. Baseline publication must report the candidate's actual CI outcome; no failing test is removed or weakened for publication.
+The first PR #3 run, 39014797479, failed two Ubuntu fixtures and two Windows fixtures. Windows source-capture completion did not reproduce in the two subsequent Windows runs; real-storage error diagnostics and strict terminal-state assertions remain, and its original root cause is not claimed established. Run 39015197578 passed Ubuntu/Windows but exposed a Mac ownership-test startup race. That race was reproduced with an injected 2300ms child startup delay, then resolved by awaiting explicit readiness rather than assuming a two-second startup. Lock exclusivity, inherited descriptor fencing and release assertions remain intact. No failing test was removed or skipped for publication.
 
-The project-only candidate was exported independently of local agent tooling and passed `npm test` on Mac: build exit 0; 149 tests, 146 PASS, 0 FAIL, 3 skips. Existing installed Node dependencies were reused; this was not a fresh dependency installation. Read-only review reproduced the remaining portability problems with Windows path normalization and Linux platform simulations: the VM installation fixture uses a POSIX-only path, while status and CI-cancel fixtures receive `UNSUPPORTED_PLATFORM` on Linux. These simulations explain the prior failures but do not replace actual candidate CI. Native tests, live plugins and remote candidate CI were not run for this preparation.
+Independent cleanup/repair review found no blocking issue. The project-only export builds/tests without agent tooling. Local `npm test` after repairs also passed 146 tests with 3 skips; local runs reused installed dependencies, while CI installed dependencies separately. Earlier sandbox loopback EPERM failures remain environment evidence, not source success or native proof.
 
 Historical native evidence: [worker integration](reviews/2026-10-17-NATIVE-WORKER-INTEGRATION.md) and earlier VM smoke reports. Exact-artifact evidence does not certify subsequent WIP or the complete source tree.
 
 ## Next sequence
 
-Fix/review baseline, publish product source/docs, then reassess criteria and revise plan/milestones. Development milestones do not become approval gates in workspace tools.
+Use the reviewed project-only source baseline, reassess the implementation against criteria, then revise the proposed plan/milestones before further product work. Source verification does not close the implementation gaps above. Development milestones do not become approval gates in workspace tools.
