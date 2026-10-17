@@ -34,7 +34,7 @@ export class ProcessManager {
     const output=await this.native!.execute({...request,process_id:id});
     const length=Buffer.byteLength(output.stdout,"utf8")+Buffer.byteLength(output.stderr,"utf8");
     if(length>request.max_output_bytes)throw Error("OUTPUT_LIMIT_EXCEEDED");
-    const state:ProcessState=output.cancelled?"CANCELLED":output.timed_out?"FAILED":output.exit_code===0?"SUCCEEDED":output.exit_code===null?"UNKNOWN":"FAILED";
+    const state:ProcessState=output.cancelled?"CANCELLED":output.output_limited||output.signal!==null?"UNKNOWN":output.timed_out?"FAILED":output.exit_code===0?"SUCCEEDED":output.exit_code===null?"UNKNOWN":"FAILED";
     this.records.set(id,{...started,state,receipt:output,updated_at:new Date().toISOString()});
    }catch{
     this.records.set(id,{...started,state:"UNKNOWN",updated_at:new Date().toISOString()});

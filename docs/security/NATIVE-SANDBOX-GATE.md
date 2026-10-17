@@ -1,5 +1,11 @@
 # Native shell/CI security gate — Windows and macOS
 
+## Current product meaning — 2026-10-17
+
+[CRITERIA.md](../CRITERIA.md) governs design: working workspaces permit read/write/execute without connector approval gates; explicitly granted design/knowledge references permit read/search only, no mutation/execution; ungranted project data stays inaccessible. Enforce through tools and descendants. Approved system toolchains remain execution infrastructure.
+
+“Gate” in this legacy filename means an engineering verification obligation, not a user permission unlock. The remaining candidate notes are historical observations, not product permission requirements. New native proof must include positive reference reads and rejected reference writes/execution, as well as workspace execution and outside-boundary denials.
+
 Status: Docker candidate coded, NOT VERIFIED. Human environment decision and native security proof required.
 
 ## Required isolation

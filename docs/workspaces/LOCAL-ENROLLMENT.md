@@ -1,40 +1,25 @@
-# Trusted Workspace enrollment — Phase 1 (read-only)
-Status: source implementation and CI validation in progress. Windows/macOS tunnel apps require restart after local enrollment.
+# Workspace làm việc và thư mục tham khảo
 
-## Security model
-- Workspace enrollment only via **local OS terminal** on the target host (not a remotely callable MCP tool).
-- Grants are stored separately on each machine under GSA-Localconnector application data, with file creation mode 0600 on POSIX.
-- The current grants tool deliberately enrolls only **read** permission. Shell/execute, writes and Local CI remain blocked. A local read grant does not permit shell execution.
-- The MCP server reads saved grants at process startup. Restart the **correct machine's GSA-Localconnector tunnel** to reload. Do not restart GPTWorker or the other machine's tunnel.
-- Read operations validate realpath confinement, reject relative traversal and cap directory results to 500 entries / file bytes to 65536. This check is not yet a native, race-free filesystem sandbox. Do not enroll sensitive or adversary-writable directories until native containment review passes.
-- Revoke local grants before sharing high-sensitivity content; revocation currently takes effect after local MCP process restart, not instantaneously in already-running sessions. Avoid relying on this for urgent permissions withdrawal.
+[CRITERIA.md](../CRITERIA.md) là chuẩn sản phẩm. Connector cung cấp nơi làm việc và công cụ theo mô hình GitHub offline, không quản lý gate phê duyệt công việc.
 
-## Windows
-```powershell
-cd "D:\00 Other Works\Vibecode\GSA-Localconnector"
-git pull --ff-only origin main
-npm test
-npm run workspace -- enroll-read project-a "D:\path\to\project"
-npm run workspace -- list
-```
+Người dùng chọn plugin Windows hoặc Mac và cung cấp đường dẫn tuyệt đối. Mỗi máy quản lý phạm vi riêng. Không suy ra thư mục cha, thư mục bên cạnh, quyền trên máy còn lại; không yêu cầu tạo Job local hay đăng ký Terminal trước luồng sử dụng bình thường.
 
-## macOS
-```bash
-cd ~/GSA-Localconnector
-git pull --ff-only origin main
-npm test
-npm run workspace -- enroll-read project-b "$HOME/path/to/project"
-npm run workspace -- list
-```
+- **Workspace làm việc:** đọc, tìm kiếm, tạo, ghi, sửa, xóa, Git, chạy lệnh, tiến trình và build/test; không xin mở khóa đọc/ghi/thực thi riêng.
+- **Thư mục tham khảo được cấp:** chỉ đọc/tìm kiếm để đối chiếu thiết kế hoặc knowledge; không ghi, sửa, xóa, chạy lệnh hay build/test tại đó.
+- **Dữ liệu chưa được giao:** không truy cập; không tự nâng thư mục tham khảo thành workspace.
 
-After verifying local enrollment, restart only the GSA tunnel for that host, then call `list_workspaces`, `list_directory` with `path` set to a subdirectory, and `fetch_file` for a small UTF-8 file. `path` does not accept `.` in this initial version. Do not send arbitrary local absolute paths through MCP tools.
+Ví dụ, GSA đọc knowledge ở B để sửa/build/test dự án A. Có thể sao chép nội dung từ B vào A; không di chuyển khỏi B vì việc đó xóa dữ liệu nguồn. Di chuyển giữa hai workspace làm việc được phép trong phạm vi đã giao. Công cụ trực tiếp, lệnh và tiến trình con đều tuân thủ ranh giới; cwd, symlink và script không được dùng để vượt quyền.
 
-## Shell and future Git/CI
-Directory binding is not containment for arbitrary shell commands. Shell will not be exposed until native isolation per OS prevents escaped child processes, filesystem writes outside grants, network and elevation hazards per policy, and verified denial tests on real Windows/macOS installations. Future Git changes and CI must use the same independently verified process containment gate.
+Xác thực, kiểm tra danh tính thư mục, xung đột nội dung và thu hồi phạm vi là bảo vệ dữ liệu, không phải gate phê duyệt từng thao tác.
 
-## CURRENT binding contract — plugin-first (2026-10-16)
-This section supersedes local-CLI-first instructions above. User calls `gsa-lc` (Windows) or `gsa-lc-mac` (macOS) with one or more **explicit absolute directory paths**. GSA invokes `bind_workspaces({paths:[...]})` on the selected plugin, and the connector verifies each target exists and is a directory, canonicalizes it, assigns a stable host-local Workspace ID, persists read-only grant, and makes the grant available to the calling tool process immediately. The user **must supply the paths**; do not infer broad parent directories or grant extra paths. Each host has independent Workspace roots. Shell/write/Local CI remain blocked until OS-native containment is verified.
+## Runtime hiện có — khoảng thiếu so với criteria
 
-Example human instruction: `@gsa-lc-mac bind /Users/username/projectA and /Users/username/projectB`.
+Source hiện tại trong `src/mcp/server.ts` có `bind_workspaces({paths:[...]})`, kiểm tra đường dẫn tuyệt đối và dùng `enrollReadOnlyBatch`. Bind hiện còn chỉ đọc; thực thi còn phụ thuộc runtime/proof cũ. Đây là khoảng thiếu, không phải thiết kế quyền cuối cùng.
 
-A tunnel MCP child process may reload between requests; persistence is required and included. If an existing process cached grants before binding, restart the selected host's GSA tunnel once to reload. Do not modify GPTWorker or the other host. The old `npm run workspace -- enroll-read ...` remains a maintenance fallback, **not a prerequisite** for normal Workspace binding.
+`src/local/workspace-cli.ts` có `list`, `enroll-read`, `enroll-execute`, `revoke`: các lệnh quản trị triển khai cũ, không phải bước bắt buộc trong luồng mục tiêu. Chúng chưa chứng minh runtime phân biệt workspace/tham khảo đúng criteria. Không bịa API hoặc tham số đăng ký tham khảo chưa được xác minh.
+
+Xem [protected state](../security/PROTECTED-STATE-PLATFORMS.md) và [source status](../STATUS.md) cho giới hạn nền tảng/revision. Nếu bảo trì runtime cũ cần nạp lại grant, chỉ restart đúng connector/tunnel; không tác động GPTWorker hoặc máy còn lại. Tài liệu không tự cho phép đăng ký, thu hồi hay nâng quyền.
+
+## Kiểm chứng khi triển khai
+
+Kiểm tra luồng plugin → giao workspace/tham khảo → đọc tham khảo → sửa/chạy trong workspace → lấy kết quả, không gate nội bộ. Từ công cụ trực tiếp và tiến trình con: workspace đọc/ghi/thực thi được; tham khảo đọc được nhưng ghi/xóa/thực thi bị từ chối; dữ liệu chưa giao không đọc được. Thu hồi/thay thế thư mục không để quyền cũ tồn tại. Dùng fixture trong phạm vi test được giao.

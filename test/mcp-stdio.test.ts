@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 import {spawn} from "node:child_process";
 import {fileURLToPath} from "node:url";
 import {test} from "node:test";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 test("real stdio JSON-RPC initialize, list and tool calls", async () => {
  const cli=fileURLToPath(new URL("../src/mcp/cli.js",import.meta.url));
- const child=spawn(process.execPath,[cli],{stdio:["pipe","pipe","pipe"]});
+ const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-stdio-test-"));
+ const child=spawn(process.execPath,[cli],{env:{...process.env,HOME:tmp,USERPROFILE:tmp,LOCALAPPDATA:path.join(tmp,"local")},stdio:["pipe","pipe","pipe"]});
  let pending=new Map<number,(v:any)=>void>(),data="";
  const transcript:any[]=[];
  child.stdout.setEncoding("utf8");
@@ -44,5 +48,6 @@ test("real stdio JSON-RPC initialize, list and tool calls", async () => {
  } finally {
   child.stdin.end();
   await new Promise<void>(resolve=>{if(child.exitCode!==null)resolve();else {child.once("exit",()=>resolve());setTimeout(()=>{child.kill();resolve();},2000).unref();}});
+  await fs.rm(tmp,{recursive:true,force:true});
  }
 });

@@ -25,11 +25,20 @@ coverage/
 /.codex/cache/
 /.codex/sessions/
 
-# Harness evidence/state and recovery copies; scripts/templates stay tracked
-/harness/state.json
-/harness/snapshots/
-/harness/local-state/
-/harness/reports/
+# Agent environment and Codex-only workflow stay local
+/.codex/
+/.agents/
+/harness/
+/AGENTS.md
+/TASKS.md
+/lessons/
+/docs/bootstrap/
+/docs/CLI-HANDOFF.md
+/docs/reports/
+/.gsa/BASELINE.md
+/.gsa/CURRENT_CHECKPOINT.md
+# Do not ignore product workflow definitions such as .gsa/ci.yaml.
+# Product build/install/native-test scripts in scripts/ remain versioned.
 
 # VM media and runtime state; keep native source and entitlements tracked
 *.raw

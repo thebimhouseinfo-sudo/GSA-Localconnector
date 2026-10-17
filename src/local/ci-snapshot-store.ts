@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {createHash} from "node:crypto";
+import {validateWorkspaceRelative} from "../core/workspace-path.js";
 import {identityDirectory} from "./identity.js";
 import {createSnapshotManifest} from "../core/ci-snapshot.js";
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -48,6 +49,32 @@ export class CiSnapshotStore{
    throw new SnapshotStoreError("SNAPSHOT_INTEGRITY","Duplicated source differs");
   return copy;
  }
+ /** Export manifest members with their individual and combined hashes rechecked. */
+ async readVerifiedEntries(runId:string):Promise<Array<{path:string;bytes:Uint8Array}>>{
+  const manifest=await this.verify(runId);
+  const entries=[];
+  for(const member of manifest.files){
+   const bytes=await fs.readFile(path.join(this.root,runId,"files",...member.path.split("/")));
+   if(bytes.length!==member.size||createHash("sha256").update(bytes).digest("hex")!==member.sha256)
+    throw new SnapshotStoreError("SNAPSHOT_INTEGRITY","Snapshot file changed");
+   entries.push({path:member.path,bytes});
+  }
+  if(createSnapshotManifest(entries).source_sha256!==manifest.source_sha256)
+   throw new SnapshotStoreError("SNAPSHOT_INTEGRITY","Snapshot export changed");
+  return entries;
+ }
+ /** Workflow-only bounded member read; source export has the snapshot quota. */
+ async readVerifiedFile(runId:string,relative:string):Promise<Buffer>{
+  validateWorkspaceRelative(relative);
+  const manifest=await this.verify(runId);
+  const member=manifest.files.find(file=>file.path===relative);
+  if(!member)throw new SnapshotStoreError("SNAPSHOT_INTEGRITY","File is not in captured source");
+  if(member.size>65536)throw new SnapshotStoreError("SNAPSHOT_INTEGRITY","Workflow exceeds size limit");
+  const bytes=await fs.readFile(path.join(this.root,runId,"files",...relative.split("/")));
+  if(bytes.length!==member.size||createHash("sha256").update(bytes).digest("hex")!==member.sha256)
+   throw new SnapshotStoreError("SNAPSHOT_INTEGRITY","Snapshot file changed");
+  return bytes;
+ }
  async verify(runId:string){
   if(!UUID.test(runId))throw new SnapshotStoreError("INVALID_RUN_ID","Invalid CI run ID");
   const destination=path.join(this.root,runId);
@@ -55,7 +82,8 @@ export class CiSnapshotStore{
   const observed=[];
   for(const file of manifest.files){
    const relative=file.path;
-   if(!relative||relative.includes("..")||relative.startsWith("/")||relative.includes("\\"))throw new SnapshotStoreError("SNAPSHOT_INTEGRITY","Invalid stored path");
+   try{validateWorkspaceRelative(relative);}
+   catch{throw new SnapshotStoreError("SNAPSHOT_INTEGRITY","Invalid stored path");}
    const b=await fs.readFile(path.join(destination,"files",...relative.split("/")));
    if(b.length!==file.size||createHash("sha256").update(b).digest("hex")!==file.sha256)throw new SnapshotStoreError("SNAPSHOT_INTEGRITY","Snapshot contents changed");
    observed.push({path:relative,bytes:b});

@@ -1,4 +1,5 @@
 import {createHash,randomUUID} from "node:crypto";
+import type {CiWorkflow} from "./ci-dag.js";
 export type RunState="QUEUED"|"PREPARING"|"RUNNING"|"PASSED"|"FAILED"|"CANCELLED"|"BLOCKED"|"UNKNOWN";
 const transitions:Record<RunState,RunState[]>={
  QUEUED:["PREPARING","CANCELLED","BLOCKED"],
@@ -8,6 +9,8 @@ const transitions:Record<RunState,RunState[]>={
 };
 export interface CiRunRecord {
  readonly run_id:string;readonly workspace_id:string;readonly workflow:string;
+ readonly source_run_id?:string;
+ readonly workflow_binding?:{readonly path:string;readonly sha256:string;readonly document:CiWorkflow};
  readonly source_sha256:string;readonly created_at:string;readonly updated_at:string;
  readonly state:RunState;readonly revision:number;readonly rerun_of?:string;readonly evidence?:{exit_code:number;artifact_hashes:Readonly<Record<string,string>>};
 }
@@ -47,5 +50,7 @@ export function reconcileInterruptedRun(run:CiRunRecord,now=new Date()):CiRunRec
  */
 export function prepareFailedRerun(failed:CiRunRecord,verifiedSourceSha:string):CiRunRecord{
  if(failed.state!=="FAILED"||failed.source_sha256!==verifiedSourceSha)throw new CiStateError("RERUN_REQUIRES_FAILED_VERIFIED_SOURCE");
- return Object.freeze({...createQueuedRun(failed.workspace_id,failed.workflow,verifiedSourceSha),rerun_of:failed.run_id});
+ return Object.freeze({...createQueuedRun(failed.workspace_id,failed.workflow,verifiedSourceSha),rerun_of:failed.run_id,
+  ...(failed.source_run_id?{source_run_id:failed.source_run_id}:{}),
+  ...(failed.workflow_binding?{workflow_binding:structuredClone(failed.workflow_binding)}:{})});
 }
