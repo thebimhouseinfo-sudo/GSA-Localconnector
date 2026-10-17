@@ -12,17 +12,26 @@ import {ControlLeaseStore} from "../src/local/control-lease.js";
 const launcher=fileURLToPath(new URL("../../scripts/macos-owner-launcher.py",import.meta.url));
 const sourceLauncher=path.resolve("scripts/macos-owner-launcher.py");
 const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms));
-test("kernel owner lock fences another server and inherited workers after parent crash",{skip:process.platform!=="darwin"},async()=>{
+test("kernel owner lock fences another server and inherited workers after parent crash",{skip:process.platform!=="darwin",timeout:20000},async()=>{
  const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),"gsa-owner-")));
- const identity=path.join(root,"identity"),entry=path.join(root,"entry.mjs"),ready=path.join(root,"ready"),pidFile=path.join(root,"child-pid");
+ const identity=path.join(root,"identity"),entry=path.join(root,"entry.mjs"),pidFile=path.join(root,"child-pid");
  await fs.mkdir(identity,{mode:0o700});
- await fs.writeFile(entry,`import fs from 'node:fs';import {spawn} from 'node:child_process';const child=spawn(process.execPath,['-e','setTimeout(()=>{},30000)'],{stdio:['ignore','ignore','ignore',3]});fs.writeFileSync(${JSON.stringify(pidFile)},String(child.pid));fs.writeFileSync(${JSON.stringify(ready)},process.env.GSA_OWNER_SESSION);setTimeout(()=>{},30000);`);
+ await fs.writeFile(entry,`import fs from 'node:fs';import {spawn} from 'node:child_process';const child=spawn(process.execPath,['-e','setTimeout(()=>{},30000)'],{stdio:['ignore','ignore','ignore',3]});fs.writeFileSync(${JSON.stringify(pidFile)},String(child.pid));process.stdout.write(process.env.GSA_OWNER_SESSION+'\\n');setTimeout(()=>{},30000);`);
  const start=()=>spawn('/usr/bin/python3',[sourceLauncher,'--identity',identity,'--node',process.execPath,'--entry',entry],{stdio:['ignore','pipe','pipe']});
  const waitExit=(child:ChildProcess)=>new Promise<number|null>(resolve=>child.once('exit',code=>resolve(code)));
+ const waitReady=(child:ChildProcess)=>new Promise<string>((resolve,reject)=>{
+  let output="",diagnostic="";
+  const cleanup=()=>{clearTimeout(timer);child.stdout!.off('data',data);child.stderr!.off('data',stderr);child.off('exit',exited);child.off('error',failed);};
+  const failed=(error:Error)=>{cleanup();reject(error);};
+  const exited=()=>failed(Error(`owner fixture exited before readiness: ${child.exitCode}; ${diagnostic}`));
+  const stderr=(chunk:Buffer)=>{diagnostic=(diagnostic+chunk.toString()).slice(-4096);};
+  const data=(chunk:Buffer)=>{output+=chunk.toString();const end=output.indexOf('\n');if(end>=0){cleanup();resolve(output.slice(0,end));}};
+  const timer=setTimeout(()=>failed(Error(`owner fixture readiness timeout; ${diagnostic}`)),10000);
+  child.stdout!.on('data',data);child.stderr!.on('data',stderr);child.once('exit',exited);child.once('error',failed);
+ });
  const first=start();let grandchild:number|undefined;
  try{
-  for(let i=0;i<100;i++){try{await fs.stat(ready);break;}catch{}await sleep(20);}
-  assert.match(await fs.readFile(ready,'utf8'),/^[a-f0-9-]{36}$/);
+  assert.match(await waitReady(first),/^[a-f0-9-]{36}$/);
   grandchild=Number(await fs.readFile(pidFile,'utf8'));
   const second=start();assert.equal(await waitExit(second),75);
   first.kill('SIGKILL');await waitExit(first);
