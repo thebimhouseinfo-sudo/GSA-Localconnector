@@ -4,20 +4,42 @@
 
 The user requested a GitHub push and merge to main, then explicitly clarified:
 **do not repair or push the failing files; record them in this handoff**.
-Only the previously verified baseline `19dac16`, project harness/model configuration
-`bcd33c8`, and this documentation handoff are included in the integration.
+Main integration is now limited to project harness/model configuration and this handoff.
+Product source on main stays at its existing b071308 baseline. The local native baseline
+19dac16 also has cross-platform CI failures and is excluded from the final main PR.
 The 32 pending Mac files listed below remain local, unstaged and unpublished.
 Do not use `git add -A`, `git commit -a` or push them as though they were verified.
 
-## Verification of the published source snapshot
+## Verification history and final integration boundary
 
-An isolated export of committed HEAD (without local WIP files) ran
+The first local macOS export (native baseline + harness, without the 32 WIP files) ran
 `node harness/verify.mjs` successfully:
 - Harness self-check PASS.
 - Harness fixtures: 29 PASS, 0 FAIL.
 - Product suite: 140 tests, 137 PASS, 3 skips, 0 FAIL.
-This is source verification, not a new native VM run or release certification.
-GitHub CI and merge identity are to be verified separately against the exact pushed SHA.
+That first candidate was submitted in PR #1 at de4f0a42. CI run 39009452982 passed
+macOS but failed Ubuntu (2 test failures) and Windows (1 test failure). It is not
+merged. Local macOS PASS did not establish cross-platform readiness. The final main
+PR therefore excludes the entire native/runtime baseline rather than modifying or
+removing its failing tests. Final harness-only CI is checked separately.
+
+Observed cross-platform failures needing future authorized work:
+- test/macos-vm-runtime.test.ts: installation proof binding rejected on Windows
+  (SECURITY_BLOCKED: installation proof binding).
+- test/ci-store.test.ts: Linux queued/running cancellation regression returned an
+  undefined state (Cannot read properties of undefined reading state); job 117328615121.
+- test/runtime-bootstrap.test.ts: Linux production-bootstrap status fixture cannot
+  read readyForShell because the tool result is undefined.
+Do not fix or weaken these tests as part of this Git integration task.
+
+Final harness-only source was tested separately with a fresh temporary user profile:
+self-check PASS, 29/29 harness cases PASS, 84 product cases (82 PASS, 2 skips, 0 FAIL).
+Using the real personal profile initially exposed ambient persisted-workspace assumptions
+in the old main tests; no test was edited. The temporary child profile matches clean CI
+and does not modify the real user profile. Remote CI for this final tree is separate.
+
+The runtime candidate exists on the unmerged PR branch as review/CI evidence; it was
+not known to fail those platforms until CI ran. It must not be represented as main.
 
 ## Local unpublished state and known failures
 
@@ -36,7 +58,7 @@ Recovery snapshot of all 32 local pending files:
 Original hashes are in ignored `.gsa/local-state/bootstrap/unpublished-mac-files.json`.
 Those local backups are not on GitHub. Do not delete/reset/clean the working tree.
 
-### Unpublished files (not part of main/PR)
+### 32 local WIP changes (excluded from submitted commits)
 
 - `docs/superpowers/plans/2026-10-17-macos-completion.md`
 - `native/macos-files/broker.swift`
@@ -89,10 +111,11 @@ Mac completion work remains:
 - Recheck local transport/live plugin, cancellation/revocation/restart, and enabled host
   operations end-to-end. Do not claim a live plugin PASS from an old or terminated session.
 
-Published baseline already has offline native worker/MCP evidence in
+The local 19dac16 baseline has offline native worker/MCP evidence in
 `docs/reviews/2026-10-17-NATIVE-WORKER-INTEGRATION.md`. Preserve both original RAW and
 fallback candidate disks; never reconvert or mutate them simply to continue the task.
-Historical checkpoint entries can retain older pending states; distinguish their dates.
+That evidence document remains in the local native checkpoint, not the harness-only
+main integration. Historical checkpoint entries retain older pending states; distinguish dates.
 Windows work and production release remain outside the completed Mac baseline claims.
 
 ## Working environment
@@ -108,3 +131,11 @@ Harness milestone remains NOT_CONFIGURED, review coordination GUIDED_ONLY, and n
 trusted human gate-approval adapter is installed. Do not fabricate milestone approval.
 Ignore local credentials/tunnel/media/cache/state. Publishing this checkpoint does not
 publish those files and does not make the local unfinished Mac tree a passing build.
+
+## Local checkout after handoff
+The existing checkout is deliberately preserved on codex/mac-completion with its local
+verified-native commits plus 32 pending files. Main's final harness-only tree differs
+from that local runtime tree. Do not git switch/reset/clean blindly or force-push the
+local branch over the quarantine PR branch. The next CLI agent must inspect git status
+and the local commit lineage before a scoped product task. GitHub main and the local
+dirty runtime workspace are intentionally different.

@@ -3,15 +3,17 @@
 Date: 2026-10-17
 Stage: macOS offline snapshot runtime and local MCP native E2E PASS; full cross-platform implementation/release remains incomplete. Historical entries retain their original status.
 
-## Git integration and CLI handoff — 2026-10-17
+## Git integration / CLI handoff — 2026-10-17
 
-Latest integration boundary and local unpublished files: `docs/CLI-HANDOFF.md`.
-Only verified baseline + harness + handoff are being published. User explicitly said
-not to repair/push the failing Mac files. A clean committed export passes 140 product
-cases (137 PASS, 3 skips) and 29 harness cases. The local working tree still contains
-32 unfinished Mac files, including a TypeScript build failure, and must be preserved.
-No new native VM/release PASS is inferred from this integration. Remote CI/merge are
-verified by the actual PR state; do not infer them from this local checkpoint text.
+Read docs/CLI-HANDOFF.md first. Final main PR #2 contains only harness/model configuration
+and handoff; product source remains at b071308. Native/runtime PR #1 passed macOS but
+failed Linux/Windows CI (39009452982) and was closed without merge, not repaired.
+Harness-only fresh-profile verification: 84 product tests (82 PASS, 2 skips, 0 FAIL),
+29 harness PASS. Remote merge identity is verified separately in the PR state.
+The local checkout deliberately retains native commit 19dac16 and 32 unfinished Mac
+changes. Their hashes and recovery snapshot are retained locally; do not reset/clean,
+blindly switch to main, or force-push the local lineage over the quarantined PR branch.
+Older native/boot evidence below is local historical evidence, not main release status.
 
 ## Latest local evidence — native worker and MCP integration (2026-10-17)
 
