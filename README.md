@@ -1,8 +1,10 @@
 # GSA-Localconnector
 
-An offline GitHub workspace and tool provider for GSA on Windows and macOS. GSA owns reasoning and orchestration; connector supplies direct MCP file/search/edit, version control, process and local CI tools.
+Local capabilities and MCP APIs for GSA through `gsa-lc-mac` or `gsa-lc`. GSA owns reasoning and orchestration; the connector targets file/search/edit, Git, process and existing project build/test tools on the selected machine.
 
-The target model gives working workspaces read/write/execute without per-operation approval gates. Optional explicit reference directories permit read/search only, not mutation/execution; data outside granted scopes must remain inaccessible. Windows/Mac use separate plugins/tunnels and may run simultaneously. This source checkpoint does not yet implement the full model; see [current gaps and verification](docs/STATUS.md).
+The target model gives working workspaces full file operations, including copy/move/rename/delete, shell, Git, diff and build/test without per-operation approval gates. Explicit references permit list/search/read and copy out into a workspace, never mutation or direct execution in the reference. Data outside granted scopes must remain inaccessible. Windows/Mac use separate plugins/tunnels; complete Mac before Windows development. Personal-use acceptance checks each host separately and keeps projects independent on that host. Tests use the current actual host and installed tools; cross-OS project checks can use GitHub CI when needed. No new VM or connector CI engine is required. This source checkpoint does not yet implement the full model; see [current gaps and verification](docs/STATUS.md).
+
+The source binding API accepts explicit workspace/reference roles and retains the legacy read-only `paths` form. Role grants describe intended scope; they do not activate missing native backends. See the [binding contract and examples](docs/workspaces/LOCAL-ENROLLMENT.md).
 
 ## Project documents
 
@@ -10,7 +12,9 @@ The target model gives working workspaces read/write/execute without per-operati
 - [Decisions](docs/DECISIONS.md)
 - [Source status](docs/STATUS.md)
 - [Implementation plan](docs/plans/GSA-LOCALCONNECTOR-IMPLEMENTATION-PLAN.md)
+- [Criteria-to-source assessment](docs/plans/CRITERIA-TRACEABILITY.md)
 - [Milestone proposals](docs/MILESTONES.md)
+- [First Mac boundary feasibility plan](docs/plans/M1-MAC-BOUNDARY-FEASIBILITY.md)
 - [Workspace model](docs/workspaces/LOCAL-ENROLLMENT.md)
 - [Transport setup](docs/tunnel/SETUP.md)
 

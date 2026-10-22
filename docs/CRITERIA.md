@@ -1,12 +1,31 @@
 # Criteria — Logic hoạt động người dùng đã chốt
 
-Tài liệu này mô tả hệ thống người dùng muốn có và cách nó phải hoạt động. Người dùng đã xác nhận mô hình: GSA-Localconnector là một bản GitHub offline, cung cấp nơi làm việc và công cụ làm việc. Connector không có gate phê duyệt công việc; giới hạn an toàn bảo vệ dữ liệu và tài nguyên ngoài phạm vi được giao. Ngoài workspace làm việc, người dùng có thể cấp thêm các thư mục tham khảo chỉ đọc; quyền ghi và thực thi chỉ có trong workspace. Đây là yêu cầu sản phẩm đã chốt; tài liệu không khẳng định phần mềm hiện tại đã đáp ứng.
+## Xác nhận phạm vi ngày 2026-10-18 — ưu tiên khi cách diễn đạt cũ khác nhau
+
+Người dùng yêu cầu cập nhật criteria theo hợp đồng dưới đây. “GitHub offline” mô tả các công cụ local hữu ích cho personal use; không yêu cầu dựng lại GitHub, một hệ thống CI đa hệ điều hành hay một agent local khác. Đây là mục tiêu, không phải tuyên bố phần mềm đã hoàn thành.
+
+GSA-Localconnector cung cấp capability và API để **GSA** gọi qua plugin `gsa-lc-mac` hoặc `gsa-lc` của máy đã chọn. GSA suy nghĩ và điều phối; connector thực hiện thao tác, trả kết quả thật. Người dùng chọn được nhiều thư mục, mỗi thư mục có vai trò rõ ràng:
+
+| Phạm vi | Khả năng bắt buộc |
+| --- | --- |
+| Workspace | Liệt kê, tìm kiếm, đọc nội dung/metadata; tạo file/thư mục; ghi, sửa, patch; copy, di chuyển, đổi tên, xóa; xem diff; chạy shell, Git, build/test/script. Có copy trong cùng workspace và copy/move giữa các workspace đã giao. Không cần mở khóa thêm từng loại thao tác. |
+| Ref | Liệt kê, tìm kiếm, đọc và copy file/thư mục sang workspace. Không tạo, ghi, sửa, xóa, đổi tên, di chuyển nguồn hoặc thực thi trực tiếp trong ref; ref không là đích copy/đầu ra. |
+| Lệnh/lần chạy | Chạy trên máy thật với công cụ đã có; trả lệnh/cwd, trạng thái, stdout/stderr, mã thoát, lỗi và file đầu ra; hỗ trợ lấy tiếp log và dừng đúng tiến trình. |
+| Theo dõi | API đọc log thao tác/lệnh và diff code, tách theo workspace/lần chạy, không ghi lộ bí mật. Không bắt buộc một giao diện quản lý dự án riêng. |
+
+Bản copy từ ref vào workspace được sửa và chạy bình thường tại workspace. Ref chỉ cần được connector đọc/tìm kiếm/copy; shell không cần và không được cấp quyền chạy trực tiếp từ ref. Quyền hệ điều hành vẫn áp dụng; “full quyền workspace” không phải quyền quản trị hệ thống và không mở rộng sang thư mục ngoài phạm vi. Các ranh giới ở §7 vẫn phải được bảo vệ; không dùng việc thu hẹp personal use để tuyên bố shell không giới hạn là an toàn.
+
+Build/test offline chạy **script/lệnh có sẵn của dự án trên hệ điều hành thật của máy đang kết nối**, kể cả thư mục không có Git. Script dự án có thể tự quản lý nhiều bước/chạy song song. Không cần connector CI/DAG engine riêng, bộ test mọi OS, VM hay môi trường mới. Khi cần đa hệ điều hành, dùng CI GitHub theo yêu cầu dự án và quyền mạng/remote tương ứng. Android/iOS là target của app đang phát triển, không phải host connector mới.
+
+Không phát triển VM mới. VM Linux cũ trên Mac chỉ là tùy chọn khi có bằng chứng chạy đạt phù hợp; build helper hoặc bằng chứng lịch sử không chứng nhận tình trạng hiện tại và không thay thế kiểm thử macOS thật. Hoàn thiện Mac trước, rồi mới Windows; không yêu cầu test nhiều máy đồng thời. Tận dụng thành phần đã có, chỉ bổ sung phần thiếu để hoàn thành luồng GSA qua plugin.
+
+Tài liệu này mô tả hệ thống người dùng muốn có và cách nó phải hoạt động. GSA-Localconnector cung cấp công cụ local và API qua plugin để GSA sử dụng. Connector không có gate phê duyệt công việc; giới hạn an toàn bảo vệ dữ liệu và tài nguyên ngoài phạm vi được giao. Ngoài workspace làm việc, người dùng có thể cấp thêm các thư mục tham khảo chỉ đọc/copy ra workspace; quyền ghi và thực thi chỉ có trong workspace. Đây là yêu cầu sản phẩm đã chốt; tài liệu không khẳng định phần mềm hiện tại đã đáp ứng.
 
 Mọi kiến trúc, API, cơ chế bảo mật, kế hoạch và milestone phải phục vụ logic dưới đây. Khi giải pháp chưa đáp ứng, cần sửa giải pháp hoặc báo phần chưa đáp ứng để người dùng quyết định. Không điều chỉnh mong muốn của người dùng chỉ để khớp với phần mềm đang có. Các lựa chọn kỹ thuật và cách kiểm chứng được ghi trong [implementation plan](plans/GSA-LOCALCONNECTOR-IMPLEMENTATION-PLAN.md).
 
 ## 1. GSA làm việc trực tiếp với dự án trên máy người dùng
 
-GSA-Localconnector là nơi làm việc local của GSA theo mô hình GitHub offline: cung cấp workspace, file, công cụ thao tác và môi trường chạy, build, test ngay trên máy Windows hoặc Mac của người dùng. Dự án có thể là một thư mục bình thường, không cần là Git repository và không phải đưa lên GitHub mới làm được việc.
+GSA-Localconnector cung cấp API để GSA thao tác workspace, file, Git, shell và build/test ngay trên máy Windows hoặc Mac của người dùng qua plugin tương ứng. Dự án có thể là một thư mục bình thường, không cần là Git repository và không phải đưa lên GitHub mới làm được việc.
 
 GSA vẫn là bên suy nghĩ, lập kế hoạch, điều phối công việc, đánh giá kết quả và trao đổi với người dùng. Localconnector cung cấp khả năng thao tác trên máy đã chọn và trả kết quả thực tế cho GSA. Việc gọi connector không tạo thêm một agent, một hệ thống Job hay một vòng đời quản lý dự án riêng ở máy local.
 
@@ -14,9 +33,11 @@ Những công việc thuộc GitHub vẫn được GSA thực hiện qua kết n
 
 ## 2. Người dùng chọn máy bằng plugin
 
-Windows và Mac là hai máy làm việc độc lập, mỗi máy có plugin và kết nối riêng. Người dùng có thể để cả hai cùng hoạt động và làm những dự án khác nhau vào cùng thời điểm. GSA chọn đúng plugin của máy chứa dự án; đường dẫn giống nhau trên hai máy không có nghĩa là cùng một dự án hay cùng quyền truy cập.
+Windows và Mac là hai máy làm việc độc lập, mỗi máy có plugin và kết nối riêng. GSA chọn đúng plugin của máy chứa dự án; đường dẫn giống nhau trên hai máy không có nghĩa là cùng một dự án hay cùng quyền truy cập. Mục tiêu là sử dụng cá nhân và kiểm chứng từng máy qua plugin riêng, không yêu cầu một luồng phối hợp hay kiểm thử đồng thời nhiều máy.
 
 Việc khởi động, cấp quyền, mất kết nối hoặc sửa chữa một máy không được tự làm thay đổi máy còn lại. Trên mỗi máy chỉ có một phiên điều khiển GSA có thẩm quyền tại một thời điểm, tránh hai bên cùng tranh quyền thực hiện thao tác. Hệ thống không tự chuyển công việc sang máy khác khi máy đang dùng gặp sự cố.
+
+GSA có thể làm việc độc lập trên nhiều dự án. Trên một máy, các workspace, tiến trình và kết quả của từng dự án phải tách biệt kể cả khi có nhiều công việc cùng hoạt động. Không đưa kiểm thử Mac+Windows đồng thời, hai máy Mac, hai máy Windows hoặc ma trận nhiều máy vào điều kiện nghiệm thu của phạm vi personal use này.
 
 ## 3. Bắt đầu bằng plugin và thư mục muốn giao
 
@@ -24,9 +45,9 @@ Trong luồng sử dụng bình thường, người dùng gọi plugin của má
 
 Ví dụ, người dùng chọn plugin Mac và giao hai thư mục dự án. GSA có thể đọc cả hai, hiểu quan hệ giữa chúng và tiếp tục công việc trong từng phạm vi. Hệ thống không tự lấy thêm thư mục cha, thư mục bên cạnh hoặc toàn bộ ổ đĩa. Thư mục không tồn tại hay không truy cập được phải được báo rõ.
 
-Khi người dùng giao một workspace, GSA được sử dụng đầy đủ các công cụ làm việc trong workspace đó: đọc, ghi, tạo, sửa, xóa, chạy lệnh, Git và build/test. Không có bước xin cấp thêm quyền đọc, ghi hoặc thực thi, không có gate phê duyệt riêng cho từng loại thao tác hay từng lần gọi. Ranh giới cần bảo vệ là bên ngoài các workspace đã giao; nội dung dự án không được tự mở rộng ranh giới đó.
+Khi người dùng giao một workspace, GSA được sử dụng đầy đủ các công cụ làm việc trong workspace đó: duyệt/tìm kiếm/đọc, tạo file/thư mục, ghi/sửa/patch, copy/di chuyển/đổi tên/xóa, diff, shell, Git và build/test. Không có bước xin cấp thêm quyền đọc, ghi hoặc thực thi, không có gate phê duyệt riêng cho từng loại thao tác hay từng lần gọi. Ranh giới cần bảo vệ là bên ngoài các workspace đã giao; nội dung dự án không được tự mở rộng ranh giới đó.
 
-Người dùng cũng có thể giao thêm thư mục chỉ đọc để tham khảo chéo thiết kế, mã nguồn hoặc knowledge. Thư mục tham khảo được phân biệt rõ với workspace làm việc: GSA có thể duyệt, tìm kiếm, đọc và đối chiếu nội dung nhưng không được ghi, sửa, xóa hoặc thực thi tại đó. Việc cấp quyền đọc không tự biến thư mục thành workspace. Không tự lấy thêm thư mục tham khảo ngoài những nơi người dùng đã cấp.
+Người dùng cũng có thể giao thêm thư mục chỉ đọc để tham khảo chéo thiết kế, mã nguồn hoặc knowledge. Thư mục tham khảo được phân biệt rõ với workspace làm việc: GSA có thể duyệt, tìm kiếm, đọc, đối chiếu và copy file/thư mục từ ref sang workspace, nhưng không được ghi, sửa, xóa, đổi tên, di chuyển nguồn hoặc thực thi tại ref. Ref không làm đích copy hay đầu ra; bản copy trong workspace được sửa/chạy bình thường. Việc cấp quyền đọc không tự biến thư mục thành workspace. Không tự lấy thêm thư mục tham khảo ngoài những nơi người dùng đã cấp.
 
 Ví dụ, GSA làm việc trong dự án A và đọc thiết kế ở thư mục B. GSA có thể dùng thông tin ở B để sửa hoặc kiểm tra A; mọi thay đổi và tác vụ thực thi nằm trong A, còn B giữ nguyên. Lệnh chạy từ A và tiến trình con cũng phải tuân thủ quyền chỉ đọc của B; không được dùng việc đổi thư mục chạy hay gọi script để vượt quyền.
 
@@ -40,7 +61,7 @@ Nhiều thư mục hoặc công việc có thể được thao tác đồng th�
 
 ## 5. Có thể build và kiểm tra ngay trên local
 
-Người dùng muốn GSA chạy được quy trình build/test trên thư mục local, kể cả thư mục không có Git. Quy trình có thể có nhiều bước, công việc phụ thuộc nhau, chạy đồng thời, giới hạn tài nguyên và thời gian. Khi công cụ và phụ thuộc đã có sẵn, công việc phù hợp phải chạy được offline; nhu cầu tải thêm, truy cập mạng hay dùng bí mật cần được cho phép riêng.
+Người dùng muốn GSA chạy lệnh/script build/test có sẵn của dự án trên máy thật, kể cả thư mục không có Git. Script dự án có thể tự quản lý nhiều bước hoặc chạy đồng thời; connector không cần CI/DAG engine riêng. Cần giới hạn thời gian/đầu ra và dừng đúng công việc. Khi công cụ và phụ thuộc đã có sẵn, công việc phù hợp phải chạy được offline; nhu cầu tải thêm, truy cập mạng hay dùng bí mật cần được cho phép riêng.
 
 Kết quả phải trả lời được: đã kiểm tra nội dung nào, ở môi trường nào, đã chạy gì, thành công hay thất bại vì sao, và tạo ra những đầu ra nào. Trong lúc chạy, build có thể sinh hoặc sửa file phục vụ chính nó, nhưng không được làm mất khả năng biết phiên bản đầu vào thực sự đã được kiểm tra. Kết quả cũ không được dùng để kết luận cho nội dung mới chưa được chạy.
 
@@ -68,15 +89,19 @@ Nếu chưa xác định được một thao tác đã hoàn tất hay chưa, ph
 
 Sau khi người dùng đăng nhập máy, connector phải có thể hoạt động nền mà không cần giữ cửa sổ Terminal. Cần hỗ trợ phục hồi khi ứng dụng lỗi hoặc máy thức dậy, nhưng không hứa máy vẫn tính toán khi đang ngủ hay hoạt động trước khi đăng nhập. Cài đặt, cập nhật, sửa chữa và gỡ bỏ phải giới hạn trong thành phần của connector, bảo vệ dự án cùng các ứng dụng đang có như GPTWorker, CadGPT và RevitGPT.
 
+Quyết định mới nhất của người dùng ngày 2026-10-19: toàn bộ chống sleep, kể cả khi tắt màn hình hoặc gập nắp, do công cụ `nosleep` mà người dùng tự cài ngoài connector đảm nhiệm (repo người dùng chọn: https://github.com/tmad4000/nosleep). Connector không thêm cơ chế chống sleep, Keep Awake, assertion nguồn, helper hay thay đổi cấu hình nguồn; không nghiên cứu, cài, điều khiển hoặc kiểm thử công cụ này. Đây không là dependency hay điều kiện nghiệm thu của bộ cài connector. Connector vẫn phải tôn trọng Pause/Quit, Sleep/shutdown thủ công và phục hồi trung thực sau sleep/wake theo §8.
+
+Bộ cài/app lưu cả tunnel ID và khóa runtime một lần trong `.env` ở repo theo lựa chọn người dùng và tự dùng lại khi cấu hình hợp lệ, không bắt nhập lại mỗi lần khởi động. File này phải được Git bỏ qua; không đưa khóa thật vào log, câu lệnh hiển thị hoặc gói phát hành dùng chung. Chỉ đọc biến được cho phép từ file dữ liệu, không thực thi `.env` như shell script. App Mac có biểu tượng Dock dễ phân biệt từ thư viện vector miễn phí phù hợp giấy phép, chạy nền và tự khởi động sau đăng nhập; luồng sử dụng bình thường không mở shell/Terminal. Menu Dock có Pause/Resume và Quit. Đóng cửa sổ chỉ ẩn giao diện; Pause giữ app để có thể Resume; Quit thoát app và dừng đúng thành phần connector sở hữu. Không dừng nhầm công việc hoặc tiến trình của ứng dụng khác.
+
 ## 9. Cùng một ý nghĩa sử dụng trên Windows và Mac
 
 Người dùng phải sử dụng được cùng các nhóm khả năng và hiểu được kết quả nhất quán trên hai máy. Cách triển khai bên trong có thể khác theo hệ điều hành, nhưng phải thực hiện đúng hành vi đã chốt và báo rõ giới hạn riêng.
 
-Một backend chạy được chương trình Linux trong máy ảo trên Mac chưa chứng minh chạy được ứng dụng hay SDK của macOS. Một chức năng hoạt động trên Mac cũng chưa chứng minh hoạt động trên Windows. Ưu tiên hoàn thiện Mac trước chỉ là thứ tự triển khai; mục tiêu sản phẩm vẫn gồm cả Windows và Mac.
+Một backend chạy được chương trình Linux trong máy ảo trên Mac chưa chứng minh chạy được ứng dụng hay SDK của macOS. Một chức năng hoạt động trên Mac cũng chưa chứng minh hoạt động trên Windows. Hoàn thiện và nghiệm thu đầy đủ luồng sử dụng trên Mac trước, rồi mới bắt đầu phát triển Windows; không phát triển hai nền tảng song song. Mục tiêu sản phẩm vẫn gồm cả Windows và Mac, được triển khai và nghiệm thu lần lượt.
 
 ## 10. Thiết kế được đánh giá bằng trải nghiệm hoạt động này
 
-Một thiết kế đáp ứng khi người dùng có thể chọn đúng máy, phân biệt workspace làm việc với các thư mục tham khảo chỉ đọc, để GSA sử dụng đầy đủ công cụ trong workspace mà không qua gate của connector, theo dõi và kiểm tra kết quả, rồi tiếp tục an toàn sau gián đoạn. Hai máy có thể phục vụ hai dự án độc lập mà không lẫn quyền, dữ liệu hay trạng thái.
+Một thiết kế đáp ứng khi người dùng có thể chọn đúng máy, phân biệt workspace làm việc với các thư mục tham khảo chỉ đọc, để GSA sử dụng đầy đủ công cụ trong workspace mà không qua gate của connector, theo dõi và kiểm tra kết quả, rồi tiếp tục an toàn sau gián đoạn. Trên từng máy được nghiệm thu, nhiều dự án phải giữ quyền, dữ liệu, tiến trình và kết quả độc lập. Nghiệm thu qua plugin riêng của từng nền tảng theo thứ tự Mac rồi Windows; không phụ thuộc bài thử hai hay nhiều máy chạy đồng thời.
 
 Việc có tên công cụ, schema, một cơ chế kỹ thuật hoặc test đơn vị thành công chưa đủ thay thế luồng hoạt động đó. Kế hoạch phải chỉ ra từng phần thiết kế phục vụ mong muốn nào và kiểm chứng trong tình huống thực tế tương ứng. Lỗi hiện tại, tiến độ và giới hạn bằng chứng được ghi trong handoff, plan và báo cáo; chúng không định nghĩa lại mục tiêu sản phẩm.
 
@@ -85,3 +110,5 @@ Nguồn đối chiếu: [quyết định sản phẩm](DECISIONS.md), [implement
 Quyết định mới nhất của người dùng trong phiên 2026-10-17 thay thế yêu cầu cũ “bind chỉ đọc rồi cấp quyền ghi/thực thi riêng”. Quy trình phát triển repository không phải chức năng sản phẩm và không được đưa vào luồng sử dụng connector.
 
 Bổ sung đã chốt: thư mục tham khảo bên ngoài workspace có thể được cấp read-only để đối chiếu thiết kế hoặc knowledge; không có quyền ghi hay thực thi tại đó. Toolchain hệ thống phục vụ lệnh trong workspace được mô tả ở thiết kế thực thi; quyền đọc dữ liệu tham khảo không cấp thêm quyền thực thi dự án bên ngoài workspace.
+
+Điều chỉnh phạm vi do người dùng chốt khi review kế hoạch: hoàn thiện Mac trước mới phát triển Windows; personal use không cần kiểm thử nhiều máy đồng thời. Điều chỉnh này thay thế yêu cầu nghiệm thu đồng thời hai máy trước đây; không bỏ khả năng làm nhiều dự án độc lập trên cùng một máy.

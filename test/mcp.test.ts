@@ -21,3 +21,25 @@ test("unauthorized Workspace is never exposed",async()=>{
  if(process.platform==="win32"||process.platform==="darwin") assert.equal(JSON.parse(z.content[0].text).result.readyForShell,false);
  else assert.equal(z.isError,true);
 });
+
+test("partial scoped-file backends report only supported mutations",async()=>{
+ const registry=new WorkspaceRegistry();
+ const partial:any={supportedOperations:["create_file","create_directory","copy_file"],read:async()=>{throw Error("unused");},createExclusive:async()=>{},replaceIfHash:async()=>{},makeDirectory:async()=>{},copyExclusive:async()=>{},moveExclusive:async()=>{},trashIfHash:async()=>{}};
+ const invoke=createReadOnlyTools(registry,partial);
+ const result=JSON.parse((await invoke({name:"list_capabilities"})).content[0].text).result;
+ assert.equal(result.fileBackendAvailable,true);
+ assert.deepEqual(result.fileOperations,["create_file","create_directory","copy_file"]);
+ assert.equal(result.hostFileWrites,false);
+ assert.equal(result.files.length===0||JSON.stringify(result.files)===JSON.stringify(["create_file","create_directory","copy_file"]),true);
+ for(const name of ["update_file","edit_file","apply_patch","delete_file","move_file","batch_file_operations"])assert.ok(result.blocked.includes(name),`${name} must remain blocked`);
+ assert.equal(result.shellIsolation,"blocked");assert.equal(result.git,"blocked");
+});
+
+test("legacy scoped-file backends without an operation list retain full-write compatibility",async()=>{
+ const registry=new WorkspaceRegistry();
+ const legacy:any={read:async()=>{throw Error("unused");},createExclusive:async()=>{},replaceIfHash:async()=>{},makeDirectory:async()=>{},copyExclusive:async()=>{},moveExclusive:async()=>{},trashIfHash:async()=>{}};
+ const result=JSON.parse((await createReadOnlyTools(registry,legacy)({name:"list_capabilities"})).content[0].text).result;
+ assert.equal(result.fileBackendAvailable,true);
+ assert.equal(result.hostFileWrites,true);
+ assert.deepEqual(result.fileOperations,["create_file","update_file","edit_file","apply_patch","create_directory","delete_file","copy_file","move_file"]);
+});

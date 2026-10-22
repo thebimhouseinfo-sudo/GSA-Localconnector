@@ -1,11 +1,18 @@
 /** Platform-neutral wire contracts. These types do not confer host authority. */
 export type HostPlatform = "windows" | "macos";
 export type WorkspacePermission = "read" | "write" | "execute";
+export type WorkspaceRole = "workspace" | "reference";
+export interface WorkspaceRoleRequest {
+  readonly id: string;
+  readonly root: string;
+  readonly role: WorkspaceRole;
+}
 export type ConnectorErrorCode =
   | "UNSUPPORTED_PLATFORM" | "WORKSPACE_NOT_FOUND" | "PERMISSION_DENIED"
   | "PATH_OUTSIDE_SCOPE" | "HASH_CONFLICT" | "SECURITY_BLOCKED"
   | "SOURCE_UNVERIFIED" | "RESULT_UNKNOWN" | "SESSION_BUSY";
 export interface WorkspaceGrant {
+  readonly role?: WorkspaceRole;
   readonly id: string;
   readonly canonicalRoot: string;
   readonly rootIdentity: Readonly<{device:string;inode:string}>;

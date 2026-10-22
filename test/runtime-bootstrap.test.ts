@@ -9,12 +9,15 @@ import {bootstrapMcpTools,authorizeMcpWorkspace} from "../src/mcp/runtime-bootst
 import {createHttpMcpServer} from "../src/mcp/http.js";
 import {ControlLeaseStore} from "../src/local/control-lease.js";
 import {withControlToken} from "../src/mcp/control-context.js";
+import {identityDirectory} from "../src/local/identity.js";
 
 test("production bootstrap keeps controller enforcement when native installation is absent",{skip:process.platform==="win32"?"POSIX controller store; Windows ACL backend unverified":false},async()=>{
  const identity=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),"gsa-bootstrap-")));
  try{
-  const {invoke,nativeAvailable}=await bootstrapMcpTools(new WorkspaceRegistry(),identity);
+  const {invoke,nativeAvailable,fileNativeAvailable,fileBlockedReason}=await bootstrapMcpTools(new WorkspaceRegistry(),identity);
   assert.equal(nativeAvailable,false);
+  assert.equal(fileNativeAvailable,false);
+  assert.match(fileBlockedReason??"",/owner|installation/i);
   const call=async(name:string,args:Record<string,unknown>={})=>JSON.parse((await invoke({name,arguments:args})).content[0].text);
   const status=await call("connector_status");
   if(process.platform==="darwin"){
@@ -23,10 +26,33 @@ test("production bootstrap keeps controller enforcement when native installation
    assert.equal(status.ok,false);assert.equal(status.code,"UNSUPPORTED_PLATFORM");
   }
   const control=await call("acquire_control");assert.equal(control.ok,true);
+  const capabilities=await call("list_capabilities");
+  assert.equal(capabilities.result.fileBackendAvailable,false);
+  assert.deepEqual(capabilities.result.fileOperations,[]);
+  assert.equal(capabilities.result.hostFileWrites,false);
+  assert.equal(capabilities.result.shellIsolation,"blocked");
+  assert.equal(capabilities.result.git,"blocked");
   const denied=await call("run_command",{workspace_id:"fixture",command:"/bin/echo",args:[]});assert.equal(denied.code,"SESSION_INVALID");
   const blocked=await call("git_status",{workspace_id:"fixture",control_token:control.result.control_token});assert.equal(blocked.code,"SECURITY_BLOCKED");
   await call("release_control",{control_token:control.result.control_token});
  }finally{await fs.rm(identity,{recursive:true,force:true});}
+});
+test("bootstrap routes workspace role binding through its selected identity directory",{skip:process.platform==="win32"?"POSIX protected store; Windows ACL backend unverified":false},async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-bootstrap-roles-")),home=path.join(root,"home"),identity=path.join(root,"selected-identity"),project=path.join(root,"project");
+ await fs.mkdir(home,{mode:0o700});await fs.mkdir(project,{mode:0o700});
+ const original=os.homedir;os.homedir=()=>home;
+ try{
+  const registry=new WorkspaceRegistry(),{invoke,nativeAvailable}=await bootstrapMcpTools(registry,identity,path.join(root,"missing-installation"));
+  assert.equal(nativeAvailable,false);
+  const call=async(name:string,args:Record<string,unknown>={})=>JSON.parse((await invoke({name,arguments:args})).content[0].text);
+  const lease=await call("acquire_control");assert.equal(lease.ok,true);
+  const bound=await call("bind_workspaces",{roots:[{path:project,role:"workspace"}],control_token:lease.result.control_token});
+  assert.equal(bound.ok,true);
+  assert.ok(await fs.stat(path.join(identity,"trusted-workspaces.json")));
+  assert.equal(await fs.stat(path.join(identityDirectory("darwin",home),"trusted-workspaces.json")).then(()=>true,()=>false),false);
+  assert.equal(registry.list()[0]!.role,"workspace");
+  await call("release_control",{control_token:lease.result.control_token});
+ }finally{os.homedir=original;await fs.rm(root,{recursive:true,force:true});}
 });
 test("HTTP transport invokes the supplied production tool dispatcher",async()=>{
  let calls=0;

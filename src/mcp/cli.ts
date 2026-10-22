@@ -4,12 +4,14 @@ import {WorkspaceRegistry} from "../core/workspace.js";
 import {bootstrapMcpTools} from "./runtime-bootstrap.js";
 import {withMacOwner} from "../local/mac-owner.js";
 import {fileURLToPath} from "node:url";
+import {loadStartupRegistry} from './startup-registry.js';
 // stdio is the only enabled transport during the bootstrap stage.
 // No Workspace enrollment from command line, environment or MCP request.
 void withMacOwner(fileURLToPath(import.meta.url),async owner=>{
- const registry=process.platform==="win32"||process.platform==="darwin"?await loadTrustedRegistry():new WorkspaceRegistry();
+ const startup=process.platform==='darwin'?await loadStartupRegistry():undefined;
+ const registry=startup?.registry??(process.platform==="win32"?await loadTrustedRegistry():new WorkspaceRegistry());
  if(process.platform==="darwin"){
-  const tools=await bootstrapMcpTools(registry,undefined,undefined,owner);
+  const tools=await bootstrapMcpTools(registry,undefined,undefined,owner,startup?.workspaceStartupIssue);
   if(tools.blockedReason)process.stderr.write("Native execution unavailable: "+tools.blockedReason+"\n");
   return runStdio(registry,tools.invoke);
  }

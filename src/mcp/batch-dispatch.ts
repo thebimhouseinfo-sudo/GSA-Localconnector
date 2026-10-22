@@ -24,6 +24,9 @@ export async function batchFileOperations(registry:WorkspaceRegistry,native:Nati
   }else{input.workspace_id=workspaceId;}
   try{
    const result=await dispatchFileMutation(op.name,input,registry,native);
+   if(result&&typeof result==="object"&&"transaction_id" in result&&"status" in result&&(result.status==="CONFLICT"||result.status==="UNKNOWN")){
+    outcomes.push({index:i,name:op.name,ok:false,code:result.status==="UNKNOWN"?"RESULT_UNKNOWN":"FILE_TRANSACTION_CONFLICT",result});break;
+   }
    outcomes.push({index:i,name:op.name,ok:true,result});
   }catch(e){
    const code=e&&typeof e==="object"&&"code" in e?String(e.code):e instanceof Error?e.message:"UNKNOWN_ERROR";

@@ -157,7 +157,7 @@ test("HTTP CLI loads persisted workspace grants from an isolated user profile",{
   });
   const response=await fetch(`http://127.0.0.1:${port}/mcp`,{method:"POST",headers:{authorization:"Bearer "+token,"content-type":"application/json",accept:"application/json, text/event-stream","mcp-protocol-version":"2025-03-26"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"list_workspaces",arguments:{}}})});
   const rpc=await response.json() as any;
-  assert.deepEqual(parse(rpc.result).result,[{workspace_id:"fixture",permissions:["read"],revision:1}]);
+  assert.deepEqual(parse(rpc.result).result,[{workspace_id:"fixture",role:null,permissions:["read"],revision:1}]);
  }finally{
   if(child.exitCode===null){const exited=once(child,"exit");child.kill();await exited;}
   await fs.rm(tmp,{recursive:true,force:true});

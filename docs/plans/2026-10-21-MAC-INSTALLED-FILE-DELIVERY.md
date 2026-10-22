@@ -1,0 +1,44 @@
+# Installed Mac file delivery — 2026-10-21
+
+**Goal:** deliver the smallest honest installed native file subset to the selected Mac plugin, then continue missing file operations. Follow the approved Mac-first plan; no lifecycle, VM, Windows or new criteria.
+
+## What current evidence permits
+
+`loadMacScopedFiles` already wires read/create/mkdir/copy through per-root `Broker.app`; bootstrap uses the protected `scoped-files` directory and current owner FD3/controller. No product scoped-file installer exists. `test/mac-scoped-files.test.ts` uses fake brokers and proves adapter behavior only. `native/macos-files/test-broker.py` compiles with `CONTAINMENT_TESTS`; its ancestor test is useful characterization of that instrumented artifact, not installed production-artifact certification. Recovery remains source-disabled; its accepted readback/constructor journeys do not close held-parent ancestry/fsync gaps.
+
+Do not write a manifest with the loader's desired `checks` strings just to unlock it. A source/build/signature-bound evidence record must distinguish exact production checks, instrumented diagnostics and unresolved cases. Create/mkdir/copy delivery is partial; move/rename/directory-copy and recovery are unavailable until implemented/accepted separately.
+
+## Task A — finish the bounded base broker installation contract
+
+Coder owns `native/macos-files/broker.swift`, `src/hosts/macos-scoped-files.ts`, the narrowly dependent `src/local/grants.ts` / `src/mcp/runtime-bootstrap.ts` permission-aware authorization fix and new focused installation-contract tests. Snapshot first. Keep operations read/create/mkdir/copy only; no shell or recovery bypass.
+
+- Bound stdin while reading (12 MiB), enforce operation-specific request keys/hash/decoded-data limits, and verify canonical root ancestry using the already reviewed search-only ancestor approach. Current source reads all stdin before applying its limit and opens the root directly; fix these concrete gaps before publishing an installer.
+- Pin workspace ID/revision/role/root identity into the signed bundle and validate them in the broker/loader. Workspace bundles permit reviewed fixed writes; reference bundles permit read only and use read-only root entitlements. Exact runtime signature/entitlement verification must reject extra grants. Node's role check alone cannot make a writable reference broker safe.
+- Fix the concrete production reference-read failure: `requirePersistedGrant` currently requires execute even for a read-only reference. Add an explicit requested permission with execute retained as the default for existing VM/command callers; file read/copy-source uses read, file destinations and recovery use write. Preserve controller checks and complete durable root/revision/role/permission comparisons. Test reference read accepted, reference write/execute denied and durable revocation rejected.
+- Preserve bounded source-read → destination exclusive-create copy and partial-operation reporting. Validate bundle metadata/entitlements in addition to artifact hashes/codesign, following the existing checked recovery loader conventions without enabling recovery.
+- New focused tests exercise malformed/oversized requests, wrong role/root/revision, unsigned/extra-entitlement bundles and reference writes denied. Reuse unchanged routing/copy evidence; build and affected tests only.
+
+## Task B — real installer and exact-artifact delivery fixture
+
+Coder owns new `scripts/install-mac-scoped-files.mjs` and narrowly necessary loader evidence validation; Tester owns a new disposable installed-file script. Reuse existing Swift compiler/codesign/plutil and private-file/owner conventions, no dependencies/global settings.
+
+- Before constructing the base loader, before each dispatch and before installer publication, enforce physical two-way separation of installation/key/artifact ancestry from ALL current workspace/reference roots, including aliases and newly added scopes. Reuse the reviewed recovery-loader pattern. A valid signed installation inside a selected root is still unsafe; test one positive sibling layout and explicit overlap negatives. This closes the Reviewer publication blocker under existing criterion §7.
+- Installer has inspect/dry-run and explicit apply. Read only already configured durable grant metadata; never discover/enroll extra roots. Require stopped/idle owned connector before replacing its installation. Stage owner-private directories, compile release broker without test hooks, sign per grant with least privilege, verify signature/metadata/artifacts, then atomically publish a complete manifest/key envelope. Preserve any old installation for rollback; never remove recovery records or user files. Refuse root/revision drift before publication. Keep private key material unreadable in command output.
+- Run the real loader against the staged exact release artifacts on disposable roots with the real owner launcher/controller. Exercise one new installed journey: workspace create/read/mkdir; ref read/copy-out to workspace; collisions preserved; ref destination denied. Verify outside canaries, artifact mismatch and stale grant fail closed. These newly composed installed checks replace no prior accepted evidence and must not be called full file acceptance.
+- Bind evidence to source/compiler/release executable/signature profile, host and fixture identities. An installer may bind accepted evidence to newly signed root-specific bundles only through a reviewed reproducible build/profile relationship; arbitrary local `proof.checks` entries confer no verification.
+- For ancestor relocation, run the existing deterministic instrumented mechanism only where Task A changed relevant source, label it diagnostic, and add exact release-artifact negative/installed checks. If syscall containment for interior relocation remains unestablished, do not publish a verified installation or conceal the gap; report the concrete failed/unverified event and implement the narrow required native repair next. Do not spend repeated polling attempts or create a new test framework.
+
+## Task C — selected configured-root delivery and plugin handoff
+
+After Tester evidence and Reviewer acceptance of A/B, apply the installer to configured roots under the user's existing setup authorization; do not ask again for ordinary private setup. Sensitive policy/permission/global changes remain outside that authorization. Preserve selected tunnel/plugin and all unrelated services. Build changed source, stop/restart only owned Mac connector using existing start.command/runtime route, and confirm local startup health first. Do not implement deferred Dock/login/env lifecycle here or print/read credentials.
+
+Only then ask the user to refresh `gsa-lc-mac`, self-call status/capabilities and real operations in the designated disposable Desktop test directory. Verify actual created/copied bytes and truthful unsupported operations; no terminal fallback counted as plugin PASS. Recovery flags remain false, and missing move/rename/directory-copy stay blocked. If partial delivery is all that is ready, label it partial rather than announcing Mac completion.
+
+## Following bounded slices, not prerequisites invented by this plan
+
+Continue recovery native containment repair/evidence → checked installation and activation; then move/rename with captured source/destination outcomes and bounded directory enumeration/copy. Never emulate move with untracked Node copy/unlink or directory copy with unrestricted recursive fs operations. Those are required product operations, each needs its own small implementation/test/review cycle; this installer must support later extensions without advertising them now.
+
+Manual Planner → Coder → Tester → Reviewer, one slice at a time, maximum two review/repair rounds. Reuse accepted tests unless changed behavior invalidates them; report exact new failures and limitations. No gate-state/signatures/checklist edits, milestones/criteria changes, pushes or branch operations. This plan's first executable action is Task A broker/loader hardening, immediately followed by installed delivery rather than another detached evidence framework.
+
+
+Task A checkpoint: source hardening and permission-aware durable authorization are implemented. A new late-expiry reproduction showed authorization could expire during bundle validation; repair round 1 adds a final durable/controller check and grant recheck immediately before helper dispatch. Its single affected case and build passed. Tester has direct signed RELEASE broker evidence for workspace/read-only-reference basics and signature/request negatives, plus migrated affected source fixtures. Bounded review is completing. Do not repeat these valid cases for Task B; run only new installer/overlap/composed installed-journey coverage.

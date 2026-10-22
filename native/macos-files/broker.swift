@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import Darwin
+import Security
 
 // This broker accepts only fixed filesystem operations. No process spawning or networking.
 // App Sandbox is the write boundary; no-follow directory descriptors are the read boundary.
@@ -10,7 +11,7 @@ func check(_ condition:Bool,_ code:String) throws { if !condition { try fail(cod
 func hash(_ bytes:Data)->String { SHA256.hash(data:bytes).map{String(format:"%02x",$0)}.joined() }
 func parts(_ path:String)throws->[String] {
  let p=path.split(separator:"/",omittingEmptySubsequences:false).map(String.init)
- try check(!p.isEmpty && !p.contains(where:{$0.isEmpty || $0=="." || $0==".." || $0.utf8.contains(0) || $0.contains("\\") || $0.lowercased()==".gsa-trash"}),"PATH_OUTSIDE_SCOPE")
+ try check(path.utf8.count<=4096 && !p.isEmpty && !p.contains(where:{$0.isEmpty || $0=="." || $0==".." || $0.utf8.contains(0) || $0.contains("\\") || $0.lowercased()==".gsa-trash"}),"PATH_OUTSIDE_SCOPE")
  return p
 }
 func statFD(_ fd:Int32)throws->stat {var s=stat();try check(fstat(fd,&s)==0,"IO_ERROR");return s}
@@ -29,14 +30,62 @@ func writeExclusive(_ parent:Int32,_ name:String,_ bytes:Data)throws {
  while offset<bytes.count {let n=bytes.withUnsafeBytes{Darwin.write(fd,$0.baseAddress!.advanced(by:offset),bytes.count-offset)};if n<=0{try fail("MUTATION_OUTCOME_UNKNOWN")};offset+=n}
  try check(fsync(fd)==0,"MUTATION_OUTCOME_UNKNOWN")
 }
+func openCanonicalRoot(_ root:String)throws->Int32 {
+ let chain=root.split(separator:"/",omittingEmptySubsequences:false)
+ try check(root.hasPrefix("/") && root.utf8.count<=4096 && !root.utf8.contains(0) && chain.count>1 && !chain.dropFirst().contains(where:{$0.isEmpty || $0=="." || $0==".."}),"ROOT_UNVERIFIED")
+ // Search-only ancestors need no read grant outside the selected root.
+ var fd=open("/",O_SEARCH|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);try check(fd>=0,"ROOT_UNVERIFIED")
+ do {
+  let directories=chain.dropFirst()
+  for (index,component) in directories.enumerated() {
+   let access=index==directories.count-1 ? O_RDONLY : O_SEARCH
+   let next=openat(fd,String(component),access|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);close(fd);fd=next;try check(fd>=0,"ROOT_UNVERIFIED")
+  }
+  return fd
+ }catch{if fd>=0{close(fd)};throw error}
+}
+func requireSignedSandbox(_ root:String,_ role:String)throws {
+ var code:SecCode?;try check(SecCodeCopySelf(SecCSFlags(),&code)==errSecSuccess,"SIGNED_SANDBOX_REQUIRED")
+ guard let running=code else{try fail("SIGNED_SANDBOX_REQUIRED")}
+ try check(SecCodeCheckValidity(running,SecCSFlags(),nil)==errSecSuccess,"SIGNED_SANDBOX_REQUIRED")
+ var staticCode:SecStaticCode?;try check(SecCodeCopyStaticCode(running,SecCSFlags(),&staticCode)==errSecSuccess,"SIGNED_SANDBOX_REQUIRED")
+ guard let signed=staticCode else{try fail("SIGNED_SANDBOX_REQUIRED")}
+ var information:CFDictionary?;try check(SecCodeCopySigningInformation(signed,SecCSFlags(rawValue:kSecCSSigningInformation),&information)==errSecSuccess,"SIGNED_SANDBOX_REQUIRED")
+ guard let signing=information as? [String:Any],let entitlements=signing[kSecCodeInfoEntitlementsDict as String] as? [String:Any] else{try fail("SIGNED_SANDBOX_REQUIRED")}
+ let sandbox="com.apple.security.app-sandbox",right="com.apple.security.temporary-exception.files.absolute-path."+(role=="reference" ? "read-only" : "read-write")
+ try check(Set(entitlements.keys)==Set([sandbox,right]) && entitlements[sandbox] as? Bool==true,"SIGNED_SANDBOX_REQUIRED")
+ guard let grants=entitlements[right] as? [String] else{try fail("SIGNED_SANDBOX_REQUIRED")}
+ try check(grants==[root+"/"],"SIGNED_SANDBOX_REQUIRED")
+}
+func boundedInput()throws->Data {
+ let cap=12*1024*1024;var data=Data(),buffer=[UInt8](repeating:0,count:65536)
+ while true {
+  let n=Darwin.read(STDIN_FILENO,&buffer,min(buffer.count,cap-data.count+1))
+  if n<0 && errno==EINTR{continue};try check(n>=0,"IO_ERROR");if n==0{return data}
+  try check(data.count+n<=cap,"INPUT_LIMIT_EXCEEDED");data.append(contentsOf:buffer.prefix(n))
+ }
+}
 func run(_ req:[String:Any])throws->[String:Any] {
  // Preserve the owner's kernel lease in this trusted process, never across an exec.
  if fcntl(3,F_GETFD)>=0 {_ = fcntl(3,F_SETFD,FD_CLOEXEC)}
- guard let root=req["root"] as? String,let device=req["device"] as? String,let inode=req["inode"] as? String,let relative=req["path"] as? String,let operation=req["operation"] as? String else {try fail("INVALID_REQUEST")}
+ guard let root=req["root"] as? String,let device=req["device"] as? String,let inode=req["inode"] as? String,let relative=req["path"] as? String,let operation=req["operation"] as? String,let id=req["workspace_id"] as? String,let role=req["role"] as? String,let revision=req["revision"] as? Int,revision>0,["workspace","reference"].contains(role) else {try fail("INVALID_REQUEST")}
+ var allowed:Set<String>=["root","device","inode","path","operation","workspace_id","role","revision"]
+ switch operation {
+ case "read":allowed.insert("maxBytes")
+ case "create":allowed.insert("base64")
+ case "mkdir":break
+ case "copy":allowed.formUnion(["expectedSha256","destination"])
+ default:try fail("SECURITY_BLOCKED_ATOMIC_COMPARE_UNAVAILABLE")
+ }
+ #if CONTAINMENT_TESTS
+ if req["testPause"] != nil{allowed.insert("testPause");try check(req["testPause"] as? Bool==true,"INVALID_REQUEST")}
+ #endif
+ try check(Set(req.keys)==allowed && id.range(of:"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$",options:.regularExpression) != nil && device.range(of:"^[0-9]{1,32}$",options:.regularExpression) != nil && inode.range(of:"^[0-9]{1,32}$",options:.regularExpression) != nil,"INVALID_REQUEST")
  let info=Bundle.main.infoDictionary ?? [:]
- try check(info["GSAWorkspaceRoot"] as? String == root && info["GSADevice"] as? String == device && info["GSAInode"] as? String == inode && info["GSARevision"] as? Int == req["revision"] as? Int,"GRANT_BINDING_MISMATCH")
- try check(root.hasPrefix("/") && !root.utf8.contains(0),"INVALID_REQUEST")
- let rootFD=open(root,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);try check(rootFD>=0,"ROOT_UNVERIFIED");defer{close(rootFD)}
+ try check(info["GSAWorkspaceRoot"] as? String == root && info["GSADevice"] as? String == device && info["GSAInode"] as? String == inode && info["GSARevision"] as? Int == revision && info["GSAWorkspaceID"] as? String == id && info["GSAWorkspaceRole"] as? String == role,"GRANT_BINDING_MISMATCH")
+ try requireSignedSandbox(root,role)
+ try check(role=="workspace" || operation=="read","PERMISSION_DENIED")
+ let rootFD=try openCanonicalRoot(root);defer{close(rootFD)}
  let identity=try statFD(rootFD);try check(String(identity.st_dev)==device && String(identity.st_ino)==inode,"ROOT_UNVERIFIED")
  func parent(_ relative:String)throws->(Int32,String) {
   let p=try parts(relative);var fd=dup(rootFD);try check(fd>=0,"IO_ERROR")
@@ -47,13 +96,13 @@ func run(_ req:[String:Any])throws->[String:Any] {
  #if CONTAINMENT_TESTS
  if req["testPause"] as? Bool == true {print("READY");fflush(stdout);usleep(500000)}
  #endif
- func expected()throws->Data {guard let expected=req["expectedSha256"] as? String,expected.count==64 else{try fail("INVALID_REQUEST")};let bytes=try readFile(fd,name,8*1024*1024);try check(hash(bytes)==expected,"HASH_CONFLICT");return bytes}
+ func expected()throws->Data {guard let expected=req["expectedSha256"] as? String,expected.range(of:"^[a-f0-9]{64}$",options:.regularExpression) != nil else{try fail("INVALID_REQUEST")};let bytes=try readFile(fd,name,8*1024*1024);try check(hash(bytes)==expected,"HASH_CONFLICT");return bytes}
  switch operation {
  case "read":
   guard let cap=req["maxBytes"] as? Int,cap>=0,cap<=8*1024*1024 else{try fail("INVALID_REQUEST")}
   let bytes=try readFile(fd,name,cap);return["ok":true,"base64":bytes.base64EncodedString(),"sha256":hash(bytes)]
  case "create":
-  guard let b64=req["base64"] as? String,let bytes=Data(base64Encoded:b64),bytes.count<=8*1024*1024 else{try fail("INVALID_REQUEST")}
+  guard let b64=req["base64"] as? String,b64.utf8.count<=((8*1024*1024+2)/3)*4,let bytes=Data(base64Encoded:b64),bytes.count<=8*1024*1024 else{try fail("INVALID_REQUEST")}
   try writeExclusive(fd,name,bytes)
  case "mkdir":try check(mkdirat(fd,name,0o700)==0,"ALREADY_EXISTS_OR_DENIED")
  case "copy":
@@ -68,7 +117,7 @@ func run(_ req:[String:Any])throws->[String:Any] {
  return["ok":true]
 }
 do {
- let input=FileHandle.standardInput.readDataToEndOfFile();try check(input.count<=12*1024*1024,"INPUT_LIMIT_EXCEEDED")
+ let input=try boundedInput()
  guard let req=try JSONSerialization.jsonObject(with:input) as? [String:Any] else{try fail("INVALID_REQUEST")}
  let result=try run(req);FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:result,options:[.sortedKeys]))
 } catch {let code=(error as? Failure)?.code ?? "IO_ERROR";FileHandle.standardOutput.write(try! JSONSerialization.data(withJSONObject:["ok":false,"error":code],options:[.sortedKeys]))}

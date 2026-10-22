@@ -1,3 +1,5 @@
+import type {FileTransactionOutcome} from "./file-transactions.js";
+
 /** Capability-oriented host I/O contract. Implementations MUST enforce OS-native
  * root confinement at time of I/O, including concurrent rename/symlink races.
  * No backend is installed until per-OS containment is independently verified.
@@ -10,6 +12,12 @@ export interface MutationReceipt {
  readonly committed:false;readonly file_mutated:boolean;
 }
 export interface NativeScopedFiles {
+ /** Optional MCP mutation subset. Omission retains the complete legacy contract. */
+ readonly supportedOperations?:readonly NativeFileOperation[];
+ /** Optional native durable-mutation path. The adapter persists the bound intent
+  * before effects and returns readback observations, never a boolean receipt.
+  * Presence alone does not activate MCP operations or certify containment. */
+ readonly recoverableMutations?:NativeRecoverableFileMutations;
  read(ref:ScopedFileRef, maxBytes:number):Promise<FileSnapshot>;
  createExclusive(ref:ScopedFileRef,bytes:Uint8Array):Promise<void>;
  replaceIfHash(ref:ScopedFileRef,bytes:Uint8Array,expectedSha256:string):Promise<void>;
@@ -18,6 +26,13 @@ export interface NativeScopedFiles {
  moveExclusive(source:ScopedFileRef,dest:ScopedFileRef,expectedSha256:string):Promise<void>;
  trashIfHash(ref:ScopedFileRef,expectedSha256:string):Promise<void>;
 }
+export interface NativeRecoverableFileMutations {
+ replaceIfHash(ref:ScopedFileRef,bytes:Uint8Array,expectedSha256:string):Promise<FileTransactionOutcome>;
+ trashIfHash(ref:ScopedFileRef,expectedSha256:string):Promise<FileTransactionOutcome>;
+ /** Explicit readback only; never retries a native mutation. */
+ readTransaction?(transactionId:string):Promise<FileTransactionOutcome>;
+}
+export type NativeFileOperation="create_file"|"update_file"|"edit_file"|"apply_patch"|"create_directory"|"delete_file"|"copy_file"|"move_file";
 export interface SandboxedProcessRequest {
  readonly workspace_id:string;readonly executable:string;readonly argv:readonly string[];
  readonly process_id?:string; // supervisor-assigned stable cancellation identity

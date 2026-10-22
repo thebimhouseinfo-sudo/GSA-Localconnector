@@ -14,13 +14,14 @@ export const controlledToolNames=new Set([
  "delete_file","create_directory","copy_file","move_file","batch_file_operations","run_command",
  "start_process","stop_process","git_status","git_diff","git_log","git_show","compare_commits",
  "git_fetch","git_pull","git_add","git_commit","git_push","create_branch","git_checkout",
- "ci_prepare_source","ci_run","ci_rerun_failed","ci_cancel"
+ "ci_prepare_source","ci_run","ci_rerun_failed","ci_cancel","get_file_transaction"
 ]);
 export const plannedTools=[
  def("acquire_control","Acquire the exclusive authenticated controller lease",{},[]),
  def("renew_control","Renew an unexpired controller lease",{control_token:str}),
  def("release_control","Release the matching controller lease",{control_token:str}),
  def("list_capabilities","Report enabled and blocked capabilities",{workspace_id:str},[]),
+ def("get_file_transaction","Explicitly inspect a file transaction; never retry a mutation or restore files",{transaction_id:{type:"string",pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}}),
  def("glob","Find files by a bounded relative glob",{...target,pattern:str}),
  def("create_file","Create a new file under a writable workspace, fail on conflict",{...target,content:str}),
  def("update_file","Replace an existing file with expected SHA256 guard",{...target,content:str,expected_sha256:str}),
