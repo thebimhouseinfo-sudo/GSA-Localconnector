@@ -5,20 +5,59 @@ import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {Gate, snapshot, restore, gitAdmin, verify, hook, resolveRole} from '../lib.mjs';
+import * as harness from '../lib.mjs';
 const put=(r,p,v)=>{fs.mkdirSync(path.dirname(path.join(r,p)),{recursive:true});fs.writeFileSync(path.join(r,p),typeof v==='string'||Buffer.isBuffer(v)?v:JSON.stringify(v));};
 const fixture=(t)=>{const r=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'gsa-harness-')));t.after(()=>fs.rmSync(r,{recursive:true,force:true}));put(r,'harness/policy.json',{version:1,target:'main',push:'MANUAL_ONLY',sensitive:['auth/'],maxReviewRounds:2,maxStopAttempts:3,commands:[[process.execPath,'-e','process.exit(0)']]});put(r,'harness/milestones.json',{version:1,milestone:null});put(r,'src/a.js','export const a=1;\n');put(r,'src/b.js','export const b=1;\n');return r;};
 const configure=r=>put(r,'harness/milestones.json',{version:1,milestone:{id:'SIMULATION',approval:'SIMULATED',tasks:[{id:'T1',scope:['src/a.js','src/b.js'],criteria:['simulated criterion'],event:'task_verified',profile:'light',gates:[{id:'G8',role:'tester',paths:['src/a.js'],depends:[]},{id:'G5',role:'reviewer',paths:['src/a.js'],depends:['G8']},{id:'G1',role:'reviewer',paths:['src/b.js'],depends:[]}]}]}});
 const git=(r,...args)=>execFileSync('git',args,{cwd:r,encoding:'utf8'}).trim();
 const init=r=>{git(r,'init','-q','-b','main');git(r,'config','user.name','Fixture');git(r,'config','user.email','fixture@example.invalid');git(r,'add','.');git(r,'commit','-qm','fixture');};
 
+test('review budget permits four rounds and requests continuation at five',()=>{
+ assert.equal(typeof harness.reviewBudget,'function');
+ assert.equal(harness.reviewBudget({rounds:4}).awaitingContinuation,false);
+ const result=harness.reviewBudget({rounds:5});
+ assert.equal(result.awaitingContinuation,true);assert.equal(result.reason,'ROUND_LIMIT');
+ assert.equal(result.action,'ASK_USER_AND_WAIT');
+});
+test('review budget requests continuation at exactly thirty minutes without resetting',()=>{
+ assert.equal(typeof harness.reviewBudget,'function');
+ const start=Date.parse('2026-10-24T00:00:00Z');
+ assert.equal(harness.reviewBudget({startedAt:start,now:start+1799999}).awaitingContinuation,false);
+ const result=harness.reviewBudget({startedAt:start,now:start+1800000});
+ assert.equal(result.awaitingContinuation,true);assert.equal(result.reason,'TIME_LIMIT');
+ assert.equal(result.startedAt,start);assert.equal(result.action,'ASK_USER_AND_WAIT');
+});
+test('gate retains the thirty minute window across repeated signatures and asks without state edits',t=>{
+ const r=fixture(t);configure(r);const g=new Gate(r,{simulation:true});put(r,'proof.md','proof');
+ g.sign('G8','FAIL','proof.md');
+ const stateFile=path.join(r,'harness/state.json'),state=JSON.parse(fs.readFileSync(stateFile));
+ state.reviewStartedAt.T1=new Date(Date.now()-1800001).toISOString();put(r,'harness/state.json',state);
+ const before=fs.readFileSync(stateFile);const status=g.status();
+ assert.equal(status.state,'AWAITING_CONTINUATION');assert.equal(status.next.action,'ASK_USER_AND_WAIT');
+ assert.deepEqual(fs.readFileSync(stateFile),before);
+ assert.throws(()=>g.sign('G8','PASS','proof.md'),/CONTINUATION_REQUIRED/);
+});
+test('configured five-round gate permits repair through four failures',t=>{
+ const r=fixture(t);configure(r);const policy=JSON.parse(fs.readFileSync(path.join(r,'harness/policy.json')));policy.maxReviewRounds=5;put(r,'harness/policy.json',policy);
+ const g=new Gate(r,{simulation:true});put(r,'proof.md','proof');
+ for(let i=0;i<4;i++){g.sign('G8','FAIL','proof.md');assert.equal(g.status().next.role,'coder');}
+ g.sign('G8','FAIL','proof.md');assert.equal(g.status().state,'BLOCKED_ROUND_LIMIT');assert.equal(g.status().next.action,'ASK_USER_AND_WAIT');
+});
+test('completed work does not ask continuation merely because thirty minutes elapsed',t=>{
+ const r=fixture(t);configure(r);put(r,'proof.md','proof');const g=new Gate(r,{simulation:true});
+ for(const id of ['G8','G5','G1'])g.sign(id,'PASS','proof.md');
+ const state=JSON.parse(fs.readFileSync(path.join(r,'harness/state.json')));state.reviewStartedAt.T1=new Date(Date.now()-1800001).toISOString();put(r,'harness/state.json',state);
+ assert.equal(g.status().state,'PASS');assert.equal(g.status().next,null);assert.equal(g.status().reviewLoop.awaitingContinuation,false);
+});
+
 test('unconfigured milestones never fabricate a review or completion',t=>{const r=fixture(t);const g=new Gate(r);assert.equal(g.status().state,'NOT_CONFIGURED');assert.equal(g.status().next,null);assert.equal(g.check().ok,false);assert.throws(()=>g.sign('G8','PASS','evidence.md'),/NOT_CONFIGURED/);});
 test('simulated approval is rejected in the live harness repository',t=>{assert.throws(()=>new Gate(path.resolve(import.meta.dirname,'../..'),{simulation:true}),/SIMULATION_LIVE_ROOT_DENIED/);});
 test('review trigger, dependencies and selective hash invalidation',t=>{const r=fixture(t);configure(r);const g=new Gate(r,{simulation:true});put(r,'evidence.md','real fixture evidence');assert.equal(g.status().next.role,'tester');g.sign('G8','PASS','evidence.md');g.sign('G5','PASS','evidence.md');g.sign('G1','PASS','evidence.md');assert.equal(g.check().ok,true);put(r,'src/a.js','changed');const s=g.status();assert.equal(s.gates.find(x=>x.id==='G8').state,'EXPIRED');assert.equal(s.gates.find(x=>x.id==='G5').state,'EXPIRED');assert.equal(s.gates.find(x=>x.id==='G1').state,'PASS');assert.equal(g.check().ok,false);});
 test('evidence edits invalidate signatures and non-empty evidence is required',t=>{const r=fixture(t);configure(r);const g=new Gate(r,{simulation:true});put(r,'empty.md','');assert.throws(()=>g.sign('G8','PASS','empty.md'),/EMPTY_EVIDENCE/);put(r,'proof.md','test output');g.sign('G8','PASS','proof.md');put(r,'proof.md','altered');assert.equal(g.status().gates[0].state,'EXPIRED');});
 test('human approval cannot be signed by the gate CLI',t=>{const r=fixture(t);configure(r);const g=new Gate(r,{simulation:true});for(const id of ['G0','G11'])assert.throws(()=>g.sign(id,'PASS','evidence.md'),/AWAITING_USER/);});
-test('untrusted approval declarations do not enable review',t=>{const r=fixture(t);configure(r);let c=JSON.parse(fs.readFileSync(path.join(r,'harness/milestones.json')));c.milestone.approval='APPROVED';put(r,'harness/milestones.json',c);assert.equal(new Gate(r).status().state,'AWAITING_USER');});
+test('untrusted approval declarations are rejected and never enable review',t=>{const r=fixture(t);configure(r);const c=JSON.parse(fs.readFileSync(path.join(r,'harness/milestones.json')));c.milestone.approval='APPROVED';put(r,'harness/milestones.json',c);assert.throws(()=>new Gate(r).status(),/INVALID_MILESTONE/);});
 test('review failure requests coder repair and caps attempts',t=>{const r=fixture(t);configure(r);const g=new Gate(r,{simulation:true});put(r,'p.md','[CHAN] simulated reproducible criterion violation');g.sign('G8','FAIL','p.md');assert.equal(g.status().next.role,'coder');g.sign('G8','FAIL','p.md');assert.equal(g.status().state,'BLOCKED_ROUND_LIMIT');assert.throws(()=>g.sign('G8','PASS','p.md'),/ROUND_LIMIT/);});
-test('high-risk changes escalate profile; unsigned elevated gates block completion',t=>{const r=fixture(t);configure(r);init(r);put(r,'auth/policy.js','sensitive');const s=new Gate(r,{simulation:true}).status();assert.equal(s.profile,'heavy');assert.ok(s.gates.some(g=>g.id==='G9'));assert.ok(s.gates.some(g=>g.id==='G12'));});
+test('high-risk changes add critic review without inventing Git publication; explicit G12 still requires integration',t=>{const r=fixture(t);configure(r);init(r);put(r,'auth/policy.js','sensitive');let s=new Gate(r,{simulation:true}).status();assert.equal(s.profile,'heavy');for(const id of ['G6','G5','G9'])assert.ok(s.gates.some(g=>g.id===id));assert.equal(s.gates.some(g=>g.id==='G12'),false);const config=JSON.parse(fs.readFileSync(path.join(r,'harness/milestones.json')));config.milestone.tasks[0].gates.push({id:'G12',role:'git-admin',paths:['src/a.js'],depends:[]});put(r,'harness/milestones.json',config);s=new Gate(r,{simulation:true}).status();assert.equal(s.gates.find(g=>g.id==='G12').state,'MISSING');put(r,'p.md','integration evidence');assert.throws(()=>new Gate(r,{simulation:true}).sign('G12','PASS','p.md'),/G12_INTEGRATION_NOT_PROVEN/);assert.equal(gitAdmin(r,'verify-integration').state,'UNVERIFIED_DIRTY_WORKTREE');});
 test('advance requires all gates and updates only the matching task marker',t=>{const r=fixture(t);configure(r);put(r,'TASKS.md','- [ ] T1 fixture\n- [ ] OTHER unrelated\n');put(r,'p.md','proof');const g=new Gate(r,{simulation:true});assert.throws(()=>g.advance(),/GATES_PENDING/);for(const id of ['G8','G5','G1'])g.sign(id,'PASS','p.md');g.advance();assert.match(fs.readFileSync(path.join(r,'TASKS.md'),'utf8'),/\[x\] T1/);assert.match(fs.readFileSync(path.join(r,'TASKS.md'),'utf8'),/\[ \] OTHER/);assert.equal(g.status().state,'AWAITING_USER');});
 test('snapshot restores exact bytes only when post-edit hash matches',t=>{const r=fixture(t);const before=Buffer.from([0,1,255,10]);put(r,'src/raw',before);const id=snapshot(r,['src/raw']);put(r,'src/raw','new');assert.throws(()=>restore(r,id,'src/raw','incorrect'),/RESTORE_CONFLICT/);const digest=execFileSync(process.execPath,['-e',"process.stdout.write(require('crypto').createHash('sha256').update('new').digest('hex'))"],{encoding:'utf8'});restore(r,id,'src/raw',digest);assert.deepEqual(fs.readFileSync(path.join(r,'src/raw')),before);});
 test('snapshot rejects outside, symlink and secret paths',t=>{const r=fixture(t);fs.symlinkSync('a.js',path.join(r,'src/link'));for(const p of ['../outside','src/link','.env','harness/state.json'])assert.throws(()=>snapshot(r,[p]),/PATH|SECRET|PROTECTED/);});

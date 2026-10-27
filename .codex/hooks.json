@@ -1,62 +1,40 @@
 {
-  "description": "GSA project-local harness; review guardrails, no product changes or autonomous pushes.",
+  "description": "Codex-first Python lifecycle bridge. Hook trust required; protected identity/gate enforcement not implied.",
   "hooks": {
     "SessionStart": [
       {
-        "matcher": ".*",
+        "matcher": "startup|resume|compact",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/harness/hook.mjs\"",
-            "timeout": 20
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "matcher": ".*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/harness/hook.mjs\"",
-            "timeout": 20
+            "command": "python -c \"import pathlib,runpy,sys; p=next((d/'harness/codex/hook.py' for d in (pathlib.Path.cwd(),*pathlib.Path.cwd().parents) if (d/'harness/codex/hook.py').is_file()),None); runpy.run_path(str(p),run_name='__main__') if p else print('Bootstrap: harness/codex/hook.py not found from cwd; hook skipped',file=sys.stderr)\"",
+            "commandWindows": "python -c \"import pathlib,runpy,sys; p=next((d/'harness/codex/hook.py' for d in (pathlib.Path.cwd(),*pathlib.Path.cwd().parents) if (d/'harness/codex/hook.py').is_file()),None); runpy.run_path(str(p),run_name='__main__') if p else print('Bootstrap: harness/codex/hook.py not found from cwd; hook skipped',file=sys.stderr)\"",
+            "timeout": 10
           }
         ]
       }
     ],
     "PreToolUse": [
       {
-        "matcher": ".*",
+        "matcher": "^apply_patch$",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/harness/hook.mjs\"",
-            "timeout": 20
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": ".*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/harness/hook.mjs\"",
-            "timeout": 20
+            "command": "python -c \"import pathlib,runpy,sys; p=next((d/'harness/codex/hook.py' for d in (pathlib.Path.cwd(),*pathlib.Path.cwd().parents) if (d/'harness/codex/hook.py').is_file()),None); runpy.run_path(str(p),run_name='__main__') if p else print('Bootstrap: harness/codex/hook.py not found from cwd; hook skipped',file=sys.stderr)\"",
+            "commandWindows": "python -c \"import pathlib,runpy,sys; p=next((d/'harness/codex/hook.py' for d in (pathlib.Path.cwd(),*pathlib.Path.cwd().parents) if (d/'harness/codex/hook.py').is_file()),None); runpy.run_path(str(p),run_name='__main__') if p else print('Bootstrap: harness/codex/hook.py not found from cwd; hook skipped',file=sys.stderr)\"",
+            "timeout": 15
           }
         ]
       }
     ],
     "Stop": [
       {
-        "matcher": ".*",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/harness/hook.mjs\"",
-            "timeout": 20
+            "command": "python -c \"import pathlib,runpy,sys; p=next((d/'harness/codex/hook.py' for d in (pathlib.Path.cwd(),*pathlib.Path.cwd().parents) if (d/'harness/codex/hook.py').is_file()),None); runpy.run_path(str(p),run_name='__main__') if p else print('Bootstrap: harness/codex/hook.py not found from cwd; hook skipped',file=sys.stderr)\"",
+            "commandWindows": "python -c \"import pathlib,runpy,sys; p=next((d/'harness/codex/hook.py' for d in (pathlib.Path.cwd(),*pathlib.Path.cwd().parents) if (d/'harness/codex/hook.py').is_file()),None); runpy.run_path(str(p),run_name='__main__') if p else print('Bootstrap: harness/codex/hook.py not found from cwd; hook skipped',file=sys.stderr)\"",
+            "timeout": 135
           }
         ]
       }

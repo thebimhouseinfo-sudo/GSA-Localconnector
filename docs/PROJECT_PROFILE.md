@@ -1,25 +1,16 @@
 # Project technical profile
-- Product: local MCP connector, stdio and HTTP; current development priority macOS ARM64.
-- TypeScript ESM / Node >=20; tsconfig.json is authoritative. Current local Node 24.21.0,
-  TypeScript 5.9.3; existing CI runs Node 22 on macOS, Ubuntu, Windows.
-- Native host: Swift with Apple's Virtualization.framework and code-signing entitlements.
-  Current host compiler Swift 6.4, arm64. Python 3 guest/seed utilities; local Python 3.9.6.
-- Source: src/core contracts/policies; src/local protected persistence; src/hosts native
-  adapters; src/mcp transport/dispatch; native/ Swift and guest Python; scripts/ native tooling.
-- Build: npm run build. Tests: npm test. npm run check is a test alias.
-- No separate linter configured. Do not report lint PASS or add a dependency silently.
-- Native proof requires the relevant actual Mac/guest run; TS tests or Swift compilation alone
-  do not certify boot, App Sandbox, restart recovery, SEC01 or a live MCP connector.
-- Preserve the immutable Ubuntu RAW and its pinned digest. Use isolated candidate disks only.
-- Source grants, revocation, lease fencing, root identity, confinement and clean stop are
-  security-sensitive; see docs/security/ and the existing implementation plan/checkpoint.
-- Host App Sandbox is not proof of arbitrary-shell confinement. Guest jobs remain separate.
-- Windows integration is not certified by Mac tests. Do not import CAD/Revit/API assumptions.
-- Approved product scope/criteria stay in existing plans and explicit user decisions.
-  Bootstrap does not replace or auto-approve those documents.
-- Official documentation: typescriptlang.org/docs, nodejs.org/api, docs.python.org/3,
-  developer.apple.com/documentation/virtualization. Consult the correct host/version as needed.
-- Skills: planning → existing brainstorming/writing-plans; Coder → systematic-debugging/TDD;
-  Tester/Reviewer → verification-before-completion and code-review skills. Load per task only.
-- Unknowns: live plugin health and pending Mac integration must be tested by future product
-  tasks; bootstrap makes no new product success claims.
+
+- Authority: [CRITERIA.md](CRITERIA.md). Connector supplies capabilities/API consumed by GSA through `gsa-lc-mac` or `gsa-lc`; no local reasoning agent or connector task/review/per-operation approval gates.
+- Working roots: full file operations (including copy/move/rename/delete), shell, Git, diff and build/test. Reference roots: list/search/read/copy into working roots only; no reference mutation/direct execution or copy destination. Ungranted project data denied, including via descendants. Existing OS permissions still apply.
+- Targets: personal use with independent Windows/Mac plugins/tunnels; finish and accept macOS ARM64 before starting Windows development. Acceptance is per host, without simultaneous multi-machine testing; retain independent multi-project operation on one host.
+- Personal-use delivery: local file/Git tools and a runner for existing project scripts/build/tests on the current host. Cross-OS tests belong to a project-specific GitHub CI workflow when needed. No universal test generator, VM lab or advanced professional configuration layer is required. Historical VM components are preserved but are not current delivery prerequisites.
+- Project workloads may include Android/iOS app development and testing. These are app targets, not new connector host platforms. Prefer existing local tools/devices; online app testing is an optional integration with its own demonstrated capabilities and authorization, not a new mandatory dependency or VM requirement.
+- TypeScript ESM / Node >=20; tsconfig.json is authoritative. Source CI uses Node 22 on macOS, Ubuntu and Windows.
+- Swift native helpers with Apple's Virtualization.framework and signing entitlements; Python guest/seed utilities.
+- src/core: contracts/policies; src/local: protected persistence; src/hosts: adapters; src/mcp: transport/dispatch; native/: helpers/guest; scripts/: product installation, diagnostics and tests.
+- Build: npm run build. Tests: npm test. npm run check is a test alias. No standalone linter.
+- Native claims need actual matching host/guest runs; unit tests/compilation do not certify boot, boundary enforcement, restart or live-plugin operation.
+- Preserve immutable Ubuntu RAW/digests; native tests use disposable fixtures. Mac evidence does not certify Windows.
+- Root identity, revocation, ownership and clean stop protect boundaries; see security/ and [plan](plans/GSA-LOCALCONNECTOR-IMPLEMENTATION-PLAN.md).
+- Host App Sandbox is not proof of arbitrary-shell containment. Linux guest execution does not establish macOS SDK support.
+- Explicit source role binding/persistence is implemented; legacy `paths` remains read-only for compatibility. Actual Mac files/commands and installed-plugin proof remain gaps; role permissions do not activate unverified backends. See [STATUS.md](STATUS.md).

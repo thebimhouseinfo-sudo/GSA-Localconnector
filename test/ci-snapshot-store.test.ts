@@ -18,3 +18,26 @@ test("protected CI reference snapshot is immutable and tamper-evident",async()=>
   await assert.rejects(store.verify(id),(e:any)=>e.code==="SNAPSHOT_INTEGRITY");
  }finally{await fs.rm(tmp,{recursive:true,force:true});}
 });
+test("verified workflow reads reject absent paths, traversal, and changed captured bytes",async()=>{
+ const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-ci-read-"));
+ try{
+  const store=new CiSnapshotStore(path.join(tmp,"snapshots")),id=randomUUID();
+  await store.persist(id,[{path:"ci.json",bytes:Buffer.from("captured")}]);
+  assert.equal((await store.readVerifiedFile(id,"ci.json")).toString(),"captured");
+  await assert.rejects(store.readVerifiedFile(id,"../ci.json"));
+  await assert.rejects(store.readVerifiedFile(id,"missing.json"),/not in captured source/);
+  const file=path.join(tmp,"snapshots",id,"files","ci.json");
+  await fs.chmod(file,0o600);await fs.writeFile(file,"modified");
+  await assert.rejects(store.readVerifiedFile(id,"ci.json"),(e:any)=>e.code==="SNAPSHOT_INTEGRITY");
+ }finally{await fs.rm(tmp,{recursive:true,force:true});}
+});
+test("verified snapshot export includes files over workflow limit and detects changed bytes",async()=>{
+ const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-ci-export-"));try{
+  const store=new CiSnapshotStore(tmp),id=randomUUID(),bytes=Buffer.alloc(100000,65);
+  await store.persist(id,[{path:"large.bin",bytes}]);
+  await assert.rejects(store.readVerifiedFile(id,"large.bin"),/Workflow exceeds/);
+  const entries=await store.readVerifiedEntries(id);assert.equal(entries[0].path,"large.bin");assert.deepEqual(entries[0].bytes,bytes);
+  const file=path.join(tmp,id,"files","large.bin");await fs.chmod(file,0o600);await fs.writeFile(file,Buffer.alloc(100000,66));
+  await assert.rejects(store.readVerifiedEntries(id),(e:any)=>e.code==="SNAPSHOT_INTEGRITY");
+ }finally{await fs.rm(tmp,{recursive:true,force:true});}
+});

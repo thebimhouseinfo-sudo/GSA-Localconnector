@@ -69,7 +69,8 @@ test("queued CI can be cancelled, running CI cannot fake cancellation",async()=>
   const journal=new CiJournalStore(path.join(tmp,"ci"));
   const queued=createQueuedRun("A","build","c".repeat(64));await journal.save(queued,null);
   const registry=new WorkspaceRegistry();await registry.enrollTrusted("A",tmp,["read","execute"]);await registry.enrollTrusted("B",tmp,["read","execute"]);
-  const invoke=createReadOnlyTools(registry,null,null,journal);
+  const snapshots=new CiSnapshotStore(path.join(tmp,"snapshots"));
+  const invoke=createReadOnlyTools(registry,null,null,journal,null,null,null,snapshots);
   const denied=await invoke({name:"ci_cancel",arguments:{workspace_id:"B",run_id:queued.run_id}});
   assert.equal(denied.isError,true);
   const approved=JSON.parse((await invoke({name:"ci_cancel",arguments:{workspace_id:"A",run_id:queued.run_id}})).content[0].text);
@@ -83,7 +84,7 @@ test("queued CI can be cancelled, running CI cannot fake cancellation",async()=>
  }finally{await fs.rm(tmp,{recursive:true,force:true});}
 });
 
-test("failed CI may be prepared for rerun only with pinned source bytes",async()=>{
+test("legacy failed CI without workflow provenance cannot be prepared for rerun",async()=>{
  const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"ci-rerun-"));
  try{
   const journal=new CiJournalStore(path.join(tmp,"journal"));
@@ -100,11 +101,8 @@ test("failed CI may be prepared for rerun only with pinned source bytes",async()
   const reg=new WorkspaceRegistry();await reg.enrollTrusted("A",tmp,["read","execute"]);
   const invoke=createReadOnlyTools(reg,null,null,journal,null,null,null,snapshots);
   const response=JSON.parse((await invoke({name:"ci_rerun_failed",arguments:{workspace_id:"A",run_id:start.run_id}})).content[0].text);
-  assert.equal(response.ok,true);
-  assert.equal(response.result.state,"QUEUED");
-  assert.equal(response.result.rerun_of,start.run_id);
-  assert.equal((await snapshots.verify(response.result.run_id)).source_sha256,verifiedSource.source_sha256);
-  const duplicate=await invoke({name:"ci_rerun_failed",arguments:{workspace_id:"A",run_id:response.result.run_id}});
-  assert.equal(duplicate.isError,true);
+  assert.equal(response.ok,false);
+  assert.equal((await journal.list()).length,1);
+  await assert.rejects(journal.prepareRerun(start.run_id,"A",snapshots),/WORKFLOW_PROVENANCE_REQUIRED/);
  }finally{await fs.rm(tmp,{recursive:true,force:true});}
 });

@@ -13,7 +13,8 @@ export function applyUnifiedTextPatch(original:string,patch:string):string {
   const m=/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?:.*)$/.exec(head);
   if(!m)throw new PatchConflict("INVALID_PATCH","Expected unified hunk");
   hunks++;
-  const oldStart=Number(m[1])-1,oldCount=m[2]===undefined?1:Number(m[2]);
+  const oldCount=m[2]===undefined?1:Number(m[2]);
+  const oldStart=Number(m[1])-(oldCount===0?0:1);
   const newCount=m[4]===undefined?1:Number(m[4]);
   if(oldStart<cursor||oldStart>source.length||oldCount<0||newCount<0)throw new PatchConflict("INVALID_PATCH","Hunk out of order or bounds");
   out.push(...source.slice(cursor,oldStart));cursor=oldStart;

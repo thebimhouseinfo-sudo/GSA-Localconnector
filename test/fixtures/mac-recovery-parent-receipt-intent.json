@@ -1,0 +1,10 @@
+{
+  "after_sha256": "7014ae0f2fc0fee42a440b97859207efb72ffee09d4864f7433f1bf756a17aca",
+  "expected_sha256": "5ef6616cf992f506954a2c9273556f0f0eb3fed8fac53672c5c659dbb90ce562",
+  "operation": "replace",
+  "path": "held-e8bb9414-dbbe-4b84-817c-71864d902e7c/item-4c5df3e6-9f04-4d8f-b026-c3b7cf1cdc72.txt",
+  "protocol": "gsa-file-recovery-v1",
+  "revision": 1,
+  "transaction_id": "811ff7e5-2b53-4074-8a1e-c5e5d9dfbfe9",
+  "workspace_id": "work"
+}
