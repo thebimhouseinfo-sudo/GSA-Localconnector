@@ -1,5 +1,7 @@
 # Criteria — Logic hoạt động người dùng đã chốt
 
+Status: APPROVED
+
 ## Xác nhận phạm vi ngày 2026-10-18 — ưu tiên khi cách diễn đạt cũ khác nhau
 
 Người dùng yêu cầu cập nhật criteria theo hợp đồng dưới đây. “GitHub offline” mô tả các công cụ local hữu ích cho personal use; không yêu cầu dựng lại GitHub, một hệ thống CI đa hệ điều hành hay một agent local khác. Đây là mục tiêu, không phải tuyên bố phần mềm đã hoàn thành.
