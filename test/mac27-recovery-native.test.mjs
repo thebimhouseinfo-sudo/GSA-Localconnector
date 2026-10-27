@@ -131,7 +131,8 @@ test('relocation classification reports only the actual denied phase',()=>{
   for(const phase of ['capture','publication','restoration'])
     assert.deepEqual(classifyRelocation({...base,phase}),{state:'OBSERVED_DENIAL',phase,exercisedSyscalls:[phase]});
   assert.equal(classifyRelocation({...base,phase:'publication',phaseVerified:false}).state,'INCONCLUSIVE');
-  assert.equal(classifyRelocation({...base,phase:'capture',canariesUnchanged:false}).state,'INCONCLUSIVE');
+  assert.equal(classifyRelocation({...base,phase:'capture',canariesUnchanged:undefined}).state,'INCONCLUSIVE');
+  assert.equal(classifyRelocation({...base,phase:'capture',canariesUnchanged:false}).state,'BLOCKING');
   assert.equal(classifyRelocation({...base,phase:'capture',outsideChanged:true}).state,'BLOCKING');
 });
 
@@ -153,11 +154,11 @@ test('receipt budget reserves bytes atomically and refuses overflow',()=>{
 });
 
 test('owner and worker merge makes BLOCKING take priority and preserves bounded counts',()=>{
-  assert.deepEqual(mergeRunState({state:'APPLIED',counts:{broker:1}},{state:'UNKNOWN',counts:{broker:1}}),{
-    state:'CLEANUP_UNVERIFIED',cleanupState:'UNVERIFIED',counts:{broker:2,sign:0,compile:0,observer:0,owner:0,tool:0,total:0,relocation:0,signals:0},unresolved:[],
+  assert.deepEqual(mergeRunState({state:'APPLIED',counts:{broker:1,total:1}},{state:'UNKNOWN',counts:{broker:1,total:1}}),{
+    state:'CLEANUP_UNVERIFIED',cleanupState:'UNVERIFIED',counts:{broker:2,sign:0,compile:0,observer:0,owner:0,tool:0,total:2,relocation:0,signals:0},unresolved:[],
   });
-  assert.equal(mergeRunState({state:'BLOCKING',counts:{}},{state:'CLEANUP_UNVERIFIED',counts:{}}).state,'BLOCKING');
-  assert.throws(()=>mergeRunState({counts:{broker:17}},{counts:{broker:1}}),e=>e.code==='BUDGET_EXHAUSTED');
+  assert.equal(mergeRunState({state:'BLOCKING',counts:{total:0}},{state:'CLEANUP_UNVERIFIED',counts:{total:0}}).state,'BLOCKING');
+  assert.throws(()=>mergeRunState({counts:{broker:17,total:17}},{counts:{broker:1,total:1}}),e=>e.code==='BUDGET_EXHAUSTED');
 });
 
 test('merged persisted child counters must agree with their reported total',()=>{
@@ -166,8 +167,8 @@ test('merged persisted child counters must agree with their reported total',()=>
     {counts:{tool:1,total:1}},
   );
   assert.equal(result.counts.total,4);
-  assert.throws(()=>mergeRunState({counts:{broker:2,total:0}},{counts:{}}),e=>e.code==='BUDGET_EXHAUSTED');
-  assert.throws(()=>mergeRunState({counts:{broker:1,total:2}},{counts:{}}),e=>e.code==='BUDGET_EXHAUSTED');
+  assert.throws(()=>mergeRunState({counts:{broker:2,total:0}},{counts:{total:0}}),e=>e.code==='COUNT_TOTAL_MISMATCH');
+  assert.throws(()=>mergeRunState({counts:{broker:1,total:2}},{counts:{total:0}}),e=>e.code==='COUNT_TOTAL_MISMATCH');
 });
 
 test('receipt byte reservations reject malformed prior state without changing it',()=>{
@@ -231,7 +232,7 @@ test('owner worker entry binds one stage, reservation, inputs, source/runtime bu
   const stage='/private/tmp/gsa-mac27-recovery-0123456789abcdef01234567',hash='a'.repeat(64);
   const sourceHashes={driver:hash,candidate:'b'.repeat(64)},runtime=[{path:'core.js',sha256:'c'.repeat(64)}],build={release:'d'.repeat(64)};
   const input={stage,sourceHashes,runtime,build,startedAt:1000,deadlineAt:181000,node:'/usr/bin/node',nodeSha256:'e'.repeat(64)};
-  const reservation={stage,inputSha256:'f'.repeat(64),sourceHashes,runtime,build,caps,bounds:{runMs:180000,watchMs:5500,watchIterations:2000,watchStops:1,requestBytes:12*1024*1024,responseBytes:1024*1024,diagnosticBytes:65536,observerBytes:4096,receiptBytes:64*1024*1024},startedAt:1000,deadlineAt:181000};
+  const reservation={format:'gsa-mac27-recovery-once-v1',activation:false,stage,inputSha256:'f'.repeat(64),sourceHashes,runtime,build,caps,bounds:{runMs:180000,watchMs:5500,watchIterations:2000,watchStops:1,requestBytes:12*1024*1024,responseBytes:1024*1024,diagnosticBytes:65536,observerBytes:4096,receiptBytes:64*1024*1024},startedAt:1000,deadlineAt:181000};
   const current={stage,inputSha256:reservation.inputSha256,driverSha256:hash,node:'/usr/bin/node',nodeSha256:input.nodeSha256};
   assert.equal(validateWorkerBinding(input,reservation,current),true);
   for(const mutate of [
@@ -239,6 +240,7 @@ test('owner worker entry binds one stage, reservation, inputs, source/runtime bu
     (i,r,c)=>{c.driverSha256='1'.repeat(64);},(i,r,c)=>{i.runtime=[{path:'changed.js',sha256:'c'.repeat(64)}];},
     (i,r,c)=>{r.caps={...caps,total:157};},(i,r,c)=>{i.deadlineAt=181001;},
     (i,r,c)=>{c.nodeSha256='2'.repeat(64);},(i,r,c)=>{r.sourceHashes={...sourceHashes,driver:'3'.repeat(64)};},
+    (i,r,c)=>{r.format='unknown';},(i,r,c)=>{r.activation=true;},
   ]){
     const i=structuredClone(input),r=structuredClone(reservation),c={...current};mutate(i,r,c);
     assert.throws(()=>validateWorkerBinding(i,r,c));

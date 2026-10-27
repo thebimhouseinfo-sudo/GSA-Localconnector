@@ -167,4 +167,3 @@ test('initial publication temp sync EIO follows a real write then cleans only it
  assert.deepEqual((await fs.readdir(x.protectedRoot)).filter(name=>name===`${copyId}.lock`),[]);
  const retry=await new DirectoryCopyStore(x.protectedRoot).create(copyId,x.intent);assert.equal(retry.created,true);assert.equal(retry.record.revision,1);});
 });
-

@@ -107,4 +107,3 @@ test('rejects unknown fields at capture, manifest, entry, payload and observatio
  rejects({...source,files:[{path:'unexpected',bytes:new Uint8Array(),extra:true}]},/field|shape|payload|file/i);
  rejects({...source,observations:[{...source.observations[0],extra:true}]},/field|shape|observation/i);
 });
-

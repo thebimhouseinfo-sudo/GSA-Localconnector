@@ -256,4 +256,3 @@ test('APPLIED finish rename directory-sync EIO leaves truthful terminal state an
  assert.equal((await fresh.readCopy(uuid)).status,'APPLIED');assert.equal((await fresh.readCopy(uuid)).readback?.status,'MATCH');assert.equal((await fresh.copy(uuid,refs.source,refs.destination,simple.manifest.sha256)).status,'APPLIED');
  assert.deepEqual(namespaceCalls(x),expected);assert.equal(await fs.readFile(path.join(x.protectedRoot,`${uuid}.json`),'utf8'),before);});
 });
-
