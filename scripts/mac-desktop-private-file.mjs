@@ -9,7 +9,7 @@ const codes = new Set(["FILE_MISSING", "FILE_UNSAFE", "FILE_BUSY", "FILE_STALE",
 // The lock serializes cooperating writers. This is not a same-UID sandbox or an
 // adversarial compare-and-swap primitive: macOS rename has no expected-inode CAS.
 const helper = String.raw`
-import base64, errno, hashlib, json, os, secrets, stat, sys
+import base64, errno, fcntl, hashlib, json, os, secrets, stat, sys
 
 LIMIT = 16384
 class Refused(Exception):
@@ -97,11 +97,21 @@ def operate(request):
             verify_chain()
             return {'bytes': base64.b64encode(data).decode(), 'identity': identity}
         lock_name = '.' + name + '.gsa-lock'
+        # Keep a stable lock inode: unlinking a flock pathname lets a second
+        # writer create a different inode while the first writer still holds it.
+        lock_fd = os.open(lock_name, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600, dir_fd=parent)
+        leaf_info(lock_fd)
         try:
-            lock_fd = os.open(lock_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
-        except FileExistsError:
-            lock_name = None
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
             refuse('FILE_BUSY')
+        def verify_lock():
+            held = leaf_info(lock_fd)
+            visible = os.stat(lock_name, dir_fd=parent, follow_symlinks=False)
+            if signature(held) != signature(visible):
+                refuse('FILE_STALE')
+        verify_chain()
+        verify_lock()
         expected = request['expectedIdentity']
         if expected is not None:
             _, identity = read_leaf(parent, name)
@@ -128,6 +138,7 @@ def operate(request):
         finally:
             os.close(fd)
         verify_chain()
+        verify_lock()
         if expected is None:
             # linkat creates exclusively, without the check-then-rename race.
             os.link(temporary, name, src_dir_fd=parent, dst_dir_fd=parent, follow_symlinks=False)
@@ -141,6 +152,7 @@ def operate(request):
         os.fsync(parent)
         _, identity = read_leaf(parent, name)
         verify_chain()
+        verify_lock()
         return {'identity': identity}
     finally:
         if temporary is not None:
@@ -149,14 +161,7 @@ def operate(request):
             except OSError:
                 pass
         if lock_fd is not None:
-            try:
-                held = os.fstat(lock_fd)
-                visible = os.stat(lock_name, dir_fd=parent, follow_symlinks=False)
-                if (held.st_dev, held.st_ino) == (visible.st_dev, visible.st_ino):
-                    os.unlink(lock_name, dir_fd=parent)
-            except OSError:
-                pass
-            os.close(lock_fd)
+            os.close(lock_fd) # Kernel releases the lock on close or process death.
         for fd in reversed(descriptors):
             os.close(fd)
 

@@ -12,6 +12,7 @@ import {enrollReadOnly} from "../src/local/grants.js";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
 import {createReadOnlyTools} from "../src/mcp/server.js";
 import {DurableProcessManager} from "../src/core/durable-process.js";
+import {ProcessJournalStore} from "../src/local/process-store.js";
 import {applyUnifiedTextPatch} from "../src/core/unified-patch.js";
 import {CiSnapshotStore} from "../src/local/ci-snapshot-store.js";
 import {CiJournalStore} from "../src/local/ci-store.js";
@@ -100,12 +101,34 @@ test("running processes retain their slot until native stop confirms termination
  assert.equal((await manager.output("A",first.process_id)).stdout,"first-rest");
 });
 
-test("failed native starts do not permanently consume capacity",async()=>{
- const native=controller();let failed=false;
- native.start=async()=>{if(!failed){failed=true;throw Error("native start failed");}return {native_id:"ok"};};
+test("uncertain native start failure retains UNKNOWN owned capacity without querying an empty ID",async()=>{
+ const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-start-uncertain-"));await fs.chmod(tmp,0o700);
+ try{
+  const native=controller();let starts=0,queries=0;
+  native.start=async()=>{starts++;throw Error("transport lost after possible native start effect");};
+  native.status=async()=>{queries++;throw Error("empty native ID must not be queried");};
+  native.stop=async()=>{queries++;throw Error("empty native ID must not be stopped");};
+  native.output=async()=>{queries++;throw Error("empty native ID must not be read");};
+  const persistence={store:new ProcessJournalStore(path.join(tmp,"processes")),ownerSession:randomUUID()};
+  const manager=new DurableProcessManager(native,1,persistence);
+  await assert.rejects(manager.start(request),/possible native start effect/);
+  const listed=await manager.list("A");assert.equal(listed.length,1);
+  const record=await persistence.store.load(listed[0]!.process_id);assert.ok(record);
+  assert.equal(record.status.state,"UNKNOWN");assert.equal(record.stopped,false);assert.equal(record.output_complete,false);
+  await assert.rejects(manager.start(request),(error:any)=>error.code==="PROCESS_LIMIT");
+  assert.equal(starts,1,"a retry cannot begin while the prior start may have taken effect");
+  assert.equal(queries,0,"no native operation targets an unacknowledged empty ID");
+ }finally{await fs.rm(tmp,{recursive:true,force:true});}
+});
+
+test("invalid native process requests fail before consuming capacity",async()=>{
+ const native=controller();let starts=0;
+ native.start=async()=>{starts++;return {native_id:"valid-start"};};
  const manager=new DurableProcessManager(native,1);
- await assert.rejects(manager.start(request),/native start failed/);
+ await assert.rejects(manager.start({...request,network_allowed:true}));
+ assert.equal(starts,0,"validation must run before native start");
  assert.equal((await manager.start(request)).state,"RUNNING");
+ assert.equal(starts,1);
 });
 
 test("MCP log and process output cursors reach subsequent pages and retain ownership checks",async()=>{

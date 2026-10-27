@@ -36,7 +36,8 @@ function validateAdapter(envPath, privateFile) {
   }
 }
 
-async function inspectSetup({envPath, privateFile}) {
+// Internal setup inspection retains identity even when verified bytes are invalid.
+export async function inspectDesktopConfig({envPath, privateFile}) {
   let identity = null;
   try {
     validateAdapter(envPath, privateFile);
@@ -53,7 +54,7 @@ async function inspectSetup({envPath, privateFile}) {
 }
 
 export async function loadDesktopConfig(options) {
-  return (await inspectSetup(options)).result;
+  return (await inspectDesktopConfig(options)).result;
 }
 
 export async function saveDesktopConfig({envPath, values, expectedIdentity, privateFile}) {
@@ -70,7 +71,7 @@ export async function saveDesktopConfig({envPath, values, expectedIdentity, priv
 }
 
 export async function resolveDesktopSetup({envPath, privateFile, promptOnce, setupRequested = false}) {
-  const inspected = await inspectSetup({envPath, privateFile});
+  const inspected = await inspectDesktopConfig({envPath, privateFile});
   if (inspected.result.state === "READY" || setupRequested !== true || typeof promptOnce !== "function" ||
       !["FILE_MISSING", "CONFIG_INVALID"].includes(inspected.result.reason)) return inspected.result;
   try {

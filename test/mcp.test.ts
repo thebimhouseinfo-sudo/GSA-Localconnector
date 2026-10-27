@@ -35,11 +35,15 @@ test("partial scoped-file backends report only supported mutations",async()=>{
  assert.equal(result.shellIsolation,"blocked");assert.equal(result.git,"blocked");
 });
 
-test("legacy scoped-file backends without an operation list retain full-write compatibility",async()=>{
+test("legacy scoped-file backends keep base mutations and batch support while directory copy stays blocked",async()=>{
  const registry=new WorkspaceRegistry();
  const legacy:any={read:async()=>{throw Error("unused");},createExclusive:async()=>{},replaceIfHash:async()=>{},makeDirectory:async()=>{},copyExclusive:async()=>{},moveExclusive:async()=>{},trashIfHash:async()=>{}};
  const result=JSON.parse((await createReadOnlyTools(registry,legacy)({name:"list_capabilities"})).content[0].text).result;
  assert.equal(result.fileBackendAvailable,true);
- assert.equal(result.hostFileWrites,true);
+ assert.equal(result.hostFileWrites,false);
  assert.deepEqual(result.fileOperations,["create_file","update_file","edit_file","apply_patch","create_directory","delete_file","copy_file","move_file"]);
+ assert.equal(result.directoryCopyAvailable,false);
+ assert.ok(result.directoryCopyBlockedReason);
+ assert.ok(result.blocked.includes("copy_directory"));
+ assert.ok(result.files.includes("batch_file_operations"));
 });

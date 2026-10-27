@@ -33,6 +33,24 @@ function role(grant:WorkspaceGrant):WorkspaceRole|undefined{return (grant as Wor
 function sorted(values:readonly string[]):string[]{return [...values].sort();}
 const workspacePerms=["execute","read","write"];
 
+test("grant publication never removes a replacement writer lock",async()=>{
+ const tmp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),"gsa-grant-lock-owner-"))),dir=path.join(tmp,"identity"),work=await mkdir(tmp,"work");
+ let passed=false;const lock=path.join(dir,".trusted-workspaces.lock");let replacementIdentity:{dev:bigint;ino:bigint}|undefined;
+ try{
+  await assert.rejects(grants.enrollRolesTrustedBatch([{id:"app",root:work,role:"workspace"}],dir,async()=>{
+   const owned=await fs.lstat(lock,{bigint:true});
+   await fs.rename(lock,path.join(dir,"retained-original-lock"));
+   await fs.writeFile(lock,"replacement writer",{mode:0o600,flag:"wx"});
+   const replacement=await fs.lstat(lock,{bigint:true});assert.notEqual(replacement.ino,owned.ino);replacementIdentity={dev:replacement.dev,ino:replacement.ino};
+  }),(error:any)=>error?.code==="RESULT_UNKNOWN");
+  assert.equal(await fs.readFile(lock,"utf8"),"replacement writer");
+  const after=await fs.lstat(lock,{bigint:true});assert.equal(after.dev,replacementIdentity!.dev);assert.equal(after.ino,replacementIdentity!.ino);
+  // Publication can have completed before lock release becomes uncertain.
+  assert.equal((await grants.loadTrustedRegistry(dir)).requireGrant("app","write").role,"workspace");
+  passed=true;
+ }finally{if(passed)await fs.rm(tmp,{recursive:true,force:true});else console.error(`Preserved grant-lock fixture: ${tmp}`);}
+});
+
 test("mixed explicit roles survive reload with exact permissions and persisted workspace authorization",async()=>fixture(async(tmp,dir)=>{
   const work=await mkdir(tmp,"work"),ref=await mkdir(tmp,"reference");
   const saved=await enroll([{id:"app",root:work,role:"workspace"},{id:"manual",root:ref,role:"reference"}],dir);

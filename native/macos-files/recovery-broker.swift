@@ -129,15 +129,18 @@ func outcome(_ id:String,_ status:String,_ intent:[String:Any],_ observations:[S
 func inspect(_ id:String,_ tx:Int32,_ b:Binding,_ work:Int32)throws->[String:Any] {
  let intent=try readJSON(tx,"intent.json")
  guard intent["protocol"] as? String=="gsa-file-recovery-v1",intent["transaction_id"] as? String==id,intent["workspace_id"] as? String==b.id,intent["revision"] as? Int==b.revision,let source=intent["path"] as? String,let operation=intent["operation"] as? String,["replace","trash"].contains(operation),let expected=intent["expected_sha256"] as? String,validHash(expected),let after=intent["after_sha256"] as? String,(operation=="trash" ? after.isEmpty : validHash(after)) else {throw Failure(code:"INVALID_JOURNAL")}
- let (fd,name)=try parent(work,source);defer{close(fd)}
  var observations:[String:Any]=[:],retained=false
  do {
   try recheckRoots(b)
   retained=try exists(tx,"captured")
   observations["captured"]=retained
-  observations["source_absent"] = try !exists(fd,name)
   let captured=retained ? try readRegular(tx,"captured",limit) : nil
   if let c=captured {observations["capturedIdentity"]=identity(c.info);observations["captured_sha256"]=digest(c.bytes)}
+  // A moved/missing interior parent does not erase a valid transaction intent
+  // or recovery handle. Preserve those observations and return UNKNOWN; do not
+  // infer source absence or retry any mutation from a failed namespace walk.
+  let (fd,name)=try parent(work,source);defer{close(fd)}
+  observations["source_absent"] = try !exists(fd,name)
   let final=try readJSON(tx,"final.json")
   try check(final["transaction_id"] as? String==id && final["operation"] as? String==operation,"INVALID_JOURNAL")
   guard let c=captured,let recorded=final["capturedIdentity"] as? [String:String],recorded==identity(c.info),digest(c.bytes)==expected else {return outcome(id,"UNKNOWN",intent,observations,retained,"CAPTURE_READBACK_CHANGED")}

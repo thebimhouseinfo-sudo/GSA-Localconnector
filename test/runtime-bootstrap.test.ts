@@ -10,6 +10,7 @@ import {createHttpMcpServer} from "../src/mcp/http.js";
 import {ControlLeaseStore} from "../src/local/control-lease.js";
 import {withControlToken} from "../src/mcp/control-context.js";
 import {identityDirectory} from "../src/local/identity.js";
+import {enrollRolesTrustedBatch} from "../src/local/grants.js";
 
 test("production bootstrap keeps controller enforcement when native installation is absent",{skip:process.platform==="win32"?"POSIX controller store; Windows ACL backend unverified":false},async()=>{
  const identity=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),"gsa-bootstrap-")));
@@ -53,6 +54,41 @@ test("bootstrap routes workspace role binding through its selected identity dire
   assert.equal(registry.list()[0]!.role,"workspace");
   await call("release_control",{control_token:lease.result.control_token});
  }finally{os.homedir=original;await fs.rm(root,{recursive:true,force:true});}
+});
+test("confirmed explicit workspace binding clears the stale startup selection warning",{skip:process.platform==="win32"?"POSIX protected store; Windows ACL backend unverified":false},async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-bootstrap-reselect-")),identity=path.join(root,"identity"),project=path.join(root,"project");
+ await fs.mkdir(project,{mode:0o700});
+ try{
+  const registry=new WorkspaceRegistry(),{invoke}=await bootstrapMcpTools(registry,identity,path.join(root,"missing-installation"),undefined,"WORKSPACE_ROOT_CHANGED");
+  const call=async(name:string,args:Record<string,unknown>={})=>JSON.parse((await invoke({name,arguments:args})).content[0].text);
+  const lease=await call("acquire_control");assert.equal(lease.ok,true);
+  const before=await call("list_capabilities");assert.equal(before.result.workspaceSelectionRequired,true);
+  const invalid=await call("bind_workspaces",{roots:[{path:path.join(root,"missing"),role:"workspace"}],control_token:lease.result.control_token});assert.equal(invalid.ok,false);
+  assert.equal((await call("list_capabilities")).result.workspaceSelectionRequired,true,"failed binding must retain the startup warning");
+  const bound=await call("bind_workspaces",{roots:[{path:project,role:"workspace"}],control_token:lease.result.control_token});assert.equal(bound.ok,true);
+  assert.equal((await call("list_capabilities")).result.fileBackendAvailable,false,"successful durable selection remains successful when verified installation is unavailable");
+  const after=await call("list_capabilities");
+  assert.notEqual(after.result.workspaceSelectionRequired,true,"successful durable re-selection must clear historical root-change warning");
+  assert.ok(after.result.workspaceStartupIssue===null||after.result.workspaceStartupIssue===undefined);
+  await call("release_control",{control_token:lease.result.control_token});
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test("unbind refresh preserves an unresolved startup selection warning",{skip:process.platform==="win32"?"POSIX protected store; Windows ACL backend unverified":false},async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-bootstrap-unbind-warning-")),identity=path.join(root,"identity"),project=path.join(root,"project");
+ await fs.mkdir(project,{mode:0o700});
+ try{
+  const [enrolled]=await enrollRolesTrustedBatch([{id:"preexisting-selected-root",root:project,role:"workspace"}],identity);
+  const registry=new WorkspaceRegistry();await registry.importTrusted(enrolled!.grant);
+  const {invoke}=await bootstrapMcpTools(registry,identity,path.join(root,"missing-installation"),undefined,"WORKSPACE_ROOT_CHANGED");
+  const call=async(name:string,args:Record<string,unknown>={})=>JSON.parse((await invoke({name,arguments:args})).content[0].text);
+  const lease=await call("acquire_control");assert.equal(lease.ok,true);
+  const unbound=await call("unbind_workspace",{workspace_id:"preexisting-selected-root",control_token:lease.result.control_token});assert.equal(unbound.ok,true);
+  const status=await call("list_capabilities");
+  assert.equal(status.result.workspaceSelectionRequired,true,"revocation alone must not clear unresolved initial selection warning");
+  assert.equal(status.result.workspaceStartupIssue,"WORKSPACE_ROOT_CHANGED");
+  assert.deepEqual((await call("list_workspaces")).result,[]);
+  await call("release_control",{control_token:lease.result.control_token});
+ }finally{await fs.rm(root,{recursive:true,force:true});}
 });
 test("HTTP transport invokes the supplied production tool dispatcher",async()=>{
  let calls=0;

@@ -48,3 +48,33 @@ test('target uses existing private metadata and refuses a conflicting override',
  assert.equal(await resolveTerminalTarget({home,privateFile}),envPath);
  await assert.rejects(resolveTerminalTarget({home,privateFile,requestedEnvPath:path.join(home,'other.env')}),{code:'CONFIG_PATH_CONFLICT'});
 }));
+
+test('explicit setup repairs verified malformed bytes without exposing their identity or contents',()=>fixture(async root=>{
+ const envPath=path.join(root,'.env');await privateFile.replaceVerified(envPath,Buffer.from('invalid-synthetic-config'),null);
+ const publicResult=await loadDesktopConfig({envPath,privateFile});
+ assert.deepEqual(publicResult,{state:'SETUP_REQUIRED',reason:'CONFIG_INVALID'});
+ await assert.rejects(setupTerminal({envPath,privateFile,prompt:()=>assert.fail('implicit repair must not prompt')}),{code:'CONFIG_INVALID'});
+ const result=await setupTerminal({envPath,privateFile,replace:true,prompt:async({secret})=>secret?values.apiKey:values.tunnelId});
+ assert.deepEqual(result,{state:'SAVED'});assert.deepEqual((await loadDesktopConfig({envPath,privateFile})).values,values);
+}));
+
+test('cancelled or stale malformed-config repair preserves original or newer bytes',()=>fixture(async root=>{
+ const envPath=path.join(root,'.env'),original=Buffer.from([0xff,0xfe]);
+ await privateFile.replaceVerified(envPath,original,null);
+ const before=await privateFile.readVerified(envPath);
+ await assert.rejects(setupTerminal({envPath,privateFile,replace:true,prompt:async()=>{throw Error('cancel');}}));
+ assert.deepEqual((await privateFile.readVerified(envPath)).bytes,original);
+ const newer=Buffer.from('newer-synthetic-invalid-content');let changed=false;
+ await assert.rejects(setupTerminal({envPath,privateFile,replace:true,prompt:async({secret})=>{
+  if(!changed){changed=true;await privateFile.replaceVerified(envPath,newer,before.identity);}
+  return secret?values.apiKey:values.tunnelId;
+ }}),{code:'FILE_STALE'});
+ assert.deepEqual((await privateFile.readVerified(envPath)).bytes,newer);
+}));
+
+test('explicit replacement still refuses unsafe malformed files and aliases before prompting',()=>fixture(async root=>{
+ const envPath=path.join(root,'.env');await fs.writeFile(envPath,'invalid',{mode:0o600});await fs.chmod(envPath,0o644);
+ await assert.rejects(setupTerminal({envPath,privateFile,replace:true,prompt:()=>assert.fail('unsafe file must not prompt')}),{code:'FILE_UNSAFE'});
+ await fs.chmod(envPath,0o600);const alias=path.join(root,'alias');await fs.symlink(envPath,alias);
+ await assert.rejects(setupTerminal({envPath:alias,privateFile,replace:true,prompt:()=>assert.fail('alias must not prompt')}),{code:'FILE_UNSAFE'});
+}));

@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {StringDecoder} from 'node:string_decoder';
-import {loadDesktopConfig,saveDesktopConfig} from './desktop-config.mjs';
+import {inspectDesktopConfig,saveDesktopConfig} from './desktop-config.mjs';
 import {createMacPrivateFile} from './mac-desktop-private-file.mjs';
 
 const fail=code=>Object.assign(new Error(code),{code});
@@ -55,12 +55,12 @@ export async function resolveTerminalTarget({home=os.homedir(),requestedEnvPath,
 }
 
 export async function setupTerminal({envPath,privateFile=createMacPrivateFile(),replace=false,prompt=promptTerminal}){
- const current=await loadDesktopConfig({envPath,privateFile});
+ const inspected=await inspectDesktopConfig({envPath,privateFile}),current=inspected.result;
  if(current.state==='READY'&&!replace)return {state:'READY'};
- if(current.state!=='READY'&&current.reason!=='FILE_MISSING')throw fail(current.reason);
+ if(current.state!=='READY'&&current.reason!=='FILE_MISSING'&&!(replace&&current.reason==='CONFIG_INVALID'&&inspected.identity!==null))throw fail(current.reason);
  const old=current.state==='READY'?current.values:null;
  const tunnelId=await prompt({label:`Tunnel ID${old?' (Enter to keep saved value)':''}: `,secret:false});
  const apiKey=await prompt({label:`API key (hidden${old?'; Enter to keep saved value':''}): `,secret:true});
- await saveDesktopConfig({envPath,privateFile,values:{tunnelId:tunnelId||old?.tunnelId,apiKey:apiKey||old?.apiKey},expectedIdentity:current.identity??null});
+ await saveDesktopConfig({envPath,privateFile,values:{tunnelId:tunnelId||old?.tunnelId,apiKey:apiKey||old?.apiKey},expectedIdentity:inspected.identity});
  return {state:'SAVED'};
 }

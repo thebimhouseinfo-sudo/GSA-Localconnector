@@ -119,9 +119,17 @@ async function withGrantLock<T>(dir:string,operation:(publication:Publication)=>
   if(["EEXIST","ELOOP"].includes((error as NodeJS.ErrnoException).code??"")){protectedInfo(await fs.lstat(lock));throw Error("GRANT_STORE_BUSY");}
   throw error;
  }
- const publication:Publication={published:false};let result:T|undefined,error:unknown,failed=false;
- try{protectedInfo(await handle.stat());result=await operation(publication);}catch(cause){failed=true;error=cause;}
- for(const cleanup of [()=>handle.close(),()=>fs.unlink(lock)])try{await cleanup();}catch(cause){if(!failed){failed=true;error=cause;}}
+ const publication:Publication={published:false};let result:T|undefined,error:unknown,failed=false,owned:Stats|undefined,closed=false;
+ try{const observed=await handle.stat();protectedInfo(observed);owned=observed;result=await operation(publication);}catch(cause){failed=true;error=cause;}
+ try{await handle.close();closed=true;}
+ catch{failed=true;error=new ConnectorError("RESULT_UNKNOWN","Grant lock descriptor release is uncertain; inspect durable state");}
+ // A failed initial stat gives no authority to remove the named lock. A replaced
+ // lock belongs to another writer even when its permissions and owner match.
+ if(closed&&owned)try{
+  const visible=await fs.lstat(lock);protectedInfo(visible);
+  if(visible.dev!==owned.dev||visible.ino!==owned.ino)throw new ConnectorError("RESULT_UNKNOWN","Grant lock identity changed; inspect durable state");
+  await fs.unlink(lock);
+ }catch(cause){failed=true;error=cause instanceof ConnectorError?cause:new ConnectorError("RESULT_UNKNOWN","Grant lock release is uncertain; inspect durable state");}
  if(failed)throw publication.published?publicationError(error):error;
  return result as T;
 }

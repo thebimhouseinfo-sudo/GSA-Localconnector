@@ -35,11 +35,15 @@ function adapter(overrides = {}) {
 test('failed stage verification leaves the active pointer untouched', async t => {
   const root = await fixture(t);
   const pointer = path.join(root, 'runtime-current.json');
+  const config = path.join(root, 'config.json');
   await fs.writeFile(pointer, '{"id":"old-fixture"}');
+  await fs.writeFile(config, '{"runtimeRoot":"old-runtime","envPath":"old-config"}');
   const { api, calls } = adapter({ inspectCurrent: async () => ({ state: 'VALID', pointer }), verifyStage: async () => { calls.push('verify'); return false; } });
   const result = await runInstall({ action: 'update', platformAdapter: api, sourceRoot: root, installRoot: path.join(root, 'install'), envPath: path.join(root, 'saved.env') });
   assert.equal(result.state, 'FAILED');
   assert.equal(await fs.readFile(pointer, 'utf8'), '{"id":"old-fixture"}');
+  assert.equal(await fs.readFile(config, 'utf8'), '{"runtimeRoot":"old-runtime","envPath":"old-config"}');
+  assert.equal(calls.includes('activate'), false);
   assert.deepEqual(calls, ['build', 'verify']);
 });
 

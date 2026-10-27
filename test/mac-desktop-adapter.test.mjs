@@ -51,3 +51,13 @@ test('overlapping slow status probes publish once and future refreshes still wor
   assert.equal(JSON.parse(await fs.readFile(statusPath,'utf8')).connection,'CONNECTED');
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
+
+test('stage readiness requires the same installation for both successful states',async()=>{
+ const {isStageReady}=await import('../scripts/mac-desktop-install.mjs');
+ for(const state of ['RUNNING','SETUP_REQUIRED']){
+  assert.equal(isStageReady({installationId:'current-stage',state},'current-stage'),true);
+  assert.equal(isStageReady({installationId:'old-stage',state},'current-stage'),false);
+  assert.equal(isStageReady({state},'current-stage'),false);
+ }
+ for(const state of ['STARTING','FAILED','STOPPED'])assert.equal(isStageReady({installationId:'current-stage',state},'current-stage'),false);
+});

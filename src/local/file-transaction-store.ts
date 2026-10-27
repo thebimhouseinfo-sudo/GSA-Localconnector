@@ -42,7 +42,7 @@ export class FileTransactionStore {
    while(count<data.length){const r=await fd.read(data,count,data.length-count,count);if(!r.bytesRead)break;count+=r.bytesRead;}
    const after=await fd.stat({bigint:true}),named=await fs.lstat(file,{bigint:true});await this.directory();
    if(count!==Number(before.size)||identity(before)!==identity(after)||identity(before)!==identity(named)||before.ctimeNs!==after.ctimeNs||before.mtimeNs!==after.mtimeNs||after.nlink!==1n)fail("UNSAFE_FILE_TRANSACTION_RECORD","Journal record changed while reading");
-   let parsed:unknown;try{parsed=JSON.parse(data.subarray(0,count).toString("utf8"));}catch{fail("INVALID_FILE_TRANSACTION","Invalid journal encoding");}
+   let parsed:unknown;try{parsed=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(data.subarray(0,count)));}catch{fail("INVALID_FILE_TRANSACTION","Invalid journal encoding");}
    const record=cloneFileTransaction(parsed as FileTransactionRecord);if(record.transaction_id!==id)fail("INVALID_FILE_TRANSACTION","Journal identity mismatch");return record;
   }finally{await fd.close();}
  }
@@ -51,7 +51,14 @@ export class FileTransactionStore {
   const lock=path.join(this.root,id+".lock");let fd;
   try{fd=await fs.open(lock,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);}
   catch(error){if((error as NodeJS.ErrnoException).code==="EEXIST")fail("FILE_TRANSACTION_LOCKED","Transaction lock exists; automatic stale-lock removal is forbidden");throw error;}
-  const owned=await fd.stat({bigint:true});
+  let owned;
+  try{owned=await fd.stat({bigint:true});}
+  catch(error){
+   // Identity is unverified: close our descriptor, but retain the named lock.
+   try{await fd.close();}
+   catch{throw new FileTransactionError("RESULT_UNKNOWN","Initial lock identity and descriptor release are uncertain; inspect durable state");}
+   throw error;
+  }
   try{await fd.sync();await this.syncDirectory();await this.directory();return await operation();}
   finally{
    try{

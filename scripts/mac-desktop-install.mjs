@@ -1,3 +1,4 @@
+export function directorySourceFiles(){return Object.freeze(['native/macos-files/tree-broker.swift']);}
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,11 +11,15 @@ import {createReleaseManifest,verifyReleaseManifest} from './desktop-release.mjs
 import {inspectPlatform} from './desktop-platform-check.mjs';
 import {renderLaunchAgentPlist,ensureLogin} from './mac-desktop-adapter.mjs';
 import {buildDesktopIcons} from './build-desktop-icons.mjs';
+import {describeUiIntent,selectCompatibleUi,copyVerifiedUi,recordBuiltUi,verifyRecordedUi} from './mac-desktop-ui.mjs';
 import {parseLoginJob,retireInactiveLoginJob} from './mac-desktop-login.mjs';
 
+// Both successful readiness states belong to the stage being activated.
+export function isStageReady(status,installationId){return status?.installationId===installationId&&['RUNNING','SETUP_REQUIRED'].includes(status.state);}
 const execute=promisify(execFile),label='com.gsa-localconnector.mac';
 const fail=code=>Object.assign(new Error(code),{code});
 const missing=error=>error?.code==='ENOENT'||error?.code==='FILE_MISSING';
+async function checkedRelease(options){const files=options.manifest?.files;if(files&&Object.hasOwn(files,'dist/src/hosts/macos-directory-installation.js')&&directorySourceFiles().some(name=>!Object.hasOwn(files,name)))throw fail('RELEASE_INVALID');return verifyReleaseManifest(options);}
 async function exists(file){try{await fs.lstat(file);return true;}catch(e){if(missing(e))return false;throw e;}}
 async function directory(file,mode=0o700){
  await fs.mkdir(file,{recursive:true,mode});const s=await fs.lstat(file);
@@ -89,7 +94,7 @@ export async function createMacInstaller({home=os.homedir(),sourceRoot=path.dirn
   }
   try{
    if(!/^[a-f0-9-]{36}$/.test(value.id)||value.runtimeRoot!==path.join(installRoot,'runtimes',value.id)||value.appPath!==appPath||typeof value.envPath!=='string'||!path.isAbsolute(value.envPath))throw fail('CURRENT_INVALID');
-   const manifest=JSON.parse(await fs.readFile(path.join(value.runtimeRoot,'manifest.json'),'utf8'));await verifyReleaseManifest({releaseRoot:value.runtimeRoot,manifest});
+   const manifest=JSON.parse(await fs.readFile(path.join(value.runtimeRoot,'manifest.json'),'utf8'));await checkedRelease({releaseRoot:value.runtimeRoot,manifest});
    if(await exists(appPath)){
     const link=await fs.lstat(appPath);if(!link.isSymbolicLink()||link.uid!==process.getuid()||await fs.readlink(appPath)!==path.join(value.runtimeRoot,'GSA Local Connector.app'))throw fail('CURRENT_INVALID');
    }else if(!['update','repair'].includes(action))throw fail('CURRENT_INVALID');
@@ -130,23 +135,38 @@ export async function createMacInstaller({home=os.homedir(),sourceRoot=path.dirn
     await command(process.execPath,[path.join(sourceRoot,'node_modules/typescript/bin/tsc'),'-p',path.join(sourceRoot,'tsconfig.json')]);
     for(const rel of await files(path.join(sourceRoot,'dist/src')))await copy(path.join(sourceRoot,'dist/src',rel),path.join(stageRoot,'dist/src',rel));
     for(const name of ['desktop-config.mjs','desktop-health.mjs','mac-desktop-private-file.mjs','desktop-supervisor.mjs','mac-desktop-adapter.mjs','desktop-release.mjs','macos-owner-launcher.py'])await copy(path.join(sourceRoot,'scripts',name),path.join(stageRoot,'scripts',name));
+    for(const name of directorySourceFiles())await copy(path.join(sourceRoot,name),path.join(stageRoot,name));
     await copy(process.execPath,path.join(stageRoot,'bin/node'),0o500);await copy(client,path.join(stageRoot,'bin/tunnel-client'),0o500);
     await fs.writeFile(path.join(stageRoot,'package.json'),'{"type":"module","private":true}',{mode:0o400,flag:'wx'});
-    const bundle=path.join(stageRoot,'GSA Local Connector.app'),executable=path.join(bundle,'Contents/MacOS/GSA Local Connector'),resources=path.join(bundle,'Contents/Resources');
-    await directory(resources);await directory(path.dirname(executable));
-    await command('/usr/bin/swiftc',['-target','arm64-apple-macos13.0',path.join(sourceRoot,'native/macos-desktop/App.swift'),'-o',executable]);await fs.chmod(executable,0o500);
-    await copy(path.join(sourceRoot,'native/macos-desktop/Info.plist'),path.join(bundle,'Contents/Info.plist'));
-    await fs.writeFile(path.join(resources,'desktop-config-path.txt'),configPath,{mode:0o400,flag:'wx'});
-    const iconsRoot=path.join(stageRoot,'.icons'),icons=await buildDesktopIcons({outputRoot:iconsRoot});
-    await copy(icons.icns,path.join(resources,'GSAConnector.icns'));await copy(path.join(sourceRoot,'assets/desktop/LICENSE'),path.join(resources,'Icon-LICENSE.txt'));
-    await fs.rm(iconsRoot,{recursive:true,force:true});
-    await command('/usr/bin/codesign',['--force','--sign','-','--timestamp=none',bundle]);
+    const intent=await describeUiIntent({sourceRoot,configPath});
+    const selection=await selectCompatibleUi({installRoot,currentRelease:current,intent});
+    const bundle=path.join(stageRoot,'GSA Local Connector.app');let ui;
+    if(selection.decision==='reuse'){
+     ui=await copyVerifiedUi({selection,destinationBundle:bundle,command});
+    }else{
+     if(selection.reason==='UI_INTENT_CHANGED')console.log('The app interface changed; macOS may ask for folder access again.');
+     const executable=path.join(bundle,'Contents/MacOS/GSA Local Connector'),resources=path.join(bundle,'Contents/Resources');
+     await directory(resources);await directory(path.dirname(executable));
+     await command('/usr/bin/swiftc',['-target','arm64-apple-macos13.0',path.join(sourceRoot,'native/macos-desktop/App.swift'),'-o',executable]);await fs.chmod(executable,0o500);
+     await copy(path.join(sourceRoot,'native/macos-desktop/Info.plist'),path.join(bundle,'Contents/Info.plist'));
+     await fs.writeFile(path.join(resources,'desktop-config-path.txt'),configPath,{mode:0o400,flag:'wx'});
+     const iconsRoot=path.join(stageRoot,'.icons'),icons=await buildDesktopIcons({outputRoot:iconsRoot});
+     await copy(icons.icns,path.join(resources,'GSAConnector.icns'));await copy(path.join(sourceRoot,'assets/desktop/LICENSE'),path.join(resources,'Icon-LICENSE.txt'));
+     await fs.rm(iconsRoot,{recursive:true,force:true});
+     await command('/usr/bin/codesign',['--force','--sign','-','--timestamp=none',bundle]);
+     ui=await recordBuiltUi({bundle,intent,command,buildMetadata:{compilerVersion:context.host?.tools?.swiftc??null}});
+    }
+    if((await describeUiIntent({sourceRoot,configPath})).fingerprint!==intent.fingerprint)throw fail('UI_INTENT_CHANGED_DURING_BUILD');
+    // This record is outside the immutable signed app and sealed by the normal
+    // complete runtime manifest. Adoption origin is never rewritten as a build.
+    await fs.writeFile(path.join(stageRoot,'ui-provenance.json'),JSON.stringify(ui,null,2),{mode:0o400,flag:'wx'});
+    stage.uiIdentity={origin:ui.origin,cdhash:ui.artifact.identity.cdhash,reused:selection.decision==='reuse'};
     const manifest=await createReleaseManifest({sourceRoot:stageRoot,platform:'darwin',arch:'arm64',version:stage.version,allowedFiles:await files(stageRoot)});
     await fs.writeFile(path.join(stageRoot,'manifest.json'),JSON.stringify(manifest,null,2),{mode:0o400,flag:'wx'});
     return stage;
    }catch(e){await fs.rm(stageRoot,{recursive:true,force:true});throw e;}
   },
-  async verifyStage(value){const manifest=JSON.parse(await fs.readFile(path.join(value.stageRoot,'manifest.json'),'utf8'));return verifyReleaseManifest({releaseRoot:value.stageRoot,manifest});},
+  async verifyStage(value){const manifest=JSON.parse(await fs.readFile(path.join(value.stageRoot,'manifest.json'),'utf8'));await checkedRelease({releaseRoot:value.stageRoot,manifest});await verifyRecordedUi({releaseRoot:value.stageRoot,command});return true;},
   async activateStage(value){
    if(await loaded()||await ownerBusy())throw fail('OWNER_ACTIVE');
    await retireInactive();
@@ -177,7 +197,7 @@ export async function createMacInstaller({home=os.homedir(),sourceRoot=path.dirn
     await write(pointer,{...(await readJSON(pointer)),appPid:child.pid});
    }
    const until=Date.now()+15000;while(Date.now()<until){
-    try{const s=await readJSON(path.join(desktop,'status.json'));if(s.installationId===stage.id&&s.state==='RUNNING'||s.state==='SETUP_REQUIRED')return true;if(s.state==='FAILED')return false;}catch{}
+    try{const s=await readJSON(path.join(desktop,'status.json'));if(isStageReady(s,stage.id))return true;if(s.state==='FAILED')return false;}catch{}
     await new Promise(resolve=>setTimeout(resolve,100));
    }return false;
   },

@@ -1,8 +1,10 @@
+import {assertDirectoryCopyId,validateDirectoryCopyOutcome,directoryManifestDigest,type DirectoryManifest,type DirectoryEntry} from "../core/directory-copy.js";
 import {assertFileTransactionId,fileTransactionOutcome} from "../core/file-transactions.js";
 import {protectedStateCapability,requireProtectedState} from "../local/protected-state.js";
 import { createRequire } from "node:module";
 import { connectorStatus } from "../index.js";
 import { WorkspaceRegistry } from "../core/workspace.js";
+import {WorkspaceReadSession} from "../core/workspace-read.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {createHash} from "node:crypto";
@@ -12,7 +14,7 @@ import {ConnectorError,type WorkspaceGrant,type WorkspaceRole} from "../core/con
 import {plannedTools,plannedToolNames,controlledToolNames} from "./catalog.js";
 import {validateWorkflow} from "../core/ci-dag.js";
 import {parseCiManifest} from "../core/ci-manifest.js";
-import {dispatchFileMutation} from "./write-dispatch.js";
+import {dispatchFileMutation,directoryPath} from "./write-dispatch.js";
 import {batchFileOperations} from "./batch-dispatch.js";
 import {CiJournalStore} from "../local/ci-store.js";
 import {CiArtifactStore} from "../local/ci-artifacts.js";
@@ -22,10 +24,10 @@ import {CiSourceCaptureService,type VerifiedWorkspaceSourceCapture} from "../cor
 import {CiRunService,type VerifiedCiExecutor} from "../core/ci-run-service.js";
 import {requireNativeBackend,type NativeScopedFiles,type NativeFileOperation,type VerifiedNativeSandbox,type VerifiedNativeProcessController} from "../core/native-io.js";
 import {executeGit} from "../core/git-engine.js";
-import {ProcessManager} from "../core/process-manager.js";
+import {ProcessManager,type WorkspaceProcessStop} from "../core/process-manager.js";
 import {ControlLeaseError,type ControlLeaseStore} from "../local/control-lease.js";
 import {withControlToken,requireCurrentControl} from "./control-context.js";
-import {DurableProcessManager} from "../core/durable-process.js";
+import {DurableProcessManager,type ProcessPersistence} from "../core/durable-process.js";
 
 /** Scoped capability surface; role intent never enables an unavailable native backend. */
 export interface ToolCall { name: string; arguments?: Record<string, unknown> }
@@ -45,17 +47,45 @@ function validPage(args:Record<string,unknown>,maxLimit:number):boolean{
   return (args.cursor===undefined||(Number.isSafeInteger(args.cursor)&&Number(args.cursor)>=0))&&
     (args.limit===undefined||(Number.isSafeInteger(args.limit)&&Number(args.limit)>=1&&Number(args.limit)<=maxLimit));
 }
+/** Treat even an extension response as untrusted public metadata. */
+function publicDirectoryManifest(value:unknown):DirectoryManifest {
+ const fail=():never=>{throw Error("INVALID_DIRECTORY_MANIFEST");};
+ const exact=(value:unknown,keys:readonly string[]):Record<string,unknown>=>{
+  if(!value||typeof value!=="object"||Array.isArray(value))return fail();
+  const obj=value as Record<string,unknown>,actual=Reflect.ownKeys(obj);
+  if(![Object.prototype,null].includes(Object.getPrototypeOf(obj))||actual.length!==keys.length||actual.some(k=>typeof k!=="string"||!keys.includes(k))||keys.some(k=>{const d=Object.getOwnPropertyDescriptor(obj,k);return !d||!("value" in d);}))return fail();
+  return obj;
+ };
+ const m=exact(value,["format","entries","total_bytes","sha256"]);
+ if(m.format!=="gsa-directory-manifest-v1"||!Array.isArray(m.entries)||m.entries.length<1||m.entries.length>1024)fail();
+ const entries:DirectoryEntry[]=[],seen=new Map<string,DirectoryEntry>();let total=0;
+ for(const raw of m.entries as unknown[]){
+  if(!raw||typeof raw!=="object")fail();
+  const descriptor=Object.getOwnPropertyDescriptor(raw,"kind"),kind=descriptor&&"value" in descriptor?descriptor.value:undefined;
+  if(kind!=="file"&&kind!=="directory")fail();
+  const e=exact(raw,kind==="file"?["path","kind","size","sha256"]:["path","kind"]),name=e.path;
+  if(typeof name!=="string"||Buffer.byteLength(name)>4096||Buffer.from(name).toString("utf8")!==name||seen.has(name)||name!==""&&(name.split("/").length>16||name.split("/").some(p=>!p||p==="."||p===".."||p.includes("\\")||p.includes("\0")||p.toLowerCase()===".gsa-trash")))fail();
+  const nameString=name as string;
+  if(!entries.length){if(nameString!==""||kind!=="directory")fail();}
+  else if(!nameString||Buffer.compare(Buffer.from(entries.at(-1)!.path),Buffer.from(nameString))>=0||seen.get(nameString.includes("/")?nameString.slice(0,nameString.lastIndexOf("/")):"")?.kind!=="directory")fail();
+  let entry:DirectoryEntry;
+  if(kind==="file"){
+   if(typeof e.size!=="number"||!Number.isSafeInteger(e.size)||e.size<0||e.size>8_388_608||typeof e.sha256!=="string"||!/^[a-f0-9]{64}$/.test(e.sha256))fail();
+   total+=e.size as number;entry={path:nameString,kind,size:e.size as number,sha256:e.sha256 as string};
+  }else entry={path:nameString,kind};
+  entries.push(Object.freeze(entry));seen.set(nameString,entry);
+ }
+ if(total>8_388_608||m.total_bytes!==total||m.sha256!==directoryManifestDigest(entries)||Buffer.byteLength(JSON.stringify([m.format,entries.map(e=>e.kind==="directory"?[e.path,e.kind]:[e.path,e.kind,e.size,e.sha256])]))>524_288)fail();
+ return Object.freeze({format:"gsa-directory-manifest-v1",entries:Object.freeze(entries),total_bytes:total,sha256:m.sha256 as string});
+}
 export function toolDefinitions() {return [...definitions,...plannedTools].map(definition=>({
  ...definition,inputSchema:{...definition.inputSchema,
   properties:{...definition.inputSchema.properties,...(controlledToolNames.has(definition.name)?{control_token:{type:"string"}}:{})},
   required:[...("required" in definition.inputSchema?definition.inputSchema.required:[]),...(controlledToolNames.has(definition.name)?["control_token"]:[])]}
  }));}
-export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null, logs:CiLogStore|null=null, nativeProcesses:VerifiedNativeProcessController|null=null, snapshots:CiSnapshotStore|null=null, sourceCapture:VerifiedWorkspaceSourceCapture|null=null, ciExecutor:VerifiedCiExecutor|null=null, controlStore:ControlLeaseStore|null=null,options:{grantDirectory?:string;fileBlockedReason?:string}={}) {
-  const allFileOperations:readonly NativeFileOperation[]=["create_file","update_file","edit_file","apply_patch","create_directory","delete_file","copy_file","move_file"];
-  const fileOperations:readonly NativeFileOperation[]=Object.freeze(nativeFiles?allFileOperations.filter(name=>nativeFiles.supportedOperations===undefined||nativeFiles.supportedOperations.includes(name)):[]);
-  const fullFileWrites=allFileOperations.every(name=>fileOperations.includes(name));
-  const fileTransactionReadbackAvailable=()=>typeof nativeFiles?.recoverableMutations?.readTransaction==="function"&&protectedStateCapability().available&&controlStore!==null;
-  const fileCapabilities=()=>({fileTransactionReadbackAvailable:fileTransactionReadbackAvailable(),fileBackendAvailable:!!nativeFiles,fileOperations,hostFileWrites:fullFileWrites,fileBlockedReason:options.fileBlockedReason??(nativeFiles&&!fullFileWrites?"Partial native backend; compare-and-mutate operations remain blocked":nativeFiles?null:"Verified native file installation unavailable")});
+export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null, logs:CiLogStore|null=null, nativeProcesses:VerifiedNativeProcessController|null=null, snapshots:CiSnapshotStore|null=null, sourceCapture:VerifiedWorkspaceSourceCapture|null=null, ciExecutor:VerifiedCiExecutor|null=null, controlStore:ControlLeaseStore|null=null,options:{grantDirectory?:string;fileBlockedReason?:string;directoryCopyBlockedReason?:string;fileBackendState?:()=>{files:NativeScopedFiles|null;fileBlockedReason?:string;directoryCopyBlockedReason?:string};onScopeChanged?:(kind:"bind"|"unbind")=>Promise<void>;processPersistence?:ProcessPersistence}={}) {
+  const allFileOperations:readonly NativeFileOperation[]=["create_file","update_file","edit_file","apply_patch","create_directory","delete_file","copy_file","move_file","copy_directory"];
+  const fileBackendState=options.fileBackendState??(()=>({files:nativeFiles,fileBlockedReason:options.fileBlockedReason,directoryCopyBlockedReason:options.directoryCopyBlockedReason}));
   let resolvedGrantDirectory=options.grantDirectory;
   const grantDirectory=()=>resolvedGrantDirectory??(resolvedGrantDirectory=identityDirectory());
   let scopeDesynchronized=false,scopeQueue:Promise<void>=Promise.resolve();
@@ -99,13 +129,43 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
     });
   };
   const processes=new ProcessManager(sandbox);
-  const durable=new DurableProcessManager(nativeProcesses);
+  const durable=new DurableProcessManager(nativeProcesses,16,options.processPersistence);
+  const durableHistory=!!nativeProcesses||!!options.processPersistence;
+  // Keep revoked root pins after custom IDs disappear from the protected active registry.
+  // Neither rebinding nor these pins confer authority to query an old owner's native IDs.
+  const processRevocations=new Map<string,{grant:WorkspaceGrant;confirmed:boolean;continuation:boolean}>();
+  const sameProcessRoot=(a:WorkspaceGrant,b:WorkspaceGrant)=>a.canonicalRoot===b.canonicalRoot||
+    a.rootIdentity.device===b.rootIdentity.device&&a.rootIdentity.inode===b.rootIdentity.inode;
+  const stopManaged=async(workspaceId:string):Promise<WorkspaceProcessStop>=>{
+    const observations=await Promise.all([processes.stopWorkspace(workspaceId),durable.stopWorkspace(workspaceId)]);
+    const outcomes=[...new Map(observations.flatMap(value=>value.outcomes).map(outcome=>[outcome.process_id,outcome])).values()];
+    return {state:observations.every(value=>value.state==="STOPPED")?"STOPPED":"UNKNOWN",pending_starts:observations.reduce((sum,value)=>sum+value.pending_starts,0),outcomes};
+  };
+  const processHistory=()=>options.processPersistence?{
+    processHistory:"persisted-start_process-and-run_command",processHistoryLimit:1000,processJournalLimit:10000
+  }:{processHistory:"current-server-only; newest 128 terminal native receipts"};
   const sourceService=()=>new CiSourceCaptureService(sourceCapture,snapshots??new CiSnapshotStore(),ciStore??new CiJournalStore());
   let coordinator:CiRunService|null=null;
   const ciService=()=>coordinator??(coordinator=new CiRunService(ciStore??new CiJournalStore(),snapshots??new CiSnapshotStore(),ciExecutor));
   const invoke=async (call:ToolCall):Promise<ToolResult> => {
+    let readSession:WorkspaceReadSession|null=null;
     try {
+      // Hold one backend snapshot throughout this invocation, including awaits.
+      const backend=fileBackendState(),nativeFiles=backend.files;
+      const fileOperations:readonly NativeFileOperation[]=Object.freeze(nativeFiles?allFileOperations.filter(name=>name==="copy_directory"?!!nativeFiles.directoryCopies&&nativeFiles.supportedOperations?.includes(name)===true&&protectedStateCapability().available&&controlStore!==null:nativeFiles.supportedOperations===undefined||nativeFiles.supportedOperations.includes(name)):[]);
+      const fullFileWrites=allFileOperations.every(name=>fileOperations.includes(name));
+      // The batch protocol accepts the original eight operations only.
+      const batchFileWrites=allFileOperations.filter(name=>name!=="copy_directory").every(name=>fileOperations.includes(name));
+      const fileTransactionReadbackAvailable=()=>typeof nativeFiles?.recoverableMutations?.readTransaction==="function"&&protectedStateCapability().available&&controlStore!==null;
+      const directoryAvailable=()=>!!nativeFiles?.directoryCopies&&nativeFiles.supportedOperations?.includes("copy_directory")===true&&protectedStateCapability().available&&controlStore!==null;
+      const directoryResult=(value:unknown,copyId:string):ToolResult=>{
+       const outcome=validateDirectoryCopyOutcome(value);
+       if(outcome.copy_id!==copyId)throw Error("INVALID_DIRECTORY_COPY");
+       return { ...(outcome.status!=="APPLIED"?{isError:true}:{}),content:[{type:"text",text:JSON.stringify(outcome.status==="APPLIED"?{ok:true,result:outcome}:{ok:false,code:outcome.status==="UNKNOWN"?"RESULT_UNKNOWN":"DIRECTORY_COPY_CONFLICT",result:outcome})}]};
+      };
+      const fileCapabilities=()=>({directoryCopyAvailable:directoryAvailable(),directoryInspectAvailable:directoryAvailable(),directoryCopyReadbackAvailable:directoryAvailable(),directoryCopyBlockedReason:directoryAvailable()?null:backend.directoryCopyBlockedReason??"Verified directory copy installation and controller required",fileTransactionReadbackAvailable:fileTransactionReadbackAvailable(),fileBackendAvailable:!!nativeFiles,fileOperations,hostFileWrites:fullFileWrites,fileBlockedReason:backend.fileBlockedReason??(nativeFiles&&!fullFileWrites?"Partial native backend; compare-and-mutate operations remain blocked":nativeFiles?null:"Verified native file installation unavailable")});
       const args=call.arguments??{};
+      const scopedRead=()=>readSession??(readSession=new WorkspaceReadSession(registry,args.workspace_id as string));
       const diagnostic=["connector_status","acquire_control","renew_control","release_control","stop_process","ci_cancel"].includes(call.name)||call.name==="list_capabilities"&&args.workspace_id===undefined;
       if(!diagnostic)assertSynchronized();
       let result:unknown;
@@ -128,7 +188,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            readyForShell:!!sandbox?.verified,executionEnvironment:sandbox?.verified?"linux-arm64-vm":null,
            workspaceMode:sandbox?.verified?"disposable-snapshot":null,...fileCapabilities(),git:"blocked",
            workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",
-           processHistory:"current-server-only; newest 128 terminal native receipts",restartRecovery:"blocked"};}break;
+           ...processHistory(),restartRecovery:"blocked"};}break;
         case "list_workspaces":
           if(Object.keys(args).length) throw Error("INVALID_ARGUMENTS");
           result=registry.list().map(g=>({workspace_id:g.id,role:g.role??null,permissions:g.permissions,revision:g.revision}));break;
@@ -156,7 +216,25 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
                enrollReadOnlyBatch(requests,directory,beforePublish):
                enrollRolesTrustedBatch(requests.map(request=>({...request,role:request.role!})),directory,beforePublish),
                (durable,items)=>{for(const item of items){const active=durable.get(item.id);if(!active||grantKey(active)!==grantKey(item.grant))throw Error("Bound grant changed after publication");}});
-             return bound.map(item=>({workspace_id:item.id,root:item.root,role:item.grant.role??null,permissions:item.grant.permissions,revision:item.grant.revision}));
+             await durable.initialize();
+             const admission=new Map<string,boolean>();
+             for(const item of bound){
+               const prior=[...processRevocations.entries()].filter(([id,value])=>id===item.id||sameProcessRoot(value.grant,item.grant));
+               let resumed=true;
+               for(const [id,value] of prior){
+                 value.continuation=false;
+                 const a=processes.resumeWorkspace(id),b=durable.resumeWorkspace(id);
+                 if(!a||!b){processes.fenceWorkspace(id);durable.fenceWorkspace(id);resumed=false;}
+               }
+               if(prior.length){
+                 if(resumed){const a=processes.resumeWorkspace(item.id),b=durable.resumeWorkspace(item.id);resumed=a&&b;}
+                 if(!resumed){processes.fenceWorkspace(item.id);durable.fenceWorkspace(item.id);}
+               }
+               admission.set(item.id,resumed);
+             }
+             await options.onScopeChanged?.("bind");
+             return bound.map(item=>({workspace_id:item.id,root:item.root,role:item.grant.role??null,permissions:item.grant.permissions,revision:item.grant.revision,
+               ...(admission.get(item.id)===false?{managed_processes:{state:"UNKNOWN",reason:"Process admission remains fenced: previous managed work is not confirmed stopped"}}:{})}));
            });
           }break;
         case "unbind_workspace":
@@ -164,15 +242,30 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1)throw Error("INVALID_ARGUMENTS");
           {const workspaceId=args.workspace_id;
            result=await serializeScope(async()=>{
-             await publishScope(beforePublish=>revokeTrusted(workspaceId,grantDirectory(),beforePublish),(durable)=>{if(durable.get(workspaceId))throw Error("Revoked grant remains active after publication");});
-             return {workspace_id:workspaceId,revoked:true};
+             const active=registry.get(workspaceId),previous=processRevocations.get(workspaceId);
+             if(!active){
+               if(!previous?.confirmed||!previous.continuation)throw new ConnectorError("WORKSPACE_NOT_FOUND","Unknown workspace");
+               const readback=await loadTrustedRegistry(grantDirectory());
+               if(readback.get(workspaceId))throw new ConnectorError("RESULT_UNKNOWN","Revoked grant is active again; reload scope");
+               await authorizeScope();
+             }else{
+               // This is synchronous and precedes every revocation-publication await.
+               processes.fenceWorkspace(workspaceId);durable.fenceWorkspace(workspaceId);
+               const revocation={grant:active,confirmed:false,continuation:false};
+               processRevocations.set(workspaceId,revocation);
+               await publishScope(beforePublish=>revokeTrusted(workspaceId,grantDirectory(),beforePublish),(durable)=>{if(durable.get(workspaceId))throw Error("Revoked grant remains active after publication");});
+               revocation.confirmed=true;revocation.continuation=true;
+             }
+             const managed_processes=await stopManaged(workspaceId);
+             await options.onScopeChanged?.("unbind");
+             return {workspace_id:workspaceId,revoked:true,managed_processes};
            });
           }break;
         case "list_directory":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
-          {const target=await registry.resolveExistingRead(args.workspace_id,args.path);
-           const entries=await fs.readdir(target,{withFileTypes:true});
-           result=entries.slice(0,500).map(e=>({name:e.name,kind:e.isDirectory()?"directory":e.isFile()?"file":"other"}));
+          {const listing=await scopedRead().list(args.path);
+           if(listing.truncated)throw Error("READ_LIMIT_EXCEEDED");
+           result=listing.entries.map(({name,kind})=>({name,kind}));
           }break;
         case "ci_list_runs":
           if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1)throw Error("INVALID_ARGUMENTS");
@@ -232,15 +325,11 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            const candidates=[".gsa/ci.json",".gsa/ci.yaml"];
            const workflows=[];
            for(const relative of candidates){
-             let target:string;
-             try{target=await registry.resolveExistingRead(args.workspace_id,relative);}
-             catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")continue;throw e;}
-             const stat=await fs.stat(target);
-             if(!stat.isFile())continue;
-             if(stat.size>65536)throw Error("CI_MANIFEST_TOO_LARGE");
-
+             let data:Buffer;
+             try{data=await scopedRead().read(relative,65536);}
+             catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")continue;if((e as NodeJS.ErrnoException).code==="READ_LIMIT_EXCEEDED")throw Error("CI_MANIFEST_TOO_LARGE");throw e;}
              try{
-               const parsed=parseCiManifest(new TextDecoder("utf-8",{fatal:true}).decode(await fs.readFile(target)));
+               const parsed=parseCiManifest(new TextDecoder("utf-8",{fatal:true}).decode(data));
                workflows.push({path:relative,format:relative.endsWith(".yaml")?"yaml":"json",...validateWorkflow(parsed)});
              }catch(e){workflows.push({path:relative,format:relative.endsWith(".yaml")?"yaml":"json",validation:"INVALID",reason:e instanceof Error?e.message:"UNKNOWN_ERROR"});}
            }
@@ -248,10 +337,9 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           }break;
         case "ci_validate_workflow":
           if(typeof args.workspace_id!=="string"||typeof args.workflow!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
-          {const file=await registry.resolveExistingRead(args.workspace_id,args.workflow);
-           const stat=await fs.stat(file);
-           if(!stat.isFile()||stat.size>65536)throw Error("CI_MANIFEST_TOO_LARGE");
-           const text=new TextDecoder("utf-8",{fatal:true}).decode(await fs.readFile(file));
+          {let data:Buffer;
+           try{data=await scopedRead().read(args.workflow,65536);}catch(e){if((e as NodeJS.ErrnoException).code==="READ_LIMIT_EXCEEDED")throw Error("CI_MANIFEST_TOO_LARGE");throw e;}
+           const text=new TextDecoder("utf-8",{fatal:true}).decode(data);
            let parsed:unknown;
            try{parsed=parseCiManifest(text);}catch{throw Error("CI_MANIFEST_INVALID");}
            result={...validateWorkflow(parsed),execution_allowed:false,format:"Strict YAML subset or JSON"};
@@ -262,74 +350,93 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            const protectedStorage=protectedStateCapability();
            const read=["connector_status","list_workspaces","get_workspace","bind_workspaces","unbind_workspace","list_directory","fetch_file","get_file_info","search","glob","list_capabilities","ci_validate_workflow","ci_list_workflows","ci_list_runs","ci_status","ci_artifacts","ci_read_artifact","ci_logs"].filter(name=>protectedStorage.available||!controlledToolNames.has(name));
            const execution=sandbox?.verified?["run_command","start_process","stop_process","list_processes","process_status","process_output"]:[];
+           if(options.processPersistence&&protectedStorage.available)read.push("list_processes","process_status","process_output");
            const ci=ciExecutor?.verified?["ci_run","ci_rerun_failed","ci_cancel"]:[];
            if(sourceCapture?.verified)ci.push("ci_prepare_source");
            if(fileTransactionReadbackAvailable())read.push("get_file_transaction");
-           const files=protectedStorage.available?[...fileOperations,...(fullFileWrites?["batch_file_operations"]:[])]:[];
+           if(directoryAvailable())read.push("inspect_directory","get_directory_copy");
+           const files=protectedStorage.available?[...fileOperations,...(batchFileWrites?["batch_file_operations"]:[])]:[];
            const enabled=new Set([...read,...files,...execution,...ci,...(controlStore&&protectedStorage.available?["acquire_control","renew_control","release_control"]:[])]);
-           result={workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,read,files,execution,ci,blocked:plannedTools.map(t=>t.name).filter(n=>!enabled.has(n)),shellIsolation:sandbox?.verified?"verified":"blocked",...fileCapabilities(),git:"blocked",executionEnvironment:sandbox?.verified?"linux-arm64-vm":null,workspaceMode:sandbox?.verified?"disposable-snapshot":null,restartRecovery:"blocked"};
+           result={workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,read,files,execution,ci,blocked:plannedTools.map(t=>t.name).filter(n=>!enabled.has(n)),shellIsolation:sandbox?.verified?"verified":"blocked",...fileCapabilities(),...processHistory(),git:"blocked",executionEnvironment:sandbox?.verified?"linux-arm64-vm":null,workspaceMode:sandbox?.verified?"disposable-snapshot":null,restartRecovery:"blocked"};
           }break;
         case "glob":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||typeof args.pattern!=="string"||Object.keys(args).length!==3||args.pattern.length>160||!args.pattern)throw Error("INVALID_ARGUMENTS");
-          {const dir=await registry.resolveExistingRead(args.workspace_id,args.path);
-           if(!(await fs.stat(dir)).isDirectory())throw Error("NOT_A_DIRECTORY");
+          {
            const pattern=args.pattern as string;
            if(pattern.includes("..")||pattern.includes("/")||pattern.includes(String.fromCharCode(92))||pattern.includes("**"))throw Error("INVALID_GLOB");
            const escaped=Array.from(pattern).map(ch=>ch==="*" ? ".*" : ch==="?" ? "." : /[\\^$+?.()|{}\[\]]/.test(ch) ? String.fromCharCode(92)+ch : ch).join("");
            const re=new RegExp("^"+escaped+"$");
            const found=[];
-           for(const e of (await fs.readdir(dir,{withFileTypes:true})).slice(0,500))
-             if(!e.isSymbolicLink()&&re.test(e.name))found.push({name:e.name,kind:e.isDirectory()?"directory":e.isFile()?"file":"other"});
-           result={entries:found,truncated:false};
+           const listing=await scopedRead().list(args.path);
+           for(const e of listing.entries)
+             if(!e.symlink&&re.test(e.name))found.push({name:e.name,kind:e.kind});
+           result={entries:found,truncated:listing.truncated};
           }break;
         case "get_file_info":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
-          {const target=await registry.resolveExistingRead(args.workspace_id,args.path);
-           const stat=await fs.stat(target);
-           let sha256:null|string=null;
-           if(stat.isFile()&&stat.size<=8*1024*1024)sha256=createHash("sha256").update(await fs.readFile(target)).digest("hex");
-           result={path:args.path,kind:stat.isDirectory()?"directory":stat.isFile()?"file":"other",size:stat.size,mtime:stat.mtime.toISOString(),sha256};
+          {const stat=await scopedRead().info(args.path);
+           const sha256=stat.base64===undefined?null:createHash("sha256").update(Buffer.from(stat.base64,"base64")).digest("hex");
+           result={path:args.path,kind:stat.kind,size:stat.size,mtime:new Date(stat.mtimeMs).toISOString(),sha256};
           }break;
         case "search":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||typeof args.query!=="string"||Object.keys(args).length!==3||!args.query||args.query.length>200)throw Error("INVALID_ARGUMENTS");
-          {const root=await registry.resolveExistingRead(args.workspace_id,args.path);
-           const stat=await fs.stat(root);
-           if(!stat.isDirectory())throw Error("NOT_A_DIRECTORY");
+          {
            const matches:Array<{path:string;line:number;snippet:string}>=[];
-           let examined=0;
+           let examined=0,truncated=false,directories=0;
            const pending=[args.path as string];
-           while(pending.length&&examined<200&&matches.length<100){
+           while(pending.length&&examined<200&&directories<200){
              const rel=pending.shift()!;
-             const dir=await registry.resolveExistingRead(args.workspace_id,rel);
-             const entries=await fs.readdir(dir,{withFileTypes:true});
-             for(const e of entries){
-               if(examined>=200||matches.length>=100)break;
-               if(e.name.startsWith(".")||e.isSymbolicLink())continue;
+             const listing=await scopedRead().list(rel);directories++;
+             truncated||=listing.truncated;
+             for(const e of listing.entries){
+               if(e.name.startsWith(".")||e.symlink)continue;
+               if(e.kind!=="directory"&&e.kind!=="file")continue;
+               if(examined>=200){truncated=true;break;}
                const child=rel==="."?e.name:rel+"/"+e.name;
-               if(e.isDirectory()){if(pending.length<100)pending.push(child);continue;}
-               if(!e.isFile())continue;
+               if(e.kind==="directory"){if(pending.length<100)pending.push(child);else truncated=true;continue;}
+               if(e.kind!=="file")continue;
                examined++;
-               const file=await registry.resolveExistingRead(args.workspace_id,child);
-               const sz=await fs.stat(file);
-               if(sz.size>65536)continue;
+               let data:Buffer;
+               try{data=await scopedRead().read(child,65536);}catch(e){if((e as NodeJS.ErrnoException).code==="READ_LIMIT_EXCEEDED"){truncated=true;continue;}throw e;}
                let lines:string[];
-               try{lines=new TextDecoder("utf-8",{fatal:true}).decode(await fs.readFile(file)).split(/\r?\n/);}catch{continue;}
-               for(let i=0;i<lines.length&&matches.length<100;i++)if(lines[i].includes(args.query as string))matches.push({path:child,line:i+1,snippet:lines[i].slice(0,240)});
+               try{lines=new TextDecoder("utf-8",{fatal:true}).decode(data).split(/\r?\n/);}catch{continue;}
+               for(let i=0;i<lines.length;i++)if(lines[i].includes(args.query as string)){
+                 if(matches.length>=100){truncated=true;break;}
+                 matches.push({path:child,line:i+1,snippet:lines[i].slice(0,240)});
+               }
              }
            }
-           result={matches,files_examined:examined,truncated:pending.length>0||examined>=200||matches.length>=100};
+           result={matches,files_examined:examined,truncated:truncated||pending.length>0};
           }break;
         case "fetch_file":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||Object.keys(args).some(k=>!["workspace_id","path","start_line","max_lines"].includes(k))||(args.start_line!==undefined&&(!Number.isInteger(args.start_line)||Number(args.start_line)<1))||(args.max_lines!==undefined&&(!Number.isInteger(args.max_lines)||Number(args.max_lines)<1||Number(args.max_lines)>500)))throw Error("INVALID_ARGUMENTS");
-          {const target=await registry.resolveExistingRead(args.workspace_id,args.path);
-           const stat=await fs.stat(target);
-           if(!stat.isFile()||stat.size>65536)throw Error("READ_LIMIT_EXCEEDED");
-           const data=await fs.readFile(target);
+          {const data=await scopedRead().read(args.path,65536);
            const value=new TextDecoder("utf-8",{fatal:true}).decode(data);
            const lines=value.split(/\r?\n/);
            const start=Number(args.start_line??1),count=Number(args.max_lines??lines.length);
            result={path:args.path,text:lines.slice(start-1,start-1+count).join("\n"),start_line:start,end_line:Math.min(lines.length,start-1+count),total_lines:lines.length,truncated:start-1+count<lines.length};
           }break;
+        case "inspect_directory": {
+          requireProtectedState();
+          if(!directoryAvailable())throw Error("SECURITY_BLOCKED");
+          if(Object.keys(args).length!==2||typeof args.workspace_id!=="string"||!args.workspace_id||Object.keys(args).some(k=>!["workspace_id","path"].includes(k)))throw Error("INVALID_ARGUMENTS");
+          const source={workspace_id:args.workspace_id,path:directoryPath(args.path,true)};
+          registry.requireGrant(source.workspace_id,"read");
+          result=publicDirectoryManifest(await nativeFiles!.directoryCopies!.inspect(source));break;
+        }
+        case "get_directory_copy": {
+          requireProtectedState();
+          if(!directoryAvailable())throw Error("SECURITY_BLOCKED");
+          if(Object.keys(args).length!==1||typeof args.copy_id!=="string")throw Error("INVALID_ARGUMENTS");
+          try{assertDirectoryCopyId(args.copy_id);}catch{throw Error("INVALID_ARGUMENTS");}
+          return directoryResult(await nativeFiles!.directoryCopies!.readCopy(args.copy_id),args.copy_id);
+        }
+        case "copy_directory": {
+          requireProtectedState();
+          if(!directoryAvailable())throw Error("SECURITY_BLOCKED");
+          const observed=await dispatchFileMutation(call.name,args,registry,nativeFiles);
+          return directoryResult(observed,args.copy_id as string);
+        }
         case "get_file_transaction": {
           if(Object.keys(args).length!==1||typeof args.transaction_id!=="string")throw Error("INVALID_ARGUMENTS");
           try{assertFileTransactionId(args.transaction_id);}catch{throw Error("INVALID_ARGUMENTS");}
@@ -364,44 +471,51 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string"))throw Error("INVALID_ARGUMENTS");
           requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,"execute");
-          result=await processes.run({workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:false});break;
+          {const request={workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:false};
+           result=options.processPersistence?await durable.run(request,sandbox!):await processes.run(request);
+          }break;
         case "start_process":
           if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string")||Object.keys(args).length!==3)throw Error("INVALID_ARGUMENTS");
           if(!nativeProcesses)requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,"execute");
           {const request={workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:"." as const,time_limit_ms:30000,max_output_bytes:65536,network_allowed:false};
-           result=nativeProcesses?await durable.start(request):processes.start(request);
+           result=nativeProcesses?await durable.start(request):options.processPersistence?await durable.startCommand(request,sandbox!):processes.start(request);
           }break;
         case "stop_process":
           if(typeof args.workspace_id!=="string"||typeof args.process_id!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
           if(!nativeProcesses)requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,"execute");
-          result=nativeProcesses?await durable.stop(args.workspace_id,args.process_id):await processes.stop(args.workspace_id,args.process_id);break;
+          result=durableHistory?await durable.stop(args.workspace_id,args.process_id):await processes.stop(args.workspace_id,args.process_id);break;
         case "list_processes":
           if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1)throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"execute");
-          result=nativeProcesses?await durable.list(args.workspace_id):processes.list(args.workspace_id);break;
+          result=durableHistory?await durable.list(args.workspace_id):processes.list(args.workspace_id);break;
         case "process_status":case "process_output":
           if(typeof args.workspace_id!=="string"||typeof args.process_id!=="string"||
             Object.keys(args).some(k=>!(call.name==="process_output"?["workspace_id","process_id","cursor","limit"]:["workspace_id","process_id"]).includes(k))||
             !validPage(args,65536))throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"execute");
-          if(!nativeProcesses&&(args.cursor!==undefined||args.limit!==undefined))throw Error("SECURITY_BLOCKED");
-          result=nativeProcesses?(call.name==="process_status"?await durable.status(args.workspace_id,args.process_id):await durable.output(args.workspace_id,args.process_id,Number(args.cursor??0),Number(args.limit??65536))):processes.get(args.workspace_id,args.process_id);break;
+          if(!durableHistory&&(args.cursor!==undefined||args.limit!==undefined))throw Error("SECURITY_BLOCKED");
+          result=durableHistory?(call.name==="process_status"?await durable.status(args.workspace_id,args.process_id):await durable.output(args.workspace_id,args.process_id,Number(args.cursor??0),Number(args.limit??65536))):processes.get(args.workspace_id,args.process_id);break;
         case "batch_file_operations":
-          if(!fullFileWrites)throw Error("SECURITY_BLOCKED");
+          if(!batchFileWrites)throw Error("SECURITY_BLOCKED");
           if(typeof args.workspace_id!=="string"||Object.keys(args).some(k=>!["workspace_id","operations"].includes(k)))throw Error("INVALID_ARGUMENTS");
           result=await batchFileOperations(registry,nativeFiles,args.workspace_id,args.operations);break;
         default: if(plannedToolNames.has(call.name))throw Error("SECURITY_BLOCKED"); else throw Error("UNKNOWN_TOOL");
       }
+      if(readSession)await (readSession as WorkspaceReadSession).finish();
       return {content:[{type:"text",text:JSON.stringify({ok:true,result})}]};
     } catch(e) {
       return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:e&&typeof e==="object"&&"code" in e&&typeof e.code==="string"?e.code:e instanceof Error?e.message:"UNKNOWN_ERROR",...(e instanceof Error?{message:e.message}:{})})}]};
+    } finally {
+      if(readSession)try{await (readSession as WorkspaceReadSession).dispose();}
+      catch(e){return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:"READ_CLEANUP_UNCONFIRMED",message:e instanceof Error?e.message:"READ_CLEANUP_UNCONFIRMED"})}]};}
     }
   };
   return async(call:ToolCall):Promise<ToolResult>=>{
-    if(!controlStore||!controlledToolNames.has(call.name))return invoke(call);
     try{
+      if(options.processPersistence)await durable.initialize();
+      if(!controlStore||!controlledToolNames.has(call.name))return invoke(call);
       const {control_token,...args}=call.arguments??{};
       if(typeof control_token!=="string")throw new ControlLeaseError("SESSION_INVALID","Controller token is required");
       return await withControlToken(controlStore,control_token,()=>invoke({...call,arguments:args}));
