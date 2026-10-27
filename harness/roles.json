@@ -1,0 +1,27 @@
+{
+  "planner": {
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "reason": "Matches the installed official Bootstrap role configuration; no runtime configuration change."
+  },
+  "coder": {
+    "model": "gpt-6.1-terra",
+    "effort": "medium",
+    "reason": "Matches the installed official Bootstrap role configuration; no runtime configuration change."
+  },
+  "tester": {
+    "model": "gpt-6.1-terra",
+    "effort": "medium",
+    "reason": "Matches the installed official Bootstrap role configuration; no runtime configuration change."
+  },
+  "reviewer": {
+    "model": "gpt-6.1-sol",
+    "effort": "medium",
+    "reason": "Matches the installed official Bootstrap role configuration; no runtime configuration change."
+  },
+  "critic": {
+    "model": "gpt-6.1-sol",
+    "effort": "high",
+    "reason": "Matches the installed official Bootstrap role configuration; no runtime configuration change."
+  }
+}
