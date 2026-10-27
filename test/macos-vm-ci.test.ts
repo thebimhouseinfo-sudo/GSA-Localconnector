@@ -14,10 +14,10 @@ import type {MacVmRuntime} from "../src/hosts/macos-vm-runtime.js";
 import type {SandboxedProcessReceipt,SandboxedProcessRequest} from "../src/core/native-io.js";
 const sha=(b:Uint8Array)=>createHash("sha256").update(b).digest("hex");
 const workflow={name:"build",jobs:[{id:"test",needs:["build"],steps:[{id:"check",command:"python3",args:["-c","assert open('result').read() == 'ok'"]}]},{id:"build",steps:[{id:"write",command:"python3",args:["-c","open('result','w').write('ok')"]}]}]};
-async function fixture(receipt:SandboxedProcessReceipt={exit_code:0,signal:null,stdout:"hello\n",stderr:"",cancelled:false,timed_out:false}){
- const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"mac-ci-"));const entries=[{path:"ci.json",bytes:Buffer.from(JSON.stringify(workflow))},{path:"big.dat",bytes:Buffer.alloc(70000,65)}];
+async function fixture(receipt:SandboxedProcessReceipt={exit_code:0,signal:null,stdout:"hello\n",stderr:"",cancelled:false,timed_out:false},boundWorkflow=workflow){
+ const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"mac-ci-"));const entries=[{path:"ci.json",bytes:Buffer.from(JSON.stringify(boundWorkflow))},{path:"big.dat",bytes:Buffer.alloc(70000,65)}];
  const manifest=createSnapshotManifest(entries);const base=createQueuedRun("A",workflow.name,manifest.source_sha256);
- const run={...transitionRun(transitionRun(base,"PREPARING",1),"RUNNING",2),workflow_binding:{path:"ci.json",sha256:sha(entries[0].bytes),document:workflow}};
+ const run={...transitionRun(transitionRun(base,"PREPARING",1),"RUNNING",2),workflow_binding:{path:"ci.json",sha256:sha(entries[0].bytes),document:boundWorkflow}};
  let requests:SandboxedProcessRequest[]=[];let input:readonly {path:string;bytes:Uint8Array}[]=[];
  const runtime={sandbox:{policy_fingerprint:"test-native",cancel:async()=>false},executeSnapshot:async(req:SandboxedProcessRequest,files:typeof input)=>{requests.push(req);input=files;return receipt;}} as unknown as MacVmRuntime;
  const snapshots={verify:async()=>manifest,readVerifiedFile:async()=>entries[0].bytes,readVerifiedEntries:async()=>entries};
@@ -84,4 +84,25 @@ test("native CI logs retain multibyte output across bounded chunks",async()=>{
 test("native CI output-limit receipt cannot become zero-exit evidence",async()=>{
  const f=await fixture();f.runtime.executeSnapshot=async()=>({exit_code:0,signal:null,stdout:"truncated",stderr:"",cancelled:false,timed_out:false,output_limited:true});
  try{assert.equal((await f.executor.execute(f.run,workflow)).exit_code,null);}finally{await f.cleanup();}
+});
+
+test("native CI ingests generated binary evidence and journals every hash",async()=>{
+ const bytes=Buffer.from([0,255,1]),file={path:"out/report.bin",size:bytes.length,base64:bytes.toString("base64"),sha256:sha(bytes)};
+ const bound={...workflow,artifacts:[file.path]};
+ const f=await fixture({exit_code:0,signal:null,stdout:"",stderr:"",cancelled:false,timed_out:false,artifacts:[file],artifact_error:null},bound);
+ try{
+  const outcome=await f.executor.execute(f.run,bound);assert.deepEqual(f.requests[0].artifact_paths,bound.artifacts);
+  const name="generated-"+sha(Buffer.from(file.path))+".bin";
+  assert.deepEqual((await f.artifacts.read(f.run.run_id,name)).bytes,bytes);
+  assert.equal(outcome.artifact_hashes[name],sha(bytes));assert.equal(Object.keys(outcome.artifact_hashes).length,2);
+  const evidence=JSON.parse(Buffer.from((await f.artifacts.read(f.run.run_id,"execution.json")).bytes).toString());
+  assert.equal(evidence.generated_artifacts[0].path,file.path);assert.equal(evidence.child_exit_code,0);
+ }finally{await f.cleanup();}
+});
+test("artifact collection failure retains actual child exit and cannot pass",async()=>{
+ const f=await fixture({exit_code:0,signal:null,stdout:"",stderr:"",cancelled:false,timed_out:false,artifacts:[],artifact_error:"artifact_missing_unsafe_or_over_quota"});
+ try{
+  assert.equal((await f.executor.execute(f.run,workflow)).exit_code,null);
+  const evidence=JSON.parse(Buffer.from((await f.artifacts.read(f.run.run_id,"execution.json")).bytes).toString());assert.equal(evidence.child_exit_code,0);assert.match(evidence.artifact_error,/artifact/);
+ }finally{await f.cleanup();}
 });

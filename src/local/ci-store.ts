@@ -54,6 +54,7 @@ export class CiJournalStore {
    throw e;
   }
   try{
+   await handle.writeFile(JSON.stringify({owner_session:process.env.GSA_OWNER_SESSION??null}));
    const previous=await this.load(record.run_id);
    if(previous.revision!==expectedRevision||record.revision!==expectedRevision+1)throw new CiStoreError("RUN_REVISION_CONFLICT","Stale revision");
    if(previous.workspace_id!==record.workspace_id||previous.source_sha256!==record.source_sha256||
@@ -107,6 +108,19 @@ export class CiJournalStore {
    recovered.push(r.run_id);
   }
   return {recovered,unchanged};
+ }
+ /** Only called after the inherited kernel lock fences the previous server/VMs. */
+ async reconcileAfterOwnerFence(session:string):Promise<{recovered:string[];unchanged:number}>{
+  if(process.env.GSA_OWNER_LOCK_FD!=="3"||process.env.GSA_OWNER_SESSION!==session||!UUID.test(session))throw Error("SERVER_OWNER_REQUIRED");
+  let files:string[];try{files=await fs.readdir(this.root);}catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")return {recovered:[],unchanged:0};throw e;}
+  for(const name of files.filter(name=>name.endsWith(".json.lock")&&UUID.test(name.slice(0,-10)))){
+   const file=path.join(this.root,name),info=await fs.lstat(file);
+   if(!info.isFile()||info.nlink!==1||info.uid!==process.getuid?.()||(info.mode&0o077)||info.size>4096)throw Error("UNSAFE_CI_LOCK");
+   let previous:{owner_session?:string}={};try{previous=JSON.parse(await fs.readFile(file,"utf8"));}catch{/* Empty/partial metadata is possible after a crash. */}
+   if(previous?.owner_session===session)throw Error("UNFENCED_CI_LOCK");
+   await fs.unlink(file);
+  }
+  return this.reconcileInterrupted();
  }
  async list():Promise<Array<{run_id:string;workspace_id:string;state:string;revision:number}>>{
   let files:string[];

@@ -32,7 +32,7 @@ export class ControlLeaseStore {
  }
  private check(info:Stats,directory=false):void{
   if(typeof process.getuid!=="function"||info.uid!==process.getuid()||info.mode&0o077||
-     (directory?!info.isDirectory():!info.isFile()))unsafe("Unsafe control lease ownership, type or permissions");
+     (directory?!info.isDirectory():!info.isFile()||info.nlink!==1))unsafe("Unsafe control lease ownership, type or permissions");
  }
  private async checkExisting(name:string):Promise<boolean>{
   try{this.check(await fs.lstat(this.file(name)));return true;}
@@ -79,6 +79,7 @@ export class ControlLeaseStore {
   }
   try{
    this.check(await handle.stat());
+   await handle.writeFile(JSON.stringify({owner_session:process.env.GSA_OWNER_SESSION??null}));
    // Validate every preexisting path before initializing any durable identity.
    await this.checkExisting("installation-id");await this.checkExisting("control-lease.json");
    return await operation();
@@ -159,6 +160,21 @@ export class ControlLeaseStore {
   await this.locked(async()=>{
    const id=await this.identity(),previous=this.authenticate(await this.load(id),token,false);
    await this.save({version:1,installation_id:id,session_id:null,token_sha256:null,expires_at:0,revision:this.revision(previous)});
+  });
+ }
+ /** Privileged startup only, after kernel fencing proves every old helper exited. */
+ async invalidateAfterOwnerFence(session:string):Promise<void>{
+  if(process.env.GSA_OWNER_LOCK_FD!=="3"||process.env.GSA_OWNER_SESSION!==session||!UUID.test(session))unsafe("Verified owner fence required");
+  await this.directory();
+  const stale=await this.read("control-lease.lock");
+  if(stale!==null){
+   let prior:{owner_session?:string}={};try{prior=JSON.parse(stale);}catch{/* A crash can precede the metadata write. Kernel fencing is the proof. */}
+   if(prior?.owner_session===session)unsafe("Current owner control lock is active");
+   await fs.unlink(this.file("control-lease.lock"));
+  }
+  await this.locked(async()=>{
+   const installation_id=await this.identity(),previous=await this.load(installation_id);
+   if(previous?.token_sha256)await this.save({version:1,installation_id,session_id:null,token_sha256:null,expires_at:0,revision:this.revision(previous)});
   });
  }
 }

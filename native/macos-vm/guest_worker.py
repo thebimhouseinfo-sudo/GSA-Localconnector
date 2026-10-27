@@ -4,6 +4,7 @@
 The VM boundary supplies isolation; this supervisor additionally separates the
 untrusted job from its nonce, immutable input, and serial control channel.
 """
+import base64
 import ctypes
 import hashlib
 import json
@@ -30,6 +31,71 @@ class ProtocolError(ValueError):
     def __init__(self, code):
         self.code = code
         super().__init__(code)
+
+
+MAX_ARTIFACT_BYTES = 1048576
+MAX_ARTIFACT_FILES = 20
+
+
+def validate_artifact_paths(paths):
+    if not isinstance(paths, list) or len(paths) > MAX_ARTIFACT_FILES:
+        raise ProtocolError('invalid_artifact_paths')
+    seen = set()
+    for name in paths:
+        if not isinstance(name, str) or not name or len(name) > 4096 or re.search(r'[\x00-\x1f\x7f\\:*?<>|"\[\]]', name):
+            raise ProtocolError('invalid_artifact_paths')
+        parts = name.split('/')
+        if any(not part or part in ('.', '..') or part.endswith(('.', ' ')) or
+               re.match(r'^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)', part, re.I) for part in parts):
+            raise ProtocolError('invalid_artifact_paths')
+        # Restrict to ASCII so case folding is identical in every protocol peer.
+        if not name.isascii() or name.lower() in seen:
+            raise ProtocolError('invalid_artifact_paths')
+        seen.add(name.lower())
+    return paths
+
+
+def collect_artifacts(workspace, paths):
+    """Called only after cgroup cleanup: no job can rename or write these files.
+    Every path component is opened relative to a held no-follow directory FD.
+    """
+    validate_artifact_paths(paths)
+    results, total = [], 0
+    root = os.open(workspace, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        for name in paths:
+            directory = os.dup(root)
+            try:
+                parts = name.split('/')
+                for part in parts[:-1]:
+                    child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory)
+                    os.close(directory)
+                    directory = child
+                fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=directory)
+                try:
+                    info = os.fstat(fd)
+                    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > MAX_ARTIFACT_BYTES - total:
+                        raise ProtocolError('artifact_unsafe_or_over_quota')
+                    data = bytearray()
+                    while True:
+                        chunk = os.read(fd, min(65536, MAX_ARTIFACT_BYTES - total - len(data) + 1))
+                        if not chunk:
+                            break
+                        data.extend(chunk)
+                        if total + len(data) > MAX_ARTIFACT_BYTES:
+                            raise ProtocolError('artifact_unsafe_or_over_quota')
+                    after = os.fstat(fd)
+                    if (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_nlink) != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns, after.st_nlink) or len(data) != info.st_size:
+                        raise ProtocolError('artifact_changed')
+                    total += len(data)
+                    results.append(dict(path=name, size=len(data), sha256=hashlib.sha256(data).hexdigest(), base64=base64.b64encode(data).decode('ascii')))
+                finally:
+                    os.close(fd)
+            finally:
+                os.close(directory)
+    finally:
+        os.close(root)
+    return results
 
 
 def validate_request(req, nonce, workspace_id, last_seq):
@@ -61,6 +127,7 @@ def validate_request(req, nonce, workspace_id, last_seq):
             raise ProtocolError('invalid_' + name)
     if req.get('network_allowed') is not False:
         raise ProtocolError('network_not_allowed')
+    validate_artifact_paths(req.get('artifact_paths', []))
     return req
 
 
@@ -264,6 +331,13 @@ def execute_request(req, workspace='/workspace', source='/opt/gsa-source'):
             receipt['source_verified'] = before == source_digest(source)
         except (OSError, RuntimeError):
             receipt['source_verified'] = False
+        if 'artifact_paths' in req:
+            try:
+                receipt['artifacts'] = collect_artifacts(str(root), req['artifact_paths'])
+                receipt['artifact_error'] = None
+            except (OSError, ProtocolError):
+                receipt['artifacts'] = []
+                receipt['artifact_error'] = 'artifact_missing_unsafe_or_over_quota'
         return receipt
     finally:
         shutil.rmtree(job_dir, ignore_errors=True)

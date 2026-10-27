@@ -113,10 +113,10 @@ export function createHttpMcpServer(token: string, registry = new WorkspaceRegis
     }
   });
 }
-export async function startHttpMcp(token: string, port = DEFAULT_PORT): Promise<void> {
+export async function startHttpMcp(token: string, port = DEFAULT_PORT,owner?:import("../local/mac-owner.js").MacOwner): Promise<void> {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw Error("Invalid HTTP MCP port");
   const registry=process.platform==="win32"||process.platform==="darwin"?await loadTrustedRegistry():new WorkspaceRegistry();
-  const tools=process.platform==="darwin"?await bootstrapMcpTools(registry):null;
+  const tools=process.platform==="darwin"?await bootstrapMcpTools(registry,undefined,undefined,owner):null;
   if(tools?.blockedReason)process.stderr.write("Native execution unavailable: "+tools.blockedReason+"\n");
   const server = createHttpMcpServer(token,registry,tools?.invoke);
   await new Promise<void>((resolve, reject) => {

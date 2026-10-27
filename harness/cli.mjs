@@ -1,11 +1,24 @@
 import fs from 'node:fs';
 import {pathToFileURL} from 'node:url';
 import {liveRoot, Gate, snapshot, restore, gitAdmin, verify, hook, resolveRole} from './lib.mjs';
+export function parseMaintenanceArgs(args) {
+ const [action,...flags]=args;
+ const allowed=action==='preview'?['candidate','expect-config','expect-criteria','expect-stage']:action==='inspect-evidence'?['gate','evidence']:null;
+ if(!allowed)throw Error('MAINTENANCE_ACTION_DENIED: use preview or inspect-evidence only; installation and approval are manual');
+ const values={};
+ for(let i=0;i<flags.length;i+=2){const key=flags[i]?.slice(2),value=flags[i+1];if(!flags[i]?.startsWith('--')||!allowed.includes(key)||Object.hasOwn(values,key)||!value||value.startsWith('--'))throw Error('INVALID_MAINTENANCE_FLAGS');values[key]=value;}
+ if(allowed.some(key=>!Object.hasOwn(values,key)))throw Error('MISSING_MAINTENANCE_FLAG');
+ return {action,...values};
+}
 export async function main(kind,args=process.argv.slice(2)) {
  const root=liveRoot;
  try {
  let result;
- if(kind==='gate'){
+ if(kind==='maintenance'){
+  const {previewActivation,inspectGateEvidence}=await import('./maintenance.mjs');
+  const options=parseMaintenanceArgs(args);
+  result=options.action==='preview'?previewActivation(root,{candidate:options.candidate,expectConfig:options['expect-config'],expectCriteria:options['expect-criteria'],expectStage:options['expect-stage']}):inspectGateEvidence(root,options.gate,options.evidence);
+ }else if(kind==='gate'){
   const g=new Gate(root),[action='status',id,verdict,evidence]=args;
   if(action==='status')result=g.status();
   else if(action==='check'){result=g.check();if(!result.ok)process.exitCode=1;}

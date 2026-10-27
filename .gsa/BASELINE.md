@@ -1,5 +1,7 @@
 # GSA-Localconnector source baseline
 
+Current scope authority: `docs/CRITERIA.md` and `docs/DECISIONS.md`. This file pins historical source references, not product permissions. Current target: independent concurrent Windows/Mac hosts; working workspace read/write/execute without connector gates; explicit reference roots read-only/non-execution; ungranted project data denied.
+
 Date: 2026-10-16
 
 - Connector pre-bootstrap main: `4ec0e3868f00f4e08e90c0e2d7c3998b93992d8d`

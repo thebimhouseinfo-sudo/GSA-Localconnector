@@ -7,13 +7,40 @@ import {fileURLToPath} from 'node:url';
 import {createHash,createHmac,randomBytes} from 'node:crypto';
 import {spawn} from 'node:child_process';
 const root=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-if(process.platform!=='darwin'||process.arch!=='arm64'||process.argv.slice(2).join(' ')!=='--install')throw Error('Usage on Apple Silicon: node scripts/install-native-vm.mjs --install');
+const action=process.argv.slice(2).join(' ');
+if(process.platform!=='darwin'||process.arch!=='arm64'||!['--install','--upgrade','--repair'].includes(action))throw Error('Usage on Apple Silicon: node scripts/install-native-vm.mjs --install|--upgrade|--repair');
 const home=path.join(os.homedir(),'Library/Application Support/GSA-Localconnector');
 const destination=path.join(home,'native-vm');
 await fs.mkdir(home,{recursive:true,mode:0o700});
 const st=await fs.lstat(home);
 if(!st.isDirectory()||st.isSymbolicLink()||st.uid!==process.getuid()||(st.mode&0o777)!==0o700||await fs.realpath(home)!==home)throw Error('Unsafe installation parent');
-try{await fs.lstat(destination);throw Error('Installation already exists; refusing overwrite');}catch(e){if(e.code!=='ENOENT')throw e;}
+// Hold the same kernel fence as the connector for the complete build/test/publish.
+// No helper or server can start against a partially upgraded installation.
+if(process.env.GSA_NATIVE_INSTALL_FENCE!=='3'){
+ const code=await new Promise((resolve,reject)=>{
+  const python=`import os,sys,fcntl,stat
+p=sys.argv[1]; f=os.open(p,os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
+s=os.fstat(f)
+assert stat.S_ISREG(s.st_mode) and s.st_uid==os.getuid() and s.st_nlink==1 and s.st_mode&0o077==0, 'unsafe owner fence'
+try: fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)
+except BlockingIOError: sys.exit('Active connector or trusted worker; stop before native upgrade')
+if f!=3: os.dup2(f,3); os.close(f)
+os.set_inheritable(3,True)
+os.execve(sys.argv[2],[sys.argv[2],sys.argv[3],sys.argv[4]],dict(os.environ,GSA_NATIVE_INSTALL_FENCE='3'))`;
+  const child=spawn('/usr/bin/python3',['-c',python,path.join(home,'server-owner.lock'),process.execPath,fileURLToPath(import.meta.url),action],{stdio:'inherit',env:process.env});
+  for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>child.kill(signal));
+  child.on('error',reject);child.on('close',code=>resolve(code??1));
+ });process.exit(code);
+}
+// A marker alone cannot bypass fencing: verify the inherited descriptor's inode.
+await new Promise((resolve,reject)=>{const child=spawn('/usr/bin/python3',['-c',`import os,sys,fcntl,stat
+a=os.fstat(3); b=os.lstat(sys.argv[1])
+assert stat.S_ISREG(a.st_mode) and a.st_nlink==1 and a.st_uid==os.getuid() and a.st_mode&0o077==0
+assert (a.st_dev,a.st_ino)==(b.st_dev,b.st_ino)
+fcntl.flock(3,fcntl.LOCK_EX|fcntl.LOCK_NB)`,path.join(home,'server-owner.lock')],{stdio:['ignore','ignore','inherit',3]});child.on('error',reject);child.on('close',code=>code===0?resolve():reject(Error('Native install fence invalid')));});
+let existing=false;
+try{const s=await fs.lstat(destination);if(!s.isDirectory()||s.isSymbolicLink()||s.uid!==process.getuid()||(s.mode&0o777)!==0o700)throw Error('Unsafe native installation');existing=true;if(action==='--install')throw Error('Installation already exists; use --upgrade or --repair');}catch(e){if(e.code!=='ENOENT')throw e;}
+
 const stage=await fs.mkdtemp(path.join(home,'.native-vm-stage-'));
 let installed=false;
 const sha=b=>createHash('sha256').update(b).digest('hex');
@@ -52,6 +79,9 @@ try{
  await fs.writeFile(path.join(stage,'install.json'),JSON.stringify({body,hmac:createHmac('sha256',key).update(body).digest('hex')}),{mode:0o600,flag:'wx'});
  await fs.writeFile(path.join(stage,'native-verification.log'),evidence+'\n'+pressure,{mode:0o600,flag:'wx'});
  await fs.writeFile(path.join(stage,'source-provenance.json'),JSON.stringify(Object.fromEntries(await Promise.all(['native/macos-vm/WorkerHost.swift','native/macos-vm/SourceCapture.swift','scripts/test-vm-worker-native.py','scripts/test-vm-guest-worker.py'].map(async name=>[name,sha(await fs.readFile(path.join(root,name)))])))),{mode:0o600,flag:'wx'});
- await run('/usr/bin/python3',['-c','import ctypes,os,sys;lib=ctypes.CDLL(None,use_errno=True);result=lib.renamex_np(os.fsencode(sys.argv[1]),os.fsencode(sys.argv[2]),4);assert result==0,os.strerror(ctypes.get_errno())',stage,destination]);installed=true;
+ // renamex_np RENAME_SWAP publishes the tested upgrade in one atomic operation;
+ // the previous installation remains at stage until successful publication.
+ await run('/usr/bin/python3',['-c','import ctypes,os,sys;lib=ctypes.CDLL(None,use_errno=True);result=lib.renamex_np(os.fsencode(sys.argv[1]),os.fsencode(sys.argv[2]),int(sys.argv[3]));assert result==0,os.strerror(ctypes.get_errno())',stage,destination,existing?'2':'4']);installed=true;
+ if(existing)await fs.rm(stage,{recursive:true});
  console.log(JSON.stringify({state:'NATIVE_VM_INSTALLED',installation:destination,platform:'darwin-arm64'}));
 }finally{if(!installed)await fs.rm(stage,{recursive:true,force:true});}

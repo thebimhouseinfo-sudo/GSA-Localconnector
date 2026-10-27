@@ -50,7 +50,7 @@ def main():
    seq+=1
    req={'protocol':'gsa-vm-worker-v1','type':'request','nonce':nonce,'workspace_id':ws,'seq':seq,'method':'execute','executable':'/usr/bin/python3','argv':['-c',code] if code is not None else ['hello.py'],'cwd_relative':'.','time_limit_ms':5000,'max_output_bytes':65536,'network_allowed':False,**changes}
    send(req);msg=wait('result',sequence=seq);result=msg['result']
-   print('RESULT '+str(seq)+' '+json.dumps({**result,'stdout':result.get('stdout','')[:200],'stderr':result.get('stderr','')[:200],'stdout_bytes':len(result.get('stdout','').encode())}),flush=True)
+   print('RESULT '+str(seq)+' '+json.dumps({**result,'artifacts':[{k:v for k,v in a.items() if k!='base64'} for a in result.get('artifacts',[])],'stdout':result.get('stdout','')[:200],'stderr':result.get('stderr','')[:200],'stdout_bytes':len(result.get('stdout','').encode())}),flush=True)
    return result
   try:
    send(cfg);wait('ready')
@@ -91,8 +91,12 @@ print('DENIALS_AND_IDENTITY_PASS')'''
    assert r['timed_out'] and 'partial' in r['stdout'],r
    r=execute('import os\nwhile True: os.write(1,b"x"*8192)',max_output_bytes=1024)
    assert r['output_limited'] and len(r['stdout'].encode())+len(r['stderr'].encode())<=1024,r
-   r=execute('import os;os.write(1,b"\\0"*1048576)',max_output_bytes=1048576)
+   r=execute('import os;open("binary.bin","wb").write(bytes(range(256))*4096);os.write(1,b"\\0"*1048576)',max_output_bytes=1048576,artifact_paths=['binary.bin'])
    assert r['exit_code']==0 and len(r['stdout'].encode())==1048576 and not r['output_limited'],{'exit_code':r['exit_code'],'bytes':len(r['stdout'])}
+   assert r['artifact_error'] is None and base64.b64decode(r['artifacts'][0]['base64'])==bytes(range(256))*4096
+   assert r['artifacts'][0]['sha256']==hashlib.sha256(bytes(range(256))*4096).hexdigest()
+   r=execute('pass',artifact_paths=['missing.bin']);assert r['exit_code']==0 and r['source_verified'] and r['artifact_error'] and not r['artifacts'],r
+   r=execute('import os;os.symlink("binary.bin","alias.bin")',artifact_paths=['alias.bin']);assert r['exit_code']==0 and r['artifact_error'],r
    seq+=1;send({'protocol' :'gsa-vm-worker-v1','type':'request','nonce':nonce,'workspace_id':ws,'seq':seq,'method':'shutdown'})
    wait('result',sequence=seq);stopped=wait('stopped',timeout=20);assert stopped['clean'],stopped
    assert proc.wait(timeout=20)==0

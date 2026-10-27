@@ -9,7 +9,7 @@ If NOT_CONFIGURED, report that explicitly; use the approved task criteria and ac
 verification without inventing a milestone or claiming gate PASS.
 If AWAITING_USER/BLOCKED, report the concrete decision/evidence required; do not self-sign.
 For BLOCKING findings, repair only the approved task, reverify the changed scope, re-review
-expired dependencies. Maximum two repair/review rounds. OUT_OF_SCOPE goes to backlog.
+expired dependencies. Maximum five repair/review rounds per pair or 30 minutes per active work window, whichever comes first. If unfinished, preserve the checkpoint and ask whether the user permits continuation; wait for an explicit reply. Never silently exit/abandon, auto-reset counters or infer consent from silence. The primary records wall-clock start/deadline before work and checks at every tool/agent boundary, including delegated time. Explicit continuation starts another 30-minute window and extends rounds only as the user specifies. OUT_OF_SCOPE goes to backlog.
 Run `node harness/verify.mjs`; report all failures, including pre-existing ones.
 Write a sanitized evidence report using docs/reports/_TEMPLATE.md.
 Only gate advance may update completion markers after configured gates pass.

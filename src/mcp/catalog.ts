@@ -14,13 +14,21 @@ export const controlledToolNames=new Set([
  "delete_file","create_directory","copy_file","move_file","batch_file_operations","run_command",
  "start_process","stop_process","git_status","git_diff","git_log","git_show","compare_commits",
  "git_fetch","git_pull","git_add","git_commit","git_push","create_branch","git_checkout",
- "ci_prepare_source","ci_run","ci_rerun_failed","ci_cancel"
+ "ci_prepare_source","ci_run","ci_rerun_failed","ci_cancel","get_file_transaction",
+ "inspect_directory","copy_directory","get_directory_copy"
 ]);
+const directoryString={type:"string",minLength:1} as const;
+const directoryPath={...directoryString,maxLength:4096} as const;
+const copyId={...directoryString,pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"} as const;
 export const plannedTools=[
+ def("inspect_directory","Inspect a bounded native directory manifest; current controller required",{workspace_id:directoryString,path:directoryPath}),
+ def("copy_directory","Copy a bounded directory into a new writable destination; current controller required",{copy_id:copyId,source_workspace_id:directoryString,source_path:directoryPath,destination_workspace_id:directoryString,destination_path:directoryPath,expected_manifest_sha256:{...directoryString,pattern:"^[a-f0-9]{64}$"}}),
+ def("get_directory_copy","Read directory copy metadata without retrying; current controller required",{copy_id:copyId}),
  def("acquire_control","Acquire the exclusive authenticated controller lease",{},[]),
  def("renew_control","Renew an unexpired controller lease",{control_token:str}),
  def("release_control","Release the matching controller lease",{control_token:str}),
  def("list_capabilities","Report enabled and blocked capabilities",{workspace_id:str},[]),
+ def("get_file_transaction","Explicitly inspect a file transaction; never retry a mutation or restore files",{transaction_id:{type:"string",pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}}),
  def("glob","Find files by a bounded relative glob",{...target,pattern:str}),
  def("create_file","Create a new file under a writable workspace, fail on conflict",{...target,content:str}),
  def("update_file","Replace an existing file with expected SHA256 guard",{...target,content:str,expected_sha256:str}),

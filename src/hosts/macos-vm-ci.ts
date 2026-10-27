@@ -48,7 +48,7 @@ export class MacVmCiExecutor implements VerifiedCiExecutor{
   // The runtime filters these paths; rejecting preserves the journal's exact binding.
   if(entries.some(e=>e.path.split("/").some(p=>p.toLowerCase().startsWith(".env")||[".npmrc",".pypirc",".git-credentials",".ssh"].includes(p.toLowerCase()))))blocked("SOURCE_CONTAINS_PROTECTED_PATH");
    const receipt=await this.runtime.executeSnapshot({workspace_id:run.workspace_id,process_id:run.run_id,executable:"/usr/bin/python3",argv:["-I","-c",runner(workflow)],
-    cwd_relative:".",time_limit_ms:120000,max_output_bytes:1048576,network_allowed:false},entries);
+    cwd_relative:".",time_limit_ms:120000,max_output_bytes:1048576,network_allowed:false,...(workflow.artifacts!==undefined?{artifact_paths:workflow.artifacts}:{})},entries);
    let sequence=0;
    for(const stream of ["stdout","stderr"] as const){
     // Split by code points so each chunk independently respects the UTF-8 cap.
@@ -62,11 +62,19 @@ export class MacVmCiExecutor implements VerifiedCiExecutor{
    const after=await this.snapshots.verify(run.run_id);
    const source_verified=after.source_sha256===run.source_sha256;
    const outputLimited=(receipt as typeof receipt&{output_limited?:boolean}).output_limited===true;
-   const exit_code=receipt.cancelled||receipt.timed_out||receipt.signal!==null||outputLimited?null:receipt.exit_code;
+   const exit_code=receipt.cancelled||receipt.timed_out||receipt.signal!==null||outputLimited||receipt.artifact_error?null:receipt.exit_code;
+   const artifact_hashes:Record<string,string>={};
+   const generated:Array<{path:string;name:string;sha256:string;size:number}>=[];
+   // executeSnapshot resolves only after the VM host confirms a clean stop.
+   for(const file of receipt.artifacts??[]){
+    const stored=await this.artifacts.ingest(run.run_id,"generated-"+sha(Buffer.from(file.path))+".bin",Buffer.from(file.base64,"base64"));
+    if(stored.sha256!==file.sha256)blocked("ARTIFACT_HASH_MISMATCH");
+    artifact_hashes[stored.name]=stored.sha256;generated.push({path:file.path,name:stored.name,sha256:stored.sha256,size:file.size});
+   }
    const artifact=await this.artifacts.ingest(run.run_id,"execution.json",Buffer.from(JSON.stringify({format:"gsa-native-ci-execution-v1",run_id:run.run_id,workspace_id:run.workspace_id,
     source_sha256:run.source_sha256,workflow_sha256:run.workflow_binding.sha256,source_verified,exit_code,cancelled:receipt.cancelled,timed_out:receipt.timed_out,signal:receipt.signal,
-    output_limited:outputLimited,security_verified:false})+"\n"));
-   return {exit_code,source_verified,artifact_hashes:{[artifact.name]:artifact.sha256},cancelled_verified:receipt.cancelled};
+    output_limited:outputLimited,child_exit_code:receipt.exit_code,artifact_error:receipt.artifact_error??null,generated_artifacts:generated,security_verified:false})+"\n"));
+   return {exit_code,source_verified,artifact_hashes:{...artifact_hashes,[artifact.name]:artifact.sha256},cancelled_verified:receipt.cancelled};
   }finally{this.active.delete(run.run_id);}
  }
  /** Confirmation means the native VM stopped, never merely a journal update. */

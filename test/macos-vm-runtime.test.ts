@@ -10,7 +10,7 @@ import {loadMacVmRuntime,validateMacVmInstallBody,filterMacVmSourceSnapshot,MAC_
 function body(){return {format:"gsa-native-vm-v1",platform:"darwin",arch:"arm64",hostRelease:os.release(),imagePath:"/private/pinned.raw",imageSHA256:MAC_VM_IMAGE_SHA256,imageBytes:3758096384,artifacts:Object.fromEntries(["bin/worker-host","bin/source-capture","scripts/prepare-vm-worker-seed.py","native/macos-vm/guest_worker.py"].map(n=>[n,"a".repeat(64)])),checks:[...MAC_VM_REQUIRED_CHECKS]};}
 test("VM install requires complete native controls and exact host/image binding",()=>{
  const valid=body();assert.equal(validateMacVmInstallBody(valid).imageBytes,3758096384);
- for(const bad of [{...valid,checks:valid.checks.slice(1)},{...valid,hostRelease:"different"},{...valid,platform:"linux"},{...valid,arch:"x64"},{...valid,imageSHA256:"b".repeat(64)},{...valid,imagePath:"/a/../pinned.raw"},{...valid,imageBytes:1},{...valid,artifacts:{}}])assert.throws(()=>validateMacVmInstallBody(bad),/SECURITY_BLOCKED/);
+ for(const bad of [{...valid,checks:valid.checks.slice(1)},{...valid,hostRelease:"different"},{...valid,platform:"linux"},{...valid,arch:"x64"},{...valid,imageSHA256:"b".repeat(64)},{...valid,imagePath:"/a/../pinned.raw"},{...valid,imagePath:"C:\\private\\pinned.raw"},{...valid,imagePath:"\\\\server\\share\\pinned.raw"},{...valid,imageBytes:1},{...valid,artifacts:{}}])assert.throws(()=>validateMacVmInstallBody(bad),/SECURITY_BLOCKED/);
 });
 function entry(name:string,text="hello"){const bytes=Buffer.from(text);return {path:name,base64:bytes.toString("base64"),size:bytes.length,sha256:createHash("sha256").update(bytes).digest("hex"),executable:false};}
 test("source validation checks bytes and removes host credential paths before guest seeding",()=>{

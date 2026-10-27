@@ -1,12 +1,13 @@
 /** Pure local CI dependency validator. No process or shell execution. */
 export interface CiJob { id:string; needs?:string[]; steps?:Array<{id:string;command:string;args?:string[]}> }
-export interface CiWorkflow { name:string; jobs:CiJob[] }
+export interface CiWorkflow { name:string; jobs:CiJob[]; artifacts?:string[] }
 export class CiValidationError extends Error {constructor(public readonly code:"CI_INVALID",message:string){super(message);}}
 export function validateWorkflow(value:unknown):{name:string;job_order:string[]} {
  const bad=(m:string):never=>{throw new CiValidationError("CI_INVALID",m);};
  if(!value||typeof value!=="object"||Array.isArray(value))bad("workflow must be an object");
  const doc=value as Record<string,unknown>;
- if(Object.keys(doc).some(k=>!["name","jobs"].includes(k))||typeof doc.name!=="string"||!doc.name.trim()||!Array.isArray(doc.jobs)||doc.jobs.length<1||doc.jobs.length>64)bad("invalid workflow shape");
+ if(Object.keys(doc).some(k=>!["name","jobs","artifacts"].includes(k))||typeof doc.name!=="string"||!doc.name.trim()||!Array.isArray(doc.jobs)||doc.jobs.length<1||doc.jobs.length>64)bad("invalid workflow shape");
+ try{validateArtifactPaths(doc.artifacts);}catch{bad("invalid artifact paths");}
  const jobs=doc.jobs as unknown[];const nodes=new Map<string,string[]>();
  for(const raw of jobs){
   if(!raw||typeof raw!=="object"||Array.isArray(raw))bad("invalid job");
@@ -31,4 +32,16 @@ export function validateWorkflow(value:unknown):{name:string;job_order:string[]}
  };
  for(const id of nodes.keys())walk(id);
  return {name:doc.name as string,job_order:ordered};
+}
+
+/** Exact ASCII portable file names; globs and case aliases are forbidden. */
+export function validateArtifactPaths(value:unknown):readonly string[]{
+ if(value===undefined)return [];
+ if(!Array.isArray(value)||value.length>20)throw new CiValidationError("CI_INVALID","invalid artifact paths");
+ const seen=new Set<string>();
+ for(const name of value){
+  if(typeof name!=="string"||!name||name.length>4096||/[^\x20-\x7e]|[\\:*?<>|"\[\]]/.test(name)||name.split("/").some(p=>!p||p==="."||p===".."||/[. ]$/.test(p)||/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(p))||seen.has(name.toLowerCase()))throw new CiValidationError("CI_INVALID","invalid artifact paths");
+  seen.add(name.toLowerCase());
+ }
+ return value;
 }

@@ -149,7 +149,7 @@ do {
             let count=Darwin.read(reader.fileDescriptor,&chunk,chunk.count)
             if count>0{buffered.append(contentsOf:chunk.prefix(count));totalBytes+=count}
             else if count<0 && errno != EAGAIN && errno != EINTR{stop.stop("guest_output_error");break}
-            if totalBytes>64*1024*1024||buffered.count>6*1024*1024+65536{stop.stop("guest_output_limit");break}
+            if totalBytes>10*1024*1024||buffered.count>8*1024*1024+65536{stop.stop("guest_output_limit");break}
             while let newline=buffered.withUnsafeBytes({ (raw:UnsafeRawBufferPointer)->Data.Index? in
                 guard let base=raw.baseAddress,let found=memchr(base,10,raw.count) else{return nil}
                 return buffered.startIndex+base.distance(to:UnsafeRawPointer(found))

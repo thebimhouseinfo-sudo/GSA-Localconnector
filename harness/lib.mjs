@@ -89,34 +89,72 @@ export async function verify(root,{quick=false,scope}={}){
  for(const args of commands){if(!Array.isArray(args)||!args.length||args.some(x=>typeof x!=='string'))fail('INVALID_VERIFY_COMMAND');const result=await execute(root,args,Number.isFinite(policy.commandTimeoutMs)?Math.max(100,Math.min(180000,policy.commandTimeoutMs)):180000);steps.push(result);if(result.code!==0)return {ok:false,steps,warnings,changed:paths};}
  return {ok:!warnings.some(w=>w.startsWith('OUT_OF_SCOPE')),steps,warnings,changed:paths};
 }
+export function validateConfig(root,c,{simulation=false}={}) {
+ const object=(v,keys,label)=>{if(!v||Array.isArray(v)||typeof v!=='object')fail('INVALID_'+label);if(Object.keys(v).some(k=>!keys.includes(k)))fail('UNKNOWN_ATTRIBUTE: '+label);};
+ const identifier=v=>typeof v==='string'&&/^[A-Za-z0-9_-]+$/.test(v);
+ const list=(v,check,label)=>{if(!Array.isArray(v)||!v.length||v.some(x=>!check(x)))fail('INVALID_'+label);};
+ const paths=v=>{list(v,x=>typeof x==='string','PATHS');for(const p of v){if(path.isAbsolute(p))fail('ABSOLUTE_PATH_DENIED');if(p.split('/').includes('..'))fail('TRAVERSAL_PATH_DENIED');safe(root,p);}if(new Set(v).size!==v.length)fail('DUPLICATE_PATH');};
+ object(c,['$schema','version','milestone'],'CONFIG');if(c.version!==1||!Object.hasOwn(c,'milestone')||('$schema' in c&&typeof c.$schema!=='string'))fail('INVALID_CONFIG');
+ if(c.milestone===null)return c;
+ const m=c.milestone;object(m,['id','approval','tasks'],'MILESTONE');
+ if(!identifier(m.id)||!['AWAITING_USER','SIMULATED'].includes(m.approval))fail('INVALID_MILESTONE');
+ list(m.tasks,x=>x&&typeof x==='object','TASKS');const taskIds=new Set();
+ for(const t of m.tasks){
+ object(t,['id','scope','criteria','event','profile','gates'],'TASK');
+ if(!identifier(t.id)||taskIds.has(t.id))fail('INVALID_OR_DUPLICATE_TASK_ID');taskIds.add(t.id);paths(t.scope);
+ list(t.criteria,x=>typeof x==='string'&&x.trim().length>0,'CRITERIA');
+ if(!['plan_ready','task_code_ready','task_verified','feature_complete','milestone_complete','risk_escalated'].includes(t.event)||('profile' in t&&!['light','standard','heavy'].includes(t.profile)))fail('BAD_EVENT_OR_PROFILE');
+ list(t.gates,x=>x&&typeof x==='object','TASK_GATES');const ids=new Set();
+ for(const g of t.gates){object(g,['id','role','paths','depends'],'GATE');
+ if(typeof g.id!=='string'||!/^G(?:[0-9]|1[0-2])$/.test(g.id)||ids.has(g.id))fail('INVALID_OR_DUPLICATE_GATE_ID');ids.add(g.id);
+ if(!['planner','coder','tester','reviewer','critic','git-admin','user'].includes(g.role)||(['G0','G11'].includes(g.id)&&g.role!=='user')||(!['G0','G11'].includes(g.id)&&g.role==='user'))fail('BAD_GATE_ROLE');
+ paths(g.paths);if(!Array.isArray(g.depends)||g.depends.some(d=>typeof d!=='string')||new Set(g.depends).size!==g.depends.length)fail('INVALID_DEPENDENCIES');}
+ const visited=new Set(),active=new Set();const visit=id=>{if(active.has(id))fail('GATE_DEPENDENCY_CYCLE');if(visited.has(id))return;const g=t.gates.find(x=>x.id===id);if(!g)fail('MISSING_DEPENDENCY');active.add(id);for(const d of g.depends)visit(d);active.delete(id);visited.add(id);};for(const id of ids)visit(id);
+ }
+ return c;
+}
+/** Coordination budget: request a human continuation decision, never terminate work. */
+export function reviewBudget({maxReviewRounds=5,reviewWindowMs=1800000,rounds=0,startedAt=null,now=Date.now()}={}){
+ if(!Number.isSafeInteger(maxReviewRounds)||maxReviewRounds<1||!Number.isSafeInteger(reviewWindowMs)||reviewWindowMs<1||!Number.isSafeInteger(rounds)||rounds<0||!Number.isFinite(now))fail('INVALID_REVIEW_BUDGET');
+ const start=startedAt===null?null:typeof startedAt==='number'?startedAt:Date.parse(startedAt);
+ if(start!==null&&!Number.isFinite(start))fail('INVALID_REVIEW_START');
+ const elapsedMs=start===null?0:Math.max(0,now-start);
+ const reason=elapsedMs>=reviewWindowMs?'TIME_LIMIT':rounds>=maxReviewRounds?'ROUND_LIMIT':null;
+ return {maxReviewRounds,reviewWindowMs,rounds,startedAt:start,elapsedMs,awaitingContinuation:reason!==null,reason,action:reason?'ASK_USER_AND_WAIT':'CONTINUE'};
+}
 export class Gate {
  constructor(root,{simulation=false}={}){this.root=fs.realpathSync(root);this.simulation=simulation;if(simulation&&this.root===liveRoot)fail('SIMULATION_LIVE_ROOT_DENIED');}
- config(){const c=json(this.root,'harness/milestones.json',{version:1,milestone:null});if(c.version!==1)fail('INVALID_MILESTONE_VERSION');return c;}
+ config(){const c=json(this.root,'harness/milestones.json',{version:1,milestone:null});return validateConfig(this.root,c,{simulation:this.simulation});}
  state(){return json(this.root,'harness/state.json',{version:1,cursor:0,gates:{},rounds:{}});}
  status(){
  const c=this.config(),s=this.state();if(!c.milestone)return {state:'NOT_CONFIGURED',mode:'GUIDED_ONLY',next:null,gates:[]};
- const m=c.milestone;if(!this.simulation||m.approval!=='SIMULATED')return {state:'AWAITING_USER',mode:'GUIDED_ONLY',next:{role:'user',reason:'G0: trusted approval adapter not installed'},gates:[]};
+ const m=c.milestone,awaiting=!this.simulation||m.approval!=='SIMULATED';
  const task=m.tasks?.[s.cursor];if(!task)return {state:'AWAITING_USER',next:{role:'user',reason:'G11 milestone acceptance'},gates:[]};
  if(!task.id||!task.criteria?.length||!task.scope?.length||!task.event||(!Array.isArray(task.gates)||!task.gates.length))fail('INVALID_TASK');
  const policy=json(this.root,'harness/policy.json',{}),changes=changed(this.root);let profile=task.profile??'light';
  const stat=git(this.root,['diff','--numstat','HEAD']).out.split('\n').reduce((n,line)=>n+line.split('\t').slice(0,2).reduce((a,b)=>a+(Number(b)||0),0),0);
  if(changes.length>=12||stat>=400||changes.some(p=>(policy.sensitive??[]).some(s=>p.startsWith(s))||/(^|\/)package(?:-lock)?\.json$/.test(p)))profile='heavy';else if((changes.length>=5||stat>=150)&&profile==='light')profile='standard';
- const specs=task.gates.map(g=>({...g}));const extra=profile==='heavy'?[['G6','tester'],['G5','reviewer'],['G9','critic'],['G12','git-admin']]:profile==='standard'?[['G5','reviewer']]:[];
+ const specs=task.gates.map(g=>({...g}));const extra=profile==='heavy'?[['G6','tester'],['G5','reviewer'],['G9','critic']]:profile==='standard'?[['G5','reviewer']]:[];
  for(const [id,role] of extra)if(!specs.some(g=>g.id===id))specs.push({id,role,paths:task.scope,depends:[]});
  const gates=[];const visit=(spec,trail=[])=>{
  if(trail.includes(spec.id))fail('GATE_DEPENDENCY_CYCLE');const existing=gates.find(g=>g.id===spec.id);if(existing)return existing;
  const deps=(spec.depends??[]).map(id=>{const d=specs.find(g=>g.id===id);if(!d)fail('MISSING_DEPENDENCY');return visit(d,[...trail,spec.id]);});
  const targetHash=sha(JSON.stringify({milestone:m.id,task:task.id,criteria:task.criteria,event:task.event,scope:task.scope,spec,source:hashPaths(this.root,spec.paths??task.scope),deps:deps.map(g=>[g.id,g.targetHash,g.state])}));
  const receipt=s.gates[task.id+':'+spec.id];let state='MISSING';if(receipt){state=receipt.targetHash===targetHash&&optional(()=>sha(read(this.root,receipt.evidence)),null)===receipt.evidenceHash?receipt.verdict:'EXPIRED';}
+ if(awaiting&&['G0','G11'].includes(spec.id))state='AWAITING_USER';
  const g={...spec,state,targetHash};gates.push(g);return g;
  };for(const spec of specs)visit(spec);
- const limited=Object.entries(s.rounds).some(([key,n])=>key.startsWith(task.id+':')&&n>=(policy.maxReviewRounds??2));
+ const counts=Object.entries(s.rounds).filter(([key])=>key.startsWith(task.id+':')).map(([,n])=>n);
+ const reviewLoop=reviewBudget({maxReviewRounds:policy.maxReviewRounds??5,reviewWindowMs:policy.reviewWindowMs??1800000,rounds:Math.max(0,...counts),startedAt:s.reviewStartedAt?.[task.id]??null});
+ const limited=reviewLoop.reason==='ROUND_LIMIT',timed=reviewLoop.reason==='TIME_LIMIT';
  const missing=gates.find(g=>g.state!=='PASS');let next=missing?{role:missing.state==='FAIL'?'coder':missing.role,gate:missing.id,event:task.event,task:task.id}:null;
- if(limited)next={role:'user',reason:'Review/repair round limit exceeded'};
- return {state:limited?'BLOCKED_ROUND_LIMIT':missing?'GATES_PENDING':'PASS',mode:'GUIDED_ONLY',milestone:m.id,task:task.id,profile,gates,next};
+ if(missing&&(limited||timed))next={role:'user',action:'ASK_USER_AND_WAIT',reason:timed?'Review/repair window reached 30 minutes':'Review/repair round limit reached',question:'Work is unfinished. May I continue for another review/repair window?',preserveCheckpoint:true};
+ if(!missing){reviewLoop.awaitingContinuation=false;reviewLoop.reason=null;reviewLoop.action='COMPLETE';}
+ if(awaiting)next={role:'user',gate:'G0',reason:'Approval pending: trusted approval adapter unavailable. Review the displayed scope and coordinate the approved work manually; do not sign G0/G11 with agent JSON, TTY or state edits. Configuration installation does not grant approval.'};
+ return {state:awaiting?'AWAITING_USER':missing&&timed?'AWAITING_CONTINUATION':missing&&limited?'BLOCKED_ROUND_LIMIT':missing?'GATES_PENDING':'PASS',mode:'GUIDED_ONLY',milestone:m.id,task:task.id,profile,reviewLoop,configHash:sha(read(this.root,'harness/milestones.json')),criteriaHash:optional(()=>sha(read(this.root,'docs/CRITERIA.md')),null),gates,next};
  }
  check(){const s=this.status();return {...s,ok:s.state==='PASS'};}
- sign(id,verdict,evidence){if(['G0','G11'].includes(id))fail('AWAITING_USER: cannot authenticate human approval through an agent-writable file');if(!['PASS','FAIL'].includes(verdict))fail('INVALID_VERDICT');return locked(this.root,()=>{const status=this.status();if(status.state==='NOT_CONFIGURED')fail('NOT_CONFIGURED');if(status.state==='BLOCKED_ROUND_LIMIT')fail('ROUND_LIMIT');if(status.state==='AWAITING_USER')fail('AWAITING_USER');const spec=status.gates.find(g=>g.id===id);if(!spec)fail('UNKNOWN_GATE');if((spec.depends??[]).some(d=>status.gates.find(g=>g.id===d)?.state!=='PASS'))fail('DEPENDENCY_PENDING');const bytes=read(this.root,evidence);if(!bytes.toString().trim())fail('EMPTY_EVIDENCE');if(id==='G12'&&!gitAdmin(this.root,'verify-integration').ok)fail('G12_INTEGRATION_NOT_PROVEN');const s=this.state();s.gates[status.task+':'+id]={verdict,evidence,evidenceHash:sha(bytes),targetHash:spec.targetHash,at:new Date().toISOString(),identity:'SELF_REPORTED_UNAUTHENTICATED'};if(verdict==='FAIL'){const key=status.task+':'+spec.role;s.rounds[key]=(s.rounds[key]??0)+1;}save(this.root,'harness/state.json',s);return this.status();});}
+ sign(id,verdict,evidence){if(['G0','G11'].includes(id))fail('AWAITING_USER: cannot authenticate human approval through an agent-writable file');if(!['PASS','FAIL'].includes(verdict))fail('INVALID_VERDICT');return locked(this.root,()=>{const status=this.status();if(status.state==='NOT_CONFIGURED')fail('NOT_CONFIGURED');if(status.state==='BLOCKED_ROUND_LIMIT')fail('ROUND_LIMIT');if(status.state==='AWAITING_CONTINUATION')fail('CONTINUATION_REQUIRED');if(status.state==='AWAITING_USER')fail('AWAITING_USER');const spec=status.gates.find(g=>g.id===id);if(!spec)fail('UNKNOWN_GATE');if((spec.depends??[]).some(d=>status.gates.find(g=>g.id===d)?.state!=='PASS'))fail('DEPENDENCY_PENDING');const bytes=read(this.root,evidence);if(!bytes.toString().trim())fail('EMPTY_EVIDENCE');if(id==='G12'&&!gitAdmin(this.root,'verify-integration').ok)fail('G12_INTEGRATION_NOT_PROVEN');const s=this.state();s.reviewStartedAt??={};s.reviewStartedAt[status.task]??=new Date().toISOString();s.gates[status.task+':'+id]={verdict,evidence,evidenceHash:sha(bytes),targetHash:spec.targetHash,at:new Date().toISOString(),identity:'SELF_REPORTED_UNAUTHENTICATED'};if(verdict==='FAIL'){const key=status.task+':'+spec.role;s.rounds[key]=(s.rounds[key]??0)+1;}save(this.root,'harness/state.json',s);return this.status();});}
  advance(){return locked(this.root,()=>{if(!this.check().ok)fail('GATES_PENDING');const status=this.status(),s=this.state();const p=safe(this.root,'TASKS.md');const text=fs.readFileSync(p,'utf8');if(!/^[A-Za-z0-9_-]+$/.test(status.task))fail('INVALID_TASK_ID');const marker=new RegExp('^- \\[ \\] '+status.task+'(?=\\s|$)','m');if(!marker.test(text))fail('TASK_MARKER_NOT_FOUND');atomic(this.root,'TASKS.md',text.replace(marker,'- [x] '+status.task));s.cursor++;save(this.root,'harness/state.json',s);return this.status();});}
 }
 export function resolveRole(root,role,available){const config=json(root,'harness/roles.json',{});const r=config[role];if(!r)fail('UNKNOWN_ROLE');if(available&&!available.includes(r.model))fail('MODEL_UNAVAILABLE: '+r.model);return {...r,role,profile:read(root,'docs/PROJECT_PROFILE.md').toString(),runtimeVerification:'UNVERIFIED',permissionEnforcement:'CONTRACT_ONLY'};}
@@ -125,13 +163,15 @@ export async function hook(root,event,{simulation=false}={}){
  const denied=reason=>({denied:true,output:{hookSpecificOutput:{hookEventName:'PreToolUse',permissionDecision:'deny',permissionDecisionReason:reason}}});
  if(type==='SessionStart'||type==='UserPromptSubmit')return {output:{systemMessage:JSON.stringify(g.status())}};
  if(type==='PreToolUse'){
- const command=event.tool_input?.command??event.tool_input?.cmd??'';const name=event.tool_name??'';
- if(!/apply_patch|Edit|Write/.test(name)&&/(?:harness\/(?:state\.json|snapshots|local-state|policy\.json|roles\.json|milestones\.json)|\.codex\/|TASKS\.md)/.test(command)&&/(?:>|\b(?:write|open|unlink|rename|rm|mv|cp|tee|chmod)\b)/.test(command)&&!/^node harness\/(?:gate|snapshot|verify|self-check|git-admin|runtime-check)\.mjs(?:\s|$)/.test(command))return denied('Direct shell mutation of protected harness state/configuration is blocked.');
+ const patchText=event.tool_input?.command??event.tool_input?.cmd??'';const name=event.tool_name??'';
+ const command=/apply_patch|Edit|Write/.test(name)?'':patchText;
+ const protectedTarget=command.match(/(?:harness\/(?:state\.json|snapshots[^\s"']*|local-state[^\s"']*|policy\.json|roles\.json|milestones\.json)|\.codex\/[^\s"']*|TASKS\.md)/)?.[0];
+ if(protectedTarget&&/(?:>|\b(?:write|open|unlink|rename|rm|mv|cp|tee|chmod)\b)/.test(command)&&!/^node harness\/(?:gate|snapshot|verify|self-check|git-admin|runtime-check)\.mjs(?:\s|$)/.test(command))return denied('Protected target '+protectedTarget+': direct shell mutation of harness state/configuration is blocked. Prepare a reviewed maintenance package and apply manually.');
  if(/\bgit\s+(?:[^\n;]*\s)?push\b|\bgit\s+(?:reset\s+--hard|clean\s+-[^\s]*f)|\b(?:mkfs|diskutil\s+erase|sudo)\b|curl[^\n]*\|\s*(?:sh|bash)/.test(command))return denied('Blocked destructive/remote operation. Use a separately reviewed explicit workflow.');
  if(/apply_patch|Edit|Write/.test(name)){
- let paths=[...command.matchAll(/^\*\*\* (?:Update File|Add File|Delete File|Move to): (.+)$/gm)].map(m=>m[1].trim());if(!paths.length&&event.tool_input?.file_path)paths=[event.tool_input.file_path];
+ let paths=[...patchText.matchAll(/^\*\*\* (?:Update File|Add File|Delete File|Move to): (.+)$/gm)].map(m=>m[1].trim());if(!paths.length&&event.tool_input?.file_path)paths=[event.tool_input.file_path];
  if(!paths.length)return denied('Cannot identify edit scope; use apply_patch with explicit paths.');
- try{paths=paths.map(p=>path.isAbsolute(p)?path.relative(fs.realpathSync(root),p):p);for(const p of paths){safe(root,p);if(p.startsWith('.codex/')||p==='harness/policy.json'||p==='harness/roles.json'||p==='harness/milestones.json'||p==='TASKS.md')return denied('Sensitive harness configuration/status: prepare a proposal and apply only through user-reviewed maintenance.');}snapshot(root,paths);}catch(e){return denied(e.message);}
+ try{paths=paths.map(p=>path.isAbsolute(p)?path.relative(fs.realpathSync(root),p):p);for(const p of paths){safe(root,p);if(p.startsWith('.codex/')||p==='harness/policy.json'||p==='harness/roles.json'||p==='harness/milestones.json'||p==='TASKS.md')return denied('Protected target '+p+': sensitive harness configuration/status. Prepare a reviewed maintenance package and apply manually; no agent write exemption.');}snapshot(root,paths);}catch(e){return denied('Edit target '+paths.join(', ')+': '+e.message+'. Use a reviewed manual maintenance package for protected targets.');}
  return {denied:false,output:{hookSpecificOutput:{hookEventName:'PreToolUse',additionalContext:'Edit snapshot saved. Role/path restrictions are guardrails, not a sandbox.'}}};
  }
  return {denied:false,output:{hookSpecificOutput:{hookEventName:'PreToolUse',additionalContext:'GUIDED_ONLY for shell/other tools: snapshot explicit files before mutation; never edit gate state or secrets.'}}};
@@ -142,7 +182,7 @@ export async function hook(root,event,{simulation=false}={}){
  return {output:{hookSpecificOutput:{hookEventName:'PostToolUse',additionalContext:message}}};
  }
  if(type==='Stop'){
- const status=g.status();if(status.state==='NOT_CONFIGURED'||status.state==='AWAITING_USER'||status.state==='BLOCKED_ROUND_LIMIT')return {output:{continue:true,systemMessage:JSON.stringify(status)}};
+ const status=g.status();if(status.state==='NOT_CONFIGURED'||status.state==='AWAITING_USER'||status.state==='BLOCKED_ROUND_LIMIT'||status.state==='AWAITING_CONTINUATION')return {output:{continue:true,systemMessage:JSON.stringify(status)}};
  if(status.state==='PASS')return {output:{continue:true}};
  const policy=json(root,'harness/policy.json',{});const key=sha(String(event.session_id??'unknown')+':'+status.task);const p='harness/local-state/stop-'+key+'.json';const state=json(root,p,{attempts:0});state.attempts++;save(root,p,state);
  if(state.attempts>(policy.maxStopAttempts??3))return {output:{continue:true,systemMessage:'BLOCKED: Stop continuation limit reached. Report pending gates to the user.'}};

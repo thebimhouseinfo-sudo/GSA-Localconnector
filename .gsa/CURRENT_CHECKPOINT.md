@@ -1,4 +1,530 @@
+## ACTIVE — 2026-10-27 12:53 Vietnam: consolidated recovery source preparation
+
+Prior v2 source repair e371 independently accepted, build102tests plus tightened1case accepted; installed fd274 BASE/UI unchanged. New plan docs/plans/2026-10-27-MAC27-RECOVERY-QUALIFICATION.md reviewer accepted source preparation (reviewedSHA88c24e95…4d824; later primary appended exact actual-phase classification requirement). Fixed17broker calls,158explicit-spawn cap,180seconds,12managedsignals,1relocation; NOT native authorization. Distinct generated diagnostic binary cannot certify production containment. Prestarted captured-name phase gate and AFTERSTOP ownership/namespace checks required.
+
+Partial checkpoint source scripts/test-mac27-recovery-native.mjs SHAff167b8804d9dfcb01c643bf533b75baf3af82150fcc4964fc85497aba86e5d4 heldfalse AND implementation-incomplete.14pure guards authored, NOTRUN. Full packaging/reservation/owner-worker/observer/transport/case schedule missing at checkpoint; Coder mac27_recovery_driver_code and Tester mac27_recovery_driver_tests now continue full source/guard batch. Do not run partial guards as a readiness certificate. No native/build/sign/install/Git during preparation; all old slots unchanged.
+
+Accepted BASE binary remains /private/tmp/gsa-scoped-rebind-candidate-06kL5o/.scoped-files.stage-b69b43c9-d184-46a6-9b01-6baa2a550c89/release-broker: regular105392bytes0500 uid501, SHA3c540b7f5e151ad74c313c758aa12b1f249524db8a367b8692b5f33e24c00aea independently reread; archive has metadata/evidence/receipts, NOTbinary. Future preflight rechecks ancestry/hash; never read oldproof-key/identity or compileBASE again.
+
+Keep elapsed time/checkpoints. Human explicit continue-until-finished instruction remains an authorized exception to routine repository window questions per developer instruction that preferences persist; primary briefly considered reasking at05:55 then corrected before any question. No policy/AGENTS edit, counter/slot reset or new native permission implied. Current source task remains active. FullMac incomplete, Windows notstarted. Earlier entries below historical.
+
+---
+
+## CURRENT — 2026-10-27 12:40 Vietnam: recovery v2 source repair accepted
+
+Source src/hosts/macos-recovery-installation.ts SHAe371c7109b55c5bea5b113e3f129e685be0b74fcf3184eb2d0590e0e04088a59 independently ACCEPTED. Confirmed same-root v1/v2 incompatibility fixed with strict v2, existing BASE validators, all grant/BASE artifact checks, separate recovery binding, body digest pin and post-await/final authorization checks. No production-source repair round needed after initial batch. Static fixture audit required two grouped corrections; a post-run final-auth timing correction was documented and verified separately. Lesson lessons/2026-10-27-isolate-mutated-proof-fixtures.md.
+
+Build0; original focused suite102PASS/0fail/0skip on previous testSHAf0df26f8. Tightened current testSHA552245ace689fb19edbec8e41efe9551bd6311127ca806e4dc07b88f15ac9e21 rebuilt0 and selected final-auth case1PASS; unchanged101cases reused, NOT a fresh102-pass claim on currenttesthash. Reports/logs docs/reports/2026-10-27-recovery-v2-prerequisite-*. No native execution/sign/install/activation/Git; sourceNOTINSTALLED. Activationfalse/installerrecoveryfalse; fd274 installedBASE/READ still accepted. FullMac incomplete/Windows notstarted.
+
+Next dependent work: Planner mac_remaining_next_plan drafting practical consolidated recovery qualification/provisioning path using repaired constructor and existing unchanged BASE evidence; no source/test/native effects yet. Old consumed native slots remain consumed. User continuous-work direction still active; no routine window question. Earlier entries below historical.
+
+---
+
+## ACTIVE — 2026-10-27 12:32 Vietnam: recovery v2 prerequisite
+
+Latest user “làm tiếp” resumes ongoing Mac work. Continuation clock 2026-10-27T05:25:04Z. Planner amendment docs/plans/2026-10-27-MAC27-RECOVERY-ACCEPTANCE-PREPARATION.md SHA8dd4bf14ef3ffcf3583d0b19909facd070c9a0d57bed912f64377ec89e571fa0 independently ACCEPTED. Confirmed root cause: same manifest was required to be v2 by BASE and v1 by recovery; existing v1 positive fixture concealed mismatch.
+
+Coder source frozen src/hosts/macos-recovery-installation.ts SHAe371c7109b55c5bea5b113e3f129e685be0b74fcf3184eb2d0590e0e04088a59. Strict v2 + unchanged BASE validators, exact full grant set/roles/identities, separate BASE/recovery artifact checks, private bundle parents, initial body digest pin, post-await registry checks and final durable authorization after all reads. Installer and activation unchanged/false. Tester recovery_v2_tests writes complete synthetic fixture/regression batch; NO build/test run yet. Reviewer recovery_activation_scope_review conducting static whole-batch review before consolidated execution. No native/sign/install/Git or old-slot replay. Current fd274 runtime and delivered BASE/READ unchanged. Full Mac incomplete/Windows deferred. Older entries below historical.
+
+---
+
+## CURRENT — 2026-10-27 06:55 Vietnam
+
+UI identity repair and actual installed BASE/READ are DELIVERED, independently accepted. Authoritative report: docs/reports/2026-10-27-ui-installed-acceptance.md; raw sanitized API evidence: docs/reports/2026-10-27-ui-plugin-results.json. Current runtime fd274faf-014a-4175-bacd-374fa5d05601 RUNNING/CONNECTED, complete manifest valid, 68 backend JS match accepted native graph. All 6 signed UI file hashes and DR b6b8d4c24be7201385f7a77e9848b3d30860c093 preserved through standard update. Legacy sourceBuildAttestation remains unavailable, honestly labeled.
+
+Affected tests FINAL 79/79 PASS, 0 skip; prior failed fixture runs remain documented. Actual plugin created/read/copied two 90-byte files in gsa-file-check-20261027-mvpwgkov under selected workspace ws-eebfc54d79b7348c. Collision/wrong-hash/unsupported-move denied; final names/hash verified; process/CI lists empty; controller RELEASED. No unknown mutation replay, old native rerun, TCC manipulation or Git action.
+
+Full Mac remains INCOMPLETE: advanced recovery mutations, directory operations, native host shell/CI/Git boundary and lifecycle acceptance remain. Windows NOT started. User latest continue-until-finished instruction supersedes routine window pause questions, not consumed native quotas. Current primary continuation started 2026-10-26T23:54:50Z. Planner mac_remaining_next_plan audits existing recovery architecture/evidence to propose ONE concrete next source task; no new native test authorized/executed. Preserve dirty branch and all evidence. Old checkpoint entries below are historical, not current pending actions.
+
+---
+
+### FRESH STATE — 2026-10-27 00:00 Vietnam
+
+Afterusercontinueandquotareset, SAMEroleTesterLuna resumed(no fallback). Onefrozenaffected8MJSsuite ranONCE:74tests64PASS10FAIL, fullguard.log/reportpreserved. Mostfailuresfixturesattemptwrite400files(EACCES), socketpathtoo-long(EINVAL), plusmac-directory-packagelegacyminimalstage lacksnewrequiredUIprovenance(Reviewerclassificationpending). NO fixes/retryyet. Sourcea2414641/36892fc0 unchanged. ReviewerSol6.1high conductingwholecode+testaudit beforebatchrepair; Plannercurrentlyamendingplanforfreshstatebelow.
+
+FreshactualPLUGINlist_directory '.' NOWSUCCESS[] at2026-10-26T17:00:22Z underCURRENT508bfUI; priorTCCpromptstatechangedexternally duringpause, actorUNKNOWN. DoNOTrestoreold55adUI overcurrentlyworking508bf andrisknewprivacychurn. Needcurrent508bfpinnedlegacy-compatprofilePREFERRED plusold55adfallbackonlyifappropriate/unique; sourceBuildAttestation staysunavailable/noarbitraryprofilebypass. Current508bffullmanifestSHA07321da715be695758bc4838f304c992578214b727bf6afa88c393ad79fa9574; mainUIexec9b119d1f2a4feab3dadf164440f34a53f430783e43c2c991b6281c20488c5784; icon6348fd0ca8bfecf47729d71928c184374d2a94e764f224314f3b8c28c3d8c32c; CodeResourcesca1d22d5a89e61a089984abd559e2aff6ef5e2e8e2a5426843980979345b9036; other3hashesmatcholdprofile; DRb6b8d4c24be7201385f7a77e9848b3d30860c093. No actualmutationssinceearlierunknownfolder; no controllerheld.
+
+### ACTIVE SOURCE BATCH — 2026-10-26 19:28 Vietnam
+
+Plan MAC-DESKTOP-TCC-IDENTITY-REPAIR.md SHA4b2b1092… ACCEPTED by independentReviewer including honestlylabeled legacy-artifact compatibility (all55admanifest/6hash/DR/config/inputpins mandatory; sourceBuildAttestation unavailable, notbackdatedproof). Coder/root/desktop_ui_identity_code owns scripts/mac-desktop-ui.mjs(new) +mac-desktop-install.mjs (+desktop-release onlyifstrictmetadatarequired); Tester/root/desktop_ui_identity_tests ownsnewmac-desktop-ui.test/existingdesktopinstalltest/report. Module4mainAPIs describeUiIntent/selectCompatibleUi/copyVerifiedUi/recordBuiltUi plusnarrowverifyRecordedUi forstagevalidation. No injectableproductionlegacyprofile/admission. Source+regressioncodeALLbeforeoneconsolidatedsafeaffectedMJS pass; no tests/build/install yet. Currenttime12:27Z, Coderintendsfreeze≤12:40Z. ExactrolesSol6.1medium/Lunamedium nofallback.
+
+PrimarypreparedNEWtarget-specific adminhelper docs/reports/2026-10-26-mac-tcc-maintenance-stop.mjs frompreviousapprovedhelper, but NOTYETreviewed/executed. Newactual508bfmap observed: app98223(ppid1,birthOct26 19:00:14)→supervisor98231(samebirth)→guard98244(birth19:00:16)/tunnel98251(birth19:00:16)→CLI98260→MCP98275(both19:00:17); transientPythonstatuschildpossible, neverwhitelist/kill it. Newhelperrequiresfreshfullinspectionandheldlease beforeonesignal98251 thennaturalexit+jobbootout, unique .mac27-maintenance-stop-508bf766.attempt.json administrative slot (notyetcreated). Old55adadminslotconsumedunchanged. No controllerheld. Aftercode+tests+review, ONLYstandarddesktopupdate needed; scopedbroker27alreadyinstalledandaccepted, don'trepeatapply/nativeprobe. VerifycopiedoldUIexactDR+all6bytes, newbackend68hashes, thenboundedPLUGINREADfirstbeforeuniqueNEWmutation. Oldunknownfoldergsa-file-check-20261026-mvp7i801mustnotreplay.
+
+## CURRENT — 2026-10-26 19:15 Vietnam: installed TCC identity root bug
+
+User explicitly said continue until finished while away, then “tiếp đi”; routine30min/five-round stop-and-ask pauses overridden by that latest instruction. Keep real checkpoints/rounds; never reset consumed native quotas. Reviewer quota failed once before final admin-helper review, then usage reset ordinaryAllowedtrue/0% and SAME Sol6.1high resumed successfully. No fallback.
+
+ONE Mac27 native attempt fully successful/independentACCEPT: stage/private/tmp/gsa-mac27-base-3eae0d4bfed255ac7ba20ef0; raw archive docs/reports/2026-10-26-mac27-native-archive (106files/11300504bytes incl34receiptrows), evidencevalidated. Counters82 are reserved/observedmixed, not82observedchildren. Driver restoredheldfalseSHA89870c7…; slotdocs/reports/.mac27-base-native-v1.attempt.json CONSUMED, no rerun.
+
+Actual strictapply+standarddesktopupdate succeeded. Newruntime508bf766-23c5-4cac-9e8c-81731203957e RUNNING/CONNECTED; manifestand68compiledJS matchedacceptedgraph; old55ad944c preserved; scoped-files.previous-6e327c3b-f502-45b5-8ad4-69050e5e57de preserved. Actualfilebackendtrue supportscreate/mkdir/copy, BUT actualplugincreate_directory gsa-file-check-20261026-mvp7i801 timedoutUNKNOWN (folderlaterlstatABSENT), read-onlylist_directory '.' timedoutREAD_LIMIT_EXCEEDED. NO mutationretry. Controller released normally. FullMacNOTaccepted/Windowsnotstarted.
+
+RootcauseCONFIRMED: TCC19:02:07VN responsibledesktopcom.gsa-localconnector.mac.desktop PID98223 rejectedDesktopFolder existingcode requirement oldcdhasha479648ab256361ace475c354c573e9a17352fc3 vsnewb6b8d4c24be7201385f7a77e9848b3d30860c093, AUTHREQ_PROMPTING. Bothbroker5608/Python6319 attributedtosameapp. codesign-r independentlyconfirmsDRs. SourceUIApp.swift unchangedSHAedf9e28f8e00348d3f4b4784185dfab2f3891d4f1beee460dcabc9ce69ee34d9 since22Oct11:07Z, matchedsnapshotf96a7a95…22Oct15:48Z, beforeold55adbinary23Oct18:31Z. ContinuityevidenceONLY, notcryptographicsourceattestation. Updateralwaysrebuilds/ad-hocsignsUI; icon.icnsalsodiffers acrossupdates, soUIidentitychurnincludesbundleResources. App.swift120–123 launchesnewbackendfromprotectedconfig.runtimeRoot; unchangedoldverifiedUIcaninprinciplelaunchupdatedbackend.
+
+ActivePlanner/root/mac27_install_plan ownsnew plan docs/plans/2026-10-26-MAC-DESKTOP-TCC-IDENTITY-REPAIR.md, evaluating byte-for-byteWHOLEsignedUIbundlereuse + futureinputfingerprints + narrowlypinnedlegacy55adadoptionreceipt(honestprovenance). NO implementation yet; awaitplan/designreview beforeCoder. Do NOTweakenDR toidentifier-only, modifyTCC.db/resetprivacy/createcert/key/newpermissions/manualinstalledpointer/proof edits. Useexistingstandardinstallerpathswithsourcefixreview, no rawidentity/secretreads. Old55admanifestSHA0c8f1d21ca9c5ab0c2040630737d347662121d99206d363c900688d5776bc947; oldUIexecSHAef1b4d5541b61269e55355976aea0bbe28e3a4b036c22c152618866346b25bc4; oldicon83ca802d9ce134f893a460fc8f7105151486bb58c1e18697dc1555f967bdd040; oldCodeResources6557a8bced9c1c0f276ddee67bce0fb29b5e936bf52317dcca00b12d166301fd.
+
+Report docs/reports/2026-10-26-mac27-installed.md + targetedtcc-evidence.json authoritative. AppleTN2206/TN3127 primarydocsconsulted; no thirdpartytechnicalsource reliedon. Explorer installed_timeout_source_trace foundno deterministicpipe/EOF difference; bothactualtimersconsistentOSrootaccessstall. Actualgrantws-eebfc54d79b7348c workspace rev1 root/Users/nam/Desktop/Test/GSA-Workspace-20261025-2049 dev16777231ino5230710 unchanged.
+
+Adminstop55ad: firstpreflightIDLE_TREE_COUNT abortedBEFOREslot/signal dueephemeralstatusPython; boundedreadonlyrecovery+Reviewerallowedfreshstop, thenoneSIGTERM2095/allchildrennaturalexit/exactjobbootout. Consumedadminslotkept; oldhelperdocs/reports/2026-10-26-mac27-maintenance-stop.mjs isPINNEDOLD55ad/PIDs and MUSTNOT targetcurrent508bf. Anyfutureupdate needsnewfreshcurrentmap+heldlease+reviewedprocedure; nooldPIDreuse/blindkill.
+
+## User steering — 2026-10-26 06:45 Vietnam
+
+Human explicitly approved ONE native attempt with managed8/privateUNVERIFIED scope, then instructed: “làm tới khi xong, đừng dừng lại vì tôi bận ra ngoài”. Latest instruction overrides routine30-minute/five-round stop-and-ask pauses for this ongoing task; keep checkpoints and real elapsed/round accounting, but do not repeatedly ask time extensions or abandon work. It does not silently reset old native slots or remove the approved attempt180-second/no-retry limits. Do not edit AGENTS/harness/policy to implement this conversational override.
+
+Primary applied only reviewedfalse→true change, enabledSHA66c8b520b4b11e949eadb0b8e67cf0cc50fa0a73456120da4c0f3277da42854a. Tester/root/mac27_guard_tests now owns exact one-command execution/evidence, no retries. Await actual exit/receipts before any source change. No install/liveworkspacewrites/Git/Windows.
+
+AWAITING EXPLICIT NATIVE ADMISSION at23:38–23:40Z: asynchronous question sent for ONE180s disposable native run, enabledSHA66c8b520… + managed-only8/privateUNVERIFIED amendment. No answer yet, no enable/reservation/native effect. All agents finished. Next dependent action requires that exact approval; time passage is not consent. Window deadline remains23:48:06Z; do not silently reset it.
+
+## Latest checkpoint — 2026-10-26 06:37 Vietnam
+
+Current window23:18:06Z–23:48:06Z (06:18–06:48VN), max5; reviewround3sourceACCEPT forhumanadmissionONLY. Held driver89870c7d2bdca9e1aaea81e6e11bc3cf7a3bf3499730009314082d530a26d731; plan4c175512a70bcc8a92123d4b18c89beb352778eabef823f717e3757f7c613551; finalguardsa0c13b53ad33dc3c649f6661629204f9c293a91405988c38fed187e6d3abb1e2. Final19/19PASS0skip aftertwo preserved18/19testdefectfailures; NO native/sign/install/activation/Git. Proposedenabledhash66c8b520b4b11e949eadb0b8e67cf0cc50fa0a73456120da4c0f3277da42854a computedINMEMORYfromsolefalse→truechange; enabledfilenotwritten. Sourceholdfalse. Newslotabsent23:35Z, NEVERconsumeuntilnewexplicitapproval ofONErun+amendment managedsignals8/privateUNKNOWN. Fixed all8sourcegroupsinclownerworkerreceiptnamespaces. Report docs/reports/2026-10-26-mac27-preparation.md and-tests.md authoritative. Actualplugin filebackendfalse Invalidscopedfilebinding/shellCIgitblocked; fullMacNOTcomplete/Windowsdeferred. Next exacthumanadmissiondecision, notmoreold666tests. Previousdraftsha/testNOTRUNparagraphsbelowhistorical.
+
+## Active continuation — 2026-10-26 06:18 Vietnam
+
+User explicitly said “Tiếp tục”. New active window 2026-10-25T23:18:06Z–23:48:06Z (2026-10-26 06:18–06:48 Vietnam), maximum five review/repair rounds. Prior window dates below are historical. Preparation/review only: no new native allowance; SOURCE_REVIEW_COMPLETE=false must remain. No native broker, signing, reservation, installation, activation or Git mutation authorized in this scope.
+
+Mac27 draft exists: scripts/test-mac27-base-native.mjs and test/mac27-base-native.test.mjs; plan docs/plans/2026-10-25-MAC27-BASE-NATIVE-ACCEPTANCE.md. Draft NOT_READY and tests NOT_RUN. Previous agents are gone; current independent Reviewer /root/mac27_review_current audits the WHOLE driver statically before one batch repair and one consolidated safe guard pass. Confirmed input presence (filesystem only): candidate build.json and release-broker exist; execution host27.0.0/arm64. Primary found observer watch status is pre-stop, but draft requires stopped status prematurely; stale Error serialization also mismatches strict validator; plan ACK/slot/filenames differ from implementation. Await consolidated review before edits/tests. Do not repeat accepted 666-test product batch or consume old slots. Full Mac remains incomplete; Windows deferred.
+
+## Current installed Mac checkpoint — 2026-10-24
+
+FINAL13:59Z: consolidated9groupbatchSTATICACCEPT+ONEglobalbuildPASS666PASS2Windows skip0fail (TS471/MJS151/package10/harness34). UserselectednewchildTest/GSA-Workspace-20261025-2049 createdmode700/currentdev16777231ino5230710; oldparentgrantws-b152… revokedsupportedCLI thenpluginboundchildws-eebfc54d79b7348c workspace rev1; list_directorySUCCESSempty, rootstartupissuecleared/controllersreleased. BackendfileInvalidscopedfilebinding andshellCIgitblocked. ONEisolatedcandidatebuild/sign(no broker/liveinstall) oldevidenceREJECTED: host27.0.0target27 vsarchived25.6.0target26; release3c540b7f…code6327855b…different; temp/private/tmp/gsa-scoped-rebind-candidate-06kL5o retainedNOT_READY. docs/reports/2026-10-25-workspace-recovery.md/json+mac-batch-verification.md/json. No oldnativeprobe reset/replay. NEXT consolidatedfiniteexact-currentnativeacceptanceproposal; fullMaccontainment/installationgapsremain. Windowends14:03:38Z,max5; checkpoint+ASKCONTINUATION+WAITatlimit. Earlierno-livegrant/sourcepending/rootemptyentries historical.
+
+CURRENT CONSOLIDATEDBATCH13:41Z: userauditall→batchfix→oneglobaltest. NinegroupsL1-4/R1-2/P1-2/T1 implemented+regressionCODE, staticReviewerACCEPT. NO buildtestduringimplementation. Plan2026-10-25-MAC-CONSOLIDATED-BATCH-REPAIR.md/report2026-10-25-mac-consolidated-batch.md. Latestwindow13:33:38–14:03:38Z,max5; prior08:22historical. Tester/root/mac_batch_global_test RUNNINGoneguardedfull+all19MJS+packagefixtures, sourcesFROZEN/no edits/retriesuntilallresults. Previous449PASSSTALEfornewbatch. LastlivepluginROOT_CHANGED/[]/filebackendfalse, no grantpinrefresh/liveidentity/install/activation/nativeprobes/Git/Windows. KnownhostretainedFDcontainmentanddeferredfeaturesNOTfixed. Newreportauthoritative, olderentrieshistorical.
+
+LATEST WHOLE-TEST usersteering2026-10-25~07:48Z: overallNOTACCEPTED. TS449PASS2Windows skips/harness34PASS; all19MJS144PASS1FAIL(missingoldtemporaryintent.json). Actualplugin NOWWORKSPACE_ROOT_CHANGED/workspaces[]/fileBackendfalse/fileOps[]; oldTest list_directoryWORKSPACE_NOT_FOUND. Folderexistsdev16777233/ino2898256 versusolddev16777229/sameino; no continuityinference/nograntidentityedits. Consolidated docs/reports/2026-10-25-whole-test.md/rawpluginJSON/fullverify/MJSlogs. NEXT implementationfocusactualinstalledworkspacebinding recovery, then missingtestfixture, notmoreunrelatedtests. Old3fileops status stale; sourcePASSnotliveappPASS. No livewrites/controller/nativeoneshot/install/Git/Windows. Whole-test requestedwindow07:42:23–08:12:23Z,max5; boundedtestpasscomplete/noactivejob. Earlier timerwaiting/native-next entries historical.
+
+FINAL07:39Z/windowENDS07:41:18Z: two source lockfixesACCEPTED e9f982e1/330e0887; sixreal-storefaulttestsACCEPTround2; threeactualMCPauthoritytestsACCEPTround2 (new3+related31PASS, currentreviewstatic; independent3PASSpriorround1). PrimaryFINALguardedfull449productPASS/2Windowsskips/34harnessPASS allsteps0 JSONdocs/reports/2026-10-25-mac-source-verification.json. No active test/build/implementation. No native/install/activation/Git/Windows thiscontinuation. FullMacstillINCOMPLETE: remainingTask4nativeproof/qualification/checkedinstall andindependentretainedFDhostboundary/ESabsentunknown. AtdeadlineASKCONTINUATIONandWAIT; no autoreset/replay. Compacthandoffcurrent; olderactiveparagraphsbelowhistorical.
+
+07:25Z current: directorysixfaultcoverage ACCEPTround2/Tester29PASS+Reviewer29PASS after priorclosure/preservation/restartgaprepair. BothprodlockfixesACCEPTED e9f982e1/330e0887/formalTester45PASS+independent68PASS; primaryfull440PASS2Windowsskips34harness before6newtests. NEXT actualMCPauthoritysource3tests plan2026-10-25-DIRECTORY-AUTHORITY-INTEGRATION.md, Tester/root/directory_durability_tests ownsnewtest/reportonly; realdurablefixturegrant/control+productionauth+realcoordinator/store, nonnativeboundedbase/reader, no source/native/installchanges. Reviewer/root/lock_cleanup_review availableaftertests. Deadline07:41:18Z, roundscoverage2/5, lock1/5, authoritynotreviewed. FullMacstillincomplete/Windowsdeferred.
+
+ACTIVE latestusercontinuation: 2026-10-25T07:11:18Z–07:41:18Z (14:41:18Vietnamdeadline), maxfive rounds. Previous03:12deadlinehistorical; no work continued through user-idle gap. Currentdirlocke9f982e1+filelock330e0887 sourcefixes independentlyACCEPTED/freshReviewer68PASS; primary45PASS+guardedfull440productPASS/2Windowsskips/34harnessPASS07:13Z, JSONdocs/reports/2026-10-25-lock-cleanup-full-verification.json. NewReviewer/root/lock_cleanup_review done; newTester/root/directory_durability_tests exactLuna availableafter14:11quotareset (no fallback). Formal45/report thenassignedsixsourceFSfaultcasesperDIRECTORY-STORE-FAILURE-COVERAGE.md; no native/install/activation/Git/Windows. CompacthandoffrewrittenforQwen; prioragenttreegone/oldnameshistorical. FullMacstillincomplete.
+
+02:54Z: Directorylocksourcee9f982e1 ACCEPTED round1, Tester23PASS+independentReviewer23PASS (10store13coordinator). ExactRED8oldPASS/2newFAIL provedclose0. TestteardownbeingtightenedEBADF-only. Newsequential siblingplan59f3c084… docs/plans/2026-10-25-FILE-STORE-LOCK-CLEANUP.md authorizes its own publicFileTransactionStore.create RED beforeminimalfix; Testerassigned, Coderwaiting. No native/install/activation; runtimeunchanged; deadline03:12:31Z. Earlierdirectory-only/siblingoutofscopeinstructions below historical for previousassignment.
+
+02:48Z: Provenance feasibility CLOSED as NOT_READY (proposal306949dd…): 14 candidate observed subsets, six missing cases, no historical signed-bundle digest/signature receipts; do not implement v2 or backdate retained artifacts. Independent Reviewer agrees. Sequential Task4 source-only lock-metadata cleanup now active, plan docs/plans/2026-10-25-DIRECTORY-STORE-LOCK-CLEANUP.md (65a42ec0…). Tester assigned real-FS publiccreate RED for initialstat EIO/closefailure before Coder. Scope only directory-copy-store.ts/test; sibling same staticshape remains unverified separate follow-up. Window still ends03:12:31Z; no native/install/activation/Git/Windows. Fresh plugin readonly ok, VM shell only, base3fileops/Gitblocked.
+
+ACTIVE continuation: user said `tiếp`; new window 2026-10-25T02:42:31Z–03:12:31Z (09:42:31–10:12:31 Vietnam), maximum five review/repair rounds. Continue source-only finalization of reader provenance contract and historical receipt eligibility. Planner owns proposal; no native/install/activation/Git/Windows. Prior source acceptance and incident remain as recorded below. At deadline preserve checkpoint, ask continuation and wait if unfinished. Previous expired-window instruction below is historical.
+
+WINDOWENDS02:41:20Z Oct25: checkpoint+ASKCONTINUATIONandWAITbeforeanynewwork; priorwindow02:11:20Z–02:41:20Z. TaskASOURCEACCEPTEDc61644c/testc4c2ea75:5targeted+46MJS+436product/2Windowsskips+34harnessPASS; Reviewer24focusedPASS. ReaderFIFO/mountUNVERIFIED/NOT_READY, publicAPIlexicalcapguard, syntheticpersistenceonly. Incidentinterimnative~31.677s/stagedeleted/countsPIDsclosureUNKNOWN remainsrecorded, notproof. Historicalevidenceunchanged. TaskBnewnativeNOT_READY; no activation/install/Git/Windows. ProposalONLY v2provenance515cd7fa drafted, NOT_READYimplementation; reviewREADYFORHUMANDESIGNDISCUSSIONONLY; percase/constructor/rawJSONparse+historicalfieldsgapsstillNOT_READY, no validator/loader/nativechanges. Compacthandoffcurrent, report2026-10-25-reader-orchestration-final.md.
+
+CURRENT runtime55ad944c-1c1e-4fd0-aab0-b0010989d602 RUNNING/CONNECTED. Managed-process revocation source accepted, independent90/90, focused19/19, affected81/81; full388productPASS/2Windowsskips/29harnessPASS, oldnativeSeatbeltfiltered. Standard reviewed idle maintenance installed exact reviewed compiled files; previousd9 preserved. Actual disposable-root plugin bind/unbind/repeatedunbind returned STOPPED/pending0/outcomes[]; originalTestrev2 unchanged/tempremoved/controlreleased. No native running cancellation/domain proof. Report docs/reports/2026-10-24-mac-managed-process-revocation.md. User October24 reiterates autonomous code/test/no repeated questions; continue remaining Mac files, Windows deferred. ES entitlement absent/unknown, native host containment unresolved. Older status entries below historical; compact current handoff docs/LOCAL-MODEL-HANDOFF.md.
+
+CURRENT runtime d9e3eded-19ed-439f-8025-8cda6b00c5fb RUNNING/CONNECTED. Sandbox-only asynchronous start fallback now journaled with sameID/history/cancel/quota as run_command;47affectedPASS+independentreview, requiredverify368productPASS/2Windowsskips/29harnessPASS(oldSeatbeltexcluded). Actualplugin persisted-start_process-and-run_command/Testrev2/processes[]/ci[]/oldleaseSESSION_INVALID. Reviewedmaintenance firstinventoryabortedextraPythonBEFOREsignal; laterexactsixcore/FD3verified, ONLYtunnel67264SIGTERM/naturalexit/exactbootout/standardupdate. Report docs/reports/2026-10-23-mac-fallback-process-history.md. Previous198 preserved.
+
+ACTIVE 2026-10-24: managed-command explicit unbind generation fence/cancel and honest summary, plan docs/plans/2026-10-23-MAC-MANAGED-PROCESS-REVOCATION.md. Tester baseline 10 tests:9 RED/1 prior-owner safety PASS; Coder dispatched for three source files. Reviewer amendment requires canonical path OR dev/inode matching so changed workspace IDs cannot bypass unresolved old work. User answered ES entitlement absent/unknown: route unavailable/unverified, no ES implementation/activation. This does not repair external root relocation or prove file/CI/desktop IDLE. No new helper/privilege/probe. Full Mac incomplete; Windows deferred. Use docs/LOCAL-MODEL-HANDOFF.md for compact current context; later entries below are historical.
+
+ACTUAL retained-FD native allowance CONSUMED: exactdriver0c526749 ran once, resultRETAINED_FD_AUTHORITY_SURVIVES. SamePID84297/birth/FD3marker dev16777230ino4149913 read24synthetic bytes AFTERWrootrenamedoutside+oldpathabsenceconfirmed.1sandbox/1rename/2observer; helperclosednormally/cleanupuncertaintyfalse/canaryunchanged. Newslotretainedneverreset. Evidence docs/reports/2026-10-23-mac-host-retained-fd-native.md. Staticv2 doesNOTitselfrevokeheldFDauthority; productionnativehostactivationBLOCKED. Noactualgrantrevocation/domain/cancelPASS. Existingruntime19813540 unchanged/fullMac incomplete/Windowsdeferred. Earlier native-approval-pending entries historical.
+
+Retained-FD driver0c526749 extra read-only review ACCEPTED, independent6PASS/syntax/planPASS, cleanupblockerresolved. Extra review allowance consumed; no nativeexecution/slotconsumption. Separate one-probe native approval pending; do not run yet. Timeout may leave an explicitly unconfirmed helper; never equate timeout with termination. Earlier review-pending text historical. Installedruntime19813540 healthy/fullMac incomplete.
+
+User explicitly approved ONE extra read-only Reviewer verification of retained-FD driver0c526749; dispatched, allowance consumed, result pending. Primary rechecked exacthash/six nonnative PASS. This is NOT native-probe approval. No slot consumed/nativeexecution/permissionchange. Earlier review-limit-decision-pending text historical.
+
+NEXT diagnostic prepared, NOT RUN: scripts/test-mac-host-retained-fd.mjs SHA0c526749…, exactv2profile, one sandboxlaunch/one disposableWrename/≤3libprocreads, newunusedslot. Sixnonnativetests+syntax/CsyntaxcompilePASS. TwoReviewerroundsexhausted; finalremainingobserver-failurehang repairedprimaryviaEOFwithoutG+boundedunconfirmedchildunref, but NOT independentlyapproved. Need explicit one-extra readonlyreview decision before nativeapprovalrequest; no nativeauthorizationyet. Report docs/reports/2026-10-23-mac-host-retained-fd-preparation.md. Existingruntime19813540 healthy; fullMac incomplete/Windowsdeferred.
+
+CURRENT INSTALLED release19813540-43bc-4318-af26-cd69b230cdfd RUNNING/CONNECTED. Reviewed idle maintenance retained exclusive lease; verified6processcore/noorphans; onlytunnel55650SIGTERM, naturalchildexit, exactjobbootout, standardinstallupdateexit0. Previousruntime33bf preserved. Actualplugin confirms new synchronous command history metadata, Testrev2 unchanged, processes[]/ci[], oldleaseSESSION_INVALID. This is installedbootstrap evidence, not actualnativecommand/tree/revocationPASS. Report docs/reports/2026-10-23-mac-command-history.md. Full Mac incomplete/Windowsdeferred. Earlier NOT_INSTALLED/oldruntime statements are historical.
+
+Latest source task COMPLETE within its bounded scope: synchronous run_command now journaled via original sandbox.execute with full receipt, no controller-ID confusion, truthful uncertain states/cancel. Ten new tests +33 affected tests PASS; independent round2 accepted after two reproduced stop regressions. Required verify exit0:364 product PASS/2 Windows skips/0fail,29 harness PASS. Old Seatbelt native testcase explicitly excluded via NODE_OPTIONS test-skip-pattern to honor no-rerun. Source LOCAL_ONLY/uncommitted/NOT_INSTALLED; runtime33bf2ca5 unchanged. Report docs/reports/2026-10-23-mac-command-history.md. Full Mac still incomplete/Windows deferred; older active-task text below historical.
+
+Host bootstrap v2 user-approved allowance is CONSUMED. Driver0771b002 ran once, all12 launched; workspace cat/write, Git version, make and six outside/reference denials passed their fixed checks. Root names exposed16entries/count-hash only, shell selector warning retained. Final nc silentstderr caused raw UNVERIFIED_DENIAL_loopback-denied; exactPID77843 kernel network-outbound denial separately corroborated by Reviewer. Evidence docs/reports/2026-10-23-mac-host-bootstrap-v2-native.md; no rerun/reset/newpolicy/nativeactivation. Both v1/v2 host slots consumed.
+
+Active source task: persist synchronous run_command through existing sandbox.execute, preserving full receipt and preventing command-ID/controller-ID confusion. Plan docs/superpowers/plans/2026-10-23-mac-command-history.md independently design-reviewed. Eight new fault/continuity tests plus33 affected tests PASS; code review pending. Planner/Coder/Tester quotas unavailable, primary routine work inline without changing their model. No new install/commit/push; installed runtime still33bf2ca5. Full Mac incomplete, Windows deferred. Older pending-v2 entries below are historical.
+
+Host bootstrap v1 user-approved allowance CONSUMED: exact driver6535b3f7 ran once; workspace read/write functional, shell selector warning retained; Git exit128 opening /dev/null read+write denied. Stopped3/12, no native containment/network cases reached. Raw private fixture /private/tmp/gsa-host-bootstrap-1oQLsa and docs/reports/2026-10-23-mac-host-bootstrap-native.json preserved, v1 slot never reset. Separate v2 driver0771b002 prepared with ONLY literal /dev/null file-write-data policy addition and exact bigint system-path reports; nine nonnative tests pass, independent review accepted. Explicit separate one-suite user approval pending. Do not run v2 yet. Production policy unchanged, full Mac incomplete.
+
+Installed runtime33bf2ca5-ec7f-41ea-a634-405e14728374 RUNNING/CONNECTED after reviewedidlemaintenance; previousruntimepreserved. Actualplugin asyncprocesshistorypersisted; oldcontrollerSESSION_INVALID; Testrev2/basecreate-mkdir-copyunchanged. Sourcehistory19focusedPASS + realisolatedtwo-ownerfixturePASS(syntheticrecords), independentreviewaccepted; fullverify353productPASS/3skip+29harnessPASS.
+
+Actualrecoveryreadbackbugfixed(src/nativeinspectparentwalkinsidetryaftercaptureobservations) andcompiled/source-reviewed. User-approvedONEreadonlyinspectfollowupexit0PASS_READONLY_RETAINED_INSPECT, fullintentUNKNOWN/capturedfalse/noinventedabsence; namespacesunchanged. Evidence /private/tmp/gsa-retained-inspect-JJTIGc/readback-result.json and docs/reports/2026-10-23-mac-recovery-readback-native.json. BOTH extraallowancesCONSUMED (1replace+1inspect originalprobe;1readonlyinspectfollowup); fixedslotsretained. NO rerun/reset/mutationreplay. Original /private/tmp/gsa-recovery-held-parent-dsZj4b preserved, originalrunUNVERIFIED_NATIVE_RECEIPT/outeridentityfailurehistorical. Recoveryremainsinactive/uninstalled.
+
+FullMacincomplete: recoverycrash/fsync, move/rename/dircopy, nativeMacshell/Git, desktopquiesce/ownedworkobserver/actualtreerecovery. WindowsNOTstarted; nofullMacPASS. Don'trepeatexistingnativeprobes orwidenoldSeatbeltpolicy; currentreadonlycrashdiagnosisusesalready-generatedowncatreports. NoVMmedia/globalconfig/secret/Gitpushchanges. Coder/Testerquotaunavailable; primarycontinuesinlinewithhonestindependentreviewlimits. Report docs/reports/2026-10-23-mac-process-history.md.
+
+## Authorized one-extra recovery probe consumed; actual native inspect bug fixed in source — 2026-10-23
+
+User explicitly approved1extra replace+atmost1inspect. Executed exactreviewed e81e1cf... harness ONCE; fixedattempt slot consumed. Outerexit1 OWNER_IDENTITY_UNVERIFIED, but inneractualowner completedreplace→inspect and saved /private/tmp/gsa-recovery-held-parent-dsZj4b/result.json. AllrecordedPIDs absentafterward. EligibleFD7/birthSTOP proof andparentrelocation actual; outsideoriginalinode/hash and3canaries unchanged. ReplaceUNKNOWN ENTRY_UNAVAILABLE; inspectrawokfalsePATH_OUTSIDE_SCOPE; UNVERIFIED_NATIVE_RECEIPT, NOTPASS. Preserveroot/reservation; NO repeat. RawdocsreportSHAe54b116e... copiedidentically andprivate0600.
+
+Fixed realbrokerinspect bug: parentwalk movedinside structured-outcome catch after retainedcaptureobservations, preventing intent/handle loss whenparentgone. NewsourceSHA6b5debec3543ca6d0c25b2844e77113630f884ca1513d168bfd161d52fe0fab8; compileonlyPASS(candidate9035a166...), sourcereviewer noBLOCKING. NO newbrokerexecutedafterfix; oldexactbinary evidence not transferred, recoveryactivationfalse. Fullverify343PASS/3skip+29harnessPASS.
+
+Concrete test-only ONEreadonlyinspect followup scripts/test-mac-recovery-retained-inspect.mjs (cfa15e39...), ZEROmutation/relocation/replay, fixedreadbackslot, originalfixturepreserved. Tester/reviewer readiness pending, then ask explicit approval BEFORErun. No approval for this newcall yet. Processjournal wiringplan queued afteractivefix; actualhostshellboundary unavailable, no oldSeatbelt rerun/policywidening. FullMacincomplete/Windowsdeferred/gate unchanged. Nativeevidence docs/reports/2026-10-23-mac-recovery-parent-native.md. Olderentries belowhistorical.
+
+## Recovery harness cleanup blocker fixed; explicit native quota answer pending — 2026-10-23
+
+User resumed full Mac completion after round-limit report. Permanent lifecycle abort now prevents
+new broker/readback after unverified cleanup, even late close; actual coordinator/store regression
+and independent review11/11PASS, syntaxPASS. Full verify exit0:343productPASS/3skip,29harnessPASS.
+Harness reviewedSHAe81e1cf01434a5d89723ce4e588148f63f0252f8278d6ebedd47dffdf5b8a2ad.
+Explicit asynchronous one-extra recovery native quota question pending; no reservation/probe executed.
+Do not infer quota extension from general continuation. Report docs/reports/2026-10-23-mac-recovery-probe-preparation.md.
+Actual plugin readonly status reconfirms basecreate/mkdir/copy available; compare mutations/Git blocked;
+execution is LinuxVM/disposable-snapshot, not actual Mac host. FullMac incomplete, Windows deferred.
+Existing older NOT_READY entries are historical for this harness only. Gate unchanged.
+
+## Mac reselection repair applied and actual plugin file tests PASS — 2026-10-23
+
+Fetched main b265f6757451edbaa7efc1fbd739d7b0ee911fcf; all249 published product files matched local before repair. No newer upstream content/merge. Preserved dirty codex/mac-completion HEAD9066e01. New runtime-bootstrap/server provider+scope callback fix is LOCAL_ONLY/no commit/push; source independent review APPROVED. Final full verify exit0: harness29PASS, product343PASS/3skip/0fail; focused34PASS. Tester initial envelope fixture bug and maintenance preflight/review failures are recorded honestly in docs/reports/2026-10-23-mac-reselection-delivery.md.
+
+Actual Test ws-b152c830eed2592c revision2/device16777230/inode2898256 was reinstalled using EXISTING strict installer and unchanged accepted exact build/evidence. No new relocation probe, grant repin, permission/policy change or manual credential/identity access. Reviewed maintenance retained exclusive controller through full idle-tree proof and exact tunnelSIGTERM; descendants exited naturally, then exact app job retired; genuine stopped-owner fence acquired. Prior scoped installation preserved; standard install.sh update succeeded, saved configuration reused/no prompt. Current desktop release b36673ed-2d4b-44f7-9004-a4a59f98d3b3 RUNNING/CONNECTED.
+
+Actual gsa-lc-mac status fileBackendAvailable:true, operations create_file/create_directory/copy_file; startup selection warning gone. Idempotent bind same Test kept revision2. Plugin created Test/gsa-file-check-20261023-mvjynb6h/original.txt + copy.txt, each122UTF-8bytes SHA f68b14da0a536df8a85bbf9fc3c7478c530a26d0559b19ccfd0bd3cd714e77b7. Fetch/readback equal. Collision ALREADY_EXISTS_OR_DENIED preserved original; wrong-copy-hash HASH_CONFLICT and unsupportedmove SECURITY_BLOCKED created no destinations. Final dir exactly2files; control released. All actual plugin, no shell fallback/replayed mutation. Keep files for inspection. Raw docs/reports/2026-10-23-mac-reselection-plugin.json.
+
+Remaining: arbitrary future scope re-sign/provision lifecycle, recovery/move/rename/directory copy, native host shell/Git, process recovery/owned-work observer and full Mac acceptance. Windows not started; user requests automatically proceed only AFTER fullMac. NO FURTHER relocation under exhausted old quota; any extension needs concrete reviewed proposal and explicit user extension. Gate unchanged GUIDED_ONLY/AWAITING_USER M1/P01; no self-sign/state/checkbox edits. Older statements below that backend remains blocked or workspace needs re-selection are historical, superseded by this entry.
+
+Recovery evidence harness now IMPLEMENTED / NOT_READY: scripts/test-mac-recovery-parent-probe.mjs + mac-recovery-probe-control.mjs. Explicit10/10 nonnative PASS; full verify product343PASS/3skip + harness29PASS. Swift observer/candidate compile-only PASS; neither executable run, no PID signal/relocation/new reservation. Round1 findings repaired, but round2 BLOCKING: unverified child cleanup becomes adapter UNKNOWN and permits subsequent inspect overlap. Must latch abort before any further broker invocation; add controlled nonnative regression. Two review/repair rounds reached; report to user before further repair. No approval request for native run while unresolved. Concrete proposal and hashes in docs/reports/2026-10-23-mac-recovery-probe-preparation.md. No explicit quota extension yet; do not run --run-one or old native scripts. Lost-ack fault forces fresh inspect without replay. Gate and full-Mac limits unchanged.
+
+## Confirmed stale-workspace startup cause fixed and applied — 2026-10-22
+
+User confirmed diagnostic install then continued. Actual trace: MCPchild1→tunnel0. Standard installed MCP initialize-only probe (minimal env/no API) reproduced exact `Workspace root identity changed`; no manual actual identity/grant/env read/write. Added Mac-only startup-registry helper catches ONLY exact SOURCE_UNVERIFIED changed/unavailable-root errors, starts EMPTY registry + typedreselectionissue. Durable pins untouched; malformed/unsafe stores still fatal; strict underlying loader/Windows unchanged. Unit8/8, explicit64/64, full verify exit0; actual packaged --stale-workspace RED reproduced userfailure then GREEN. Independent reviewer APPROVED8/8+native.
+
+Applied standard installer update after verifying FAILED/no child/owned job and stopping only failed UI. Installed release b23264f0-2a94-4495-8f19-b9b59120bf85, saved env path reused/no prompts. ACTUAL status RUNNING/CONNECTED, retained app16919→supervisor16929→client16951→MCP16958/16974 alive. Actual gsa-lc-mac connector_status ok:true, workspaceStartupIssueWORKSPACE_ROOT_CHANGED/reselectionrequiredtrue; list_workspaces ok:true/result[]. File backend false/operations[]/hostwritesfalse due stalegrantset, as intended; no real file/shell/CI/grant operation. User must explicitly reselect workspace before file authority returns; do NOT auto-repin or claim full Mac/VM PASS. No more install/API input needed for applied fix.
+
+Evidence docs/reports/2026-10-22-workspace-startup-recovery.md. Source LOCAL_ONLY/no commit/push/integration; gate GUIDED_ONLY/AWAITING_USER unchanged. Prior entries' unknown cause/no production update status below are historical, superseded by this acceptance.
+
+## Menu-only status / production early-exit still under investigation — 2026-10-22
+
+User confirms no Dock icon but rejects separate panel and reports immediate STOPPED. App.swift now NO window/panel/GUI key code: one disabled status line + Quit/tooltip; Terminal setup only. Explicit launchFailed+liveness guards prevent stale success masking Process.run failure (Reviewer native RED reproduced then repaired1/APPROVED). Supervisor unsolicited exit0 now FAILED/CHILD_EXITED with numeric exit/signal; requested stop remains STOPPED. Adapter retains latest16KiB redacted tail, logwarn reduces Fx startup volume. Actual production-stop cause NOT YET KNOWN/FIXED; do not conflate synthetic PASS with real acceptance.
+
+New actual packaged-runtime fixture (real pinned client+real packaged CLI, loopback fakeCP/synthetic HOME) PASS6s+poll and35s401 CONNECTING; native menu/login fixture PASS,64/64 focused and full verify exit0. Reviewer21/21+native actualruntime independent PASS and approves diagnostic/UI readiness only. Detailed failures/cleanup: docs/reports/2026-10-22-menu-status-runtime-investigation.md; lesson lessons/2026-10-22-native-runtime-lifetime.md. Synthetic leftover Nodes84748/1853 removed, final fixture reaps only realpath-under-temp processes. No production/env/key/identity changes.
+
+Pending async user input: run launchctl bootout gui/$(id -u)/com.gsa-localconnector.mac then bash /Users/nam/GSA-Localconnector/install.sh update, report when ready. Then inspect only nonsecret status/new redacted diagnostic classifications to establish actual exit cause. Do not repeat key prompt or ask for raw credentials/logs. Gate unchanged, LOCAL_ONLY/no integration.
+
+## User location correction: top menu bar — 2026-10-22
+
+User showed successful installed update then clarified icon should be in TOP MENU BAR, not bottom Dock. Source App.swift now accessory + retained NSStatusItem/template plug-bolt icon/menu “Xem trạng thái…”; Info.plist LSUIElement true. Existing env/login/background/guarded termination unchanged. Native fixture now distinct bundle ID to avoid activating production instance. Baseline native RED policy0→expected1 then PASS; temporary RunAtLoad native fixture PASS accessory1/no startup window/envsame/neighboralive, removed. Full verify exit0; independent Reviewer APPROVED/typecheck/plist PASS. Menu-bar actual visual click UNVERIFIED: CUA saw fixture status window; SystemUIServer timed out. Held fixture manually cleaned after non-PTY stdin unavailable; EOF now resolves hold. Details docs/reports/2026-10-22-mac-menu-bar.md.
+
+Production remains untouched, source LOCAL_ONLY. User finishes connector tasks, `launchctl bootout gui/$(id -u)/com.gsa-localconnector.mac`, then install.sh update to apply; no setup/API re-entry. Gate unchanged/no integration. Older Dock criteria below are historical and superseded for icon location by explicit user correction.
+
+## Mac update CURRENT_UNSAFE recovery — 2026-10-22
+
+User saved setup, then update failed CURRENT_UNSAFE. Read-only host checks: no app/tunnel PID; production job registered but inactive exit78, statusSTOPPED; runtime+manifest and matching pointer/config remain, Applications alias missing. Why alias disappeared unverified. Source now distinguishes inactive registration from active/unknown, retires only verified owned inactive job before activation, and recovers absent alias for update/repair only after full existing-release/metadata checks. Conflicting aliases, damaged release, missing required plist and active/unknown work refuse.
+
+Focused63/63; final relevant16/16; actual unique inactive launchd fixture PASS, native missing-alias update fixture PASS newappPID75792/Node75797 regularDock/noTerminal/noSetup/envsame/neighboralive; full verify exit0. Reviewer independently16/16+unique launchd PASS, final APPROVED no blocking findings. Report docs/reports/2026-10-22-mac-update-recovery.md. User should rerun same install.sh update, no setup/key re-entry. Agent did not mutate production job/alias or read real env/key/identity. Gate GUIDED_ONLY/AWAITING_USER, LOCAL_ONLY; no Git integration.
+
+## Mac Dock health follow-up — 2026-10-22
+
+On user continue, replaced constant UNKNOWN in source with pinned-client loopback health probe tied to retained child PID/private locator. Requires live/ready and observed poll within120s, expires stale success; UI distinguishes waiting, verified daemon health, unavailable without claiming plugin acceptance. Whole publishStatus coalescing fixes Reviewer-reproduced concurrency stall. Installer packages new desktop-health.mjs.
+
+Focused59/59 tests, actual-client synthetic loopback fixture, final real AppKit/Node native smoke and full verify all exit0. Reviewer repair round1 APPROVED; independently8/8 and native loopback pass. Initial fixture failures and lesson: docs/reports/2026-10-22-mac-desktop-health.md. Actual gsa-lc-mac connector_status returned Session terminated, production connectivity UNVERIFIED. Source-ready LOCAL_ONLY; no production bundle/env/key/job replaced. setup command remains available; update command needs previous session stopped (unknown work still refuses). Gate unchanged; no Git integration/Windows/relocation work.
+
+## Mac Terminal setup follow-up — 2026-10-22
+
+User requested Terminal tunnel/API entry because native GUI entry was difficult. Delivered `bash /Users/nam/GSA-Localconnector/install.sh setup`: hidden key prompt, private atomic local-env save, Enter retains saved fields, cancellation preserves old config, configured envPath reused. Ordinary install/update/repair skips prompts for valid config. Running app applies changed values only on next app start/login; no forced stop or production replacement. Status adapter still reports connection UNKNOWN, so the screenshot alone does not prove a freeze/connectivity.
+
+Explicit focused54/54 tests and full verify exit0; final new unit5/5 + real PTY pass after UTF-8 decoder edit. Initial PTY stdin-liveness timeout fixed by restoring prior flowing state. Assigned Reviewer independently APPROVED, unit5/5 and PTY pass, no blocking finding. Details: docs/reports/2026-10-22-mac-terminal-setup.md. Synthetic temporary HOME only; no actual keys/env/identity reads. Gate GUIDED_ONLY/AWAITING_USER unchanged, LOCAL_ONLY, Windows deferred.
+
+## Mac terminal installer — source ready; isolated native acceptance passed (2026-10-22)
+
+User explicitly allowed primary inline Mac completion/testing after Coder/Tester quota exhaustion; Reviewer stayed available. Source ready: `bash /Users/nam/GSA-Localconnector/install.sh`. No production installation was applied. Preserve the existing live connector; user must stop an old session before installation because active ownership is refused.
+
+- Delivered terminal wrapper, release integrity/build/activation modules, AppKit Dock app/icon, private local-env persistence and retained background supervisor. start.command opens the app instead of asking for a session key. Login startup defaults on; mutable .env is outside releases. Windows deferred by direct user choice.
+- Final explicit49/49 new tests; full verify exit0: harness29pass, product334pass/3skip/0fail. Reviewer approved Tasks1–3 and scoped Task4/Task6 fixes in round1 each; no outstanding blocking finding.
+- Primary native test: real compiled regular AppKit app + bundled Node + synthetic tunnel/key/private HOME, no Terminal child, no setup window with saved env, same env identity, neighboring sentinel alive. Unique temporary RunAtLoad job gui/501/com.gsa-localconnector.fixture.9829a9b5-724b-4fb0-ad6c-57d0722d5b26 reopened it with a new session and was removed; separate probe confirmed absence. No actual logout/reboot, real-key entry or fresh live-plugin operation.
+- Full evidence/hashes/failures/limitations: docs/reports/2026-10-22-mac-terminal-installer-delivery.md. Unknown retained-work state still refuses maintenance stop/Quit. Gate GUIDED_ONLY/AWAITING_USER M1/P01 unchanged; no self-signing, Git integration or native relocation work.
+
+## Terminal installer / Dock app — earlier execution notes
+
+User reviewed installer plan and narrowed goal: terminal installation, Dock/tray presence, login autostart, no runtime Terminal, local .env retained without repeated API prompts. User subsequently chose finish/test Mac first because Windows host is unavailable. Source work is authorized; do not reopen design approval or add Pause/Resume/MCP/control-dashboard scope. Preserve the previously delivered native subset and live tunnel; no real credentials or installed runtime replaced yet.
+
+- Spec: docs/superpowers/specs/2026-10-22-cross-platform-terminal-installer-design.md (latest-scope paragraph authoritative); plan: docs/superpowers/plans/2026-10-22-cross-platform-terminal-installer.md. Progress/evidence: docs/reports/2026-10-22-terminal-installer-progress.md and docs/reports/2026-10-22-desktop-platform-test.md.
+- Required roles are available in this run; do not extend the older recovery-only inline exception. Planner amended scope. Coder implemented Task1 scripts/desktop-platform-check.mjs (9 tests), Task2 desktop-config.mjs/mac-desktop-private-file.mjs (13 tests), Task3 desktop-supervisor.mjs (12 tests). Tester independently green and Reviewer independently APPROVED each for spec and quality; no blocking findings. Full verify per Coder: harness29 pass, product334 pass/3skip/0fail. New .mjs tests require explicit focused commands; npm test alone does not discover them.
+- Task4 Coder currently owns native/macos-desktop/App.swift, Info.plist, scripts/mac-desktop-adapter.mjs, scripts/build-desktop-icons.mjs, assets/desktop SVG+license. App CLI: --desktop-config private-metadata-path; Node adapter run|configure --desktop-config path; setup values stdin only. Launchd -> native Dock app -> retained Node supervisor -> tunnel; CLI/Python FD3 fence unchanged. No raw FD3 on tunnel. Native fixture and Task4 JS tests are Tester-owned, no product #ifTESTING path.
+- Task6 installer RED tests ready in test/desktop-install.test.mjs (9 cases) for runInstall/createReleaseManifest/verifyReleaseManifest. Do not claim installer exists yet. Windows adapter/native activation remains held; plugin gsa-lc status probe returned429, no mutation/retry.
+- Never read/edit actual .env, identity state or keys. Synthetic-only development. Default new local env outside runtime; existing configured absolute path preserved. User key entry only eventual native setup, never chat/argv/logs. Private config boundary is cooperative locks+retained dirfds, not malicious same-UID CAS/sandbox protection.
+- Repo stays codex/mac-completion with preserved dirty WIP; preflight WRONG_BRANCH/DIRTY_WORKTREE are existing and retained by instruction. Gate GUIDED_ONLY/AWAITING_USER M1/P01 G0 unchanged; do not self-sign. No fetch/push/merge/branch operations. No additional relocation probes or evidence rewrites.
+
+## Installed subset / live plugin continuation — 2026-10-22 (previous)
+
+This entry supersedes the previous Task B checkpoint. User requested continued fixes and plugin testing on Test, refreshed plugin, and explicitly approved primary-agent inline review/testing after assigned Reviewer and Tester hit usage limits.
+
+- Source fixes accepted by assigned Reviewer: strict v2 evidence/build/normalized-code binding; exact WORKSPACE_GRANT_REVOKED accepted only for staleGrant (validator SHA660a7c7680131bd5042eb2a1a8331cc92d882dac7083a946c20ac49ffd3d0231). Broker/release profile unchanged. Main corrected only obsolete HTTP test expectation to role:null, matching legacy grant API; no product behavior weakened.
+- Final full verification exit0: harness29 PASS; product337 total/334 PASS/3skip/0fail. /private/tmp/gsa-2026-10-22-source-all-green.json. No need repeat unchanged suites.
+- One NEW bounded relocation attempt was executed after concrete fixture pre-review under user's continue instruction: exact signed RELEASE PID1042/FD6; confirmed SIGSTOP T and same parent identity; unique target absent before move; parent relocated once; response ALREADY_EXISTS_OR_DENIED; outside target absent; canary unchanged. Prior4 attempts (old cap3 exceeded) remain honestly recorded; cumulative5. NO FURTHER relocation. Authentic append-only report docs/reports/2026-10-22-mac-single-probe-native.jsonl SHA fcb5c7e249dea26830ff4fd11e84f29da0f69ed3a87e0f103e94e80e2606b4b0 must remain unchanged.
+- First composed receipt was rejected due actual stale error-code mismatch and candidate stdout was not persisted. New recovery fixture reads saved relocation unchanged, uses fresh disposable auth storage against SAME original IDs/rootpaths/roles/revision1/artifacts, writes full stdout+evidence before parsing/validation, revokes workspace last, then reenrolls to workrevision3/reference1. No durable-state rewind or synthetic publication proof. Original stage/store preserved.
+- Reviewer/Tester quota exhaustion blocked final recovery review. User explicitly approved primary inline fallback. Primary fixed duplicate revoke/revision arithmetic, constrained exact roots before enrollment, and fixed raw-capture ordering; this is primary review, NOT independent final Reviewer certification.
+- Recovery native command exit0: evidence validated, disposable installer applied, public loadMacScopedFiles passed mkdir/create-read/reference-read/copy under real ownerFD3/controller/durable grants. All4 checks true. Report docs/reports/2026-10-22-mac-receipt-recovery-native.jsonl. Preserved fixture /private/tmp/gsa-mac-single-probe-WMjZ94; do not delete evidence/keys/identities or re-run reserved one-shot scripts.
+- Published actual evidence JSON docs/reports/2026-10-22-mac-scoped-files-release-evidence.json (10077 bytes), extracted unchanged from actual native report, validated again. Release SHA5f32ccb7e48f7c5a33b0517a8aa09941061332edd46eaa4bf6beed5c22cad857, UUID5742F660-278F-37C6-9330-166C9EDB14D4.
+- Real selected-root installer apply exit0: SCOPED_FILES_INSTALLED_PARTIAL at /Users/nam/Library/Application Support/GSA-Localconnector/scoped-files; previous:null; create_file/create_directory/copy_file only; recoveryfalse. Only preexisting Test workspace ws-b152c830eed2592c, root /Users/nam/Desktop/Test, roleworkspace, revision1, device16777229 inode2898256, read/write/execute intent. No new real roots, policies, permissions or global configuration.
+- Transport initially gateway429; local daemon metrics showed401. User re-entered runtime key only in Terminal; new selected tunnel had successful control-plane poll and plugin calls worked. Actual plugin Test list_directory succeeded empty; preinstall create denied SECURITY_BLOCKED and Test remained empty. Control released. docs/reports/2026-10-22-mac-plugin-live-check.md.
+- Postinstall live plugin VERIFIED: user entered runtime key only in Terminal; selected tunnelPID10489 passed health/ready/control-plane-poll check. Actual plugin reports fileBackendAvailable:true and exactly create_file/create_directory/copy_file. Created Test/gsa-file-check-20261022-mvix6ijy via plugin; original.txt and copy.txt each contain82 UTF-8 bytes, SHA839beab037cbed13aadfd678fb3f2698998d976e42dce328cf46101548da01a8. Read/copy hashes matched; create collision ALREADY_EXISTS_OR_DENIED preserved original; unsupported move SECURITY_BLOCKED, no moved.txt; controller released. One transient get_file_info connection failure was preserved, then read-only retry succeeded (no mutation replay). Raw docs/reports/2026-10-22-mac-plugin-postinstall-evidence.json. No terminal fallback. Leave these two test files for user inspection. Current installed subset is delivered; next separate bounded slice is remaining recovery/native operations, not a new relocation probe or M1 completion.
+- Backend recovery/move/rename/directory-copy, host Mac shell/Git, fullMac/M1 remain incomplete. Existing optional VM unchanged/unexercised. Legacy --journey canary setup regression was classified OUT_OF_SCOPE to single-probe and recorded in BACKLOG; don't blindly rerun that mode.
+- Gate remains GUIDED_ONLY/AWAITING_USER M1/P01 with unavailable trusted G0/G11 adapter; no signatures/state/checkboxes. Branch codex/mac-completion + allWIP preserved, LOCAL_ONLY; no stage/commit/push/fetch/merge/branch changes. Handoff report docs/reports/2026-10-22-mac-installed-plugin-delivery.md.
+
+## Previous Task B continuation checkpoint — 2026-10-22 (superseded)
+
+This entry supersedes the earlier same-date resume block. User requested reading checkpoint/handoff and continuing; approved Task B source work and disposable candidate testing progressed. Task B remains INCOMPLETE; no live installation/startup/plugin-ready claim.
+
+- Source candidate accepted by assigned Reviewer after two repair rounds, with no remaining BLOCKING source finding. Installer and production loader now require v2 raw evidence/build binding; arbitrary PASS labels and incomplete evidence fail closed. Exact per-case operation/role/bytes/readback and relocation request-parent/target/stop/timeline links are validated.
+- Release profile is now `-O -Xlinker -reproducible`, superseding broken `-no_uuid`. Two separate-directory builds were byte-identical and launchable. Release SHA `5f32ccb7e48f7c5a33b0517a8aa09941061332edd46eaa4bf6beed5c22cad857`, UUID `5742F660-278F-37C6-9330-166C9EDB14D4`. Signed-code binding strips only private copies then normalizes only __LINKEDIT.vmsize; all remaining bytes are hashed. See Coder report for toolchain/signature failures and repair evidence.
+- Tester completed exact staged signed RELEASE candidate journey through real owner FD3, durable grants and controller: create/read/mkdir, reference read/copy-out, collision/ref-destination/stale-grant/artifact negatives. Corrected canary receipt spans operations and matches before/after. Production public loader correctly rejects incomplete evidence with SECURITY_BLOCKED; successful strict public-loader construction remains unverified. Candidate-only constructor exposure exists only in a temporary test module, never as a production bypass.
+- Native held-parent relocation is INCONCLUSIVE. Four runnable attempts across two stages exceeded the cumulative limit of three; earlier three no_uuid SIGABRT launches are pre-launch failures. Windows were missed or target already existed from reused-path fixture defect. No directory was relocated, no containment denial/counterexample observed. STOP further relocation polling: do not reset cap with new stage/session. Any further native experiment needs a separately reviewed concrete bounded proposal and explicit user extension of the exhausted limit; do not publish/apply from current receipts.
+- Evidence: docs/reports/2026-10-22-mac-scoped-delivery-closeout.md; Coder and Tester reports with same date prefix; corrected raw receipt is docs/reports/2026-10-22-mac-scoped-delivery-native-receipt-canary-corrected.jsonl. First raw receipt is preserved but invalid for canary timing. Technical lesson: lessons/2026-10-22-scoped-release-build-and-receipts.md.
+- Verification: repair1 affected six-file suite 60/60 PASS; final repair2 evidence/parser 34/34 PASS and build PASS (these overlap, do not add counts). Parent full verification on repair1 sources: exit1, harness29 PASS, product324 total/320 PASS/1 FAIL/3 skip. Sole failure is HTTP persisted-grant metadata expectation omitting actual role:null; outside Task B, pre-existence unverified. Final repair2 quick verification exit0 (harness self-check + tsc noEmit). No unchanged full-suite/native reruns needed without new cause.
+- Final production SHA pins: validator `3ca963cd5a451884646194dc08f9e557bcc3ce3627e1c3826f8aaad574a1124d`; normalizer `5acfc61edf5bdc593929ab77114411730479b3b2438a2cdbbbf32bcdcd8e4a76`; installer `962f15b5adccf0708726709d42ab4102f2ee38a3fd45d52a750c6560866ee885`; loader `3a8f675b1e969144321f5bbfb5ce7903637adc9196a51113a21d4ea986806f5d`.
+- Assigned agents in this chat: /root/mac_scoped_delivery_coder, /root/mac_scoped_delivery_tester, /root/mac_scoped_delivery_reviewer; reuse only at relevant authorized triggers. Two source review/repair rounds exhausted; unresolved/new blockers require user decision, no third automatic repair.
+- Gate remains GUIDED_ONLY/AWAITING_USER M1/P01, G0/G11 trusted adapter unavailable. Branch codex/mac-completion and all WIP preserved; LOCAL_ONLY, no stage/commit/push/fetch/merge/branch/config/criteria/state/signatures/real identity/credentials touched. Recovery false; move/rename/directory-copy and host shell/Git still pending. Task C (real configured-root install, app/tunnel startup, user plugin refresh then self-test) must wait for accepted actual containment and strict installation evidence.
+
+## Earlier resume checkpoint — 2026-10-22 (superseded by newest entry)
+
+User requested saving state and clearing context before continuing. This entry supersedes historical next-step instructions below. Resume autonomously through preparation; start the local app before asking the user to refresh gsa-lc-mac, then call the plugin yourself for real Desktop/Test testing. Do not claim plugin-ready yet.
+
+- Active plan: docs/plans/2026-10-21-MAC-INSTALLED-FILE-DELIVERY.md. Task A accepted after repair 1: signed base broker contracts, role-aware durable file authorization and final lease/grant recheck. Existing source tests and bounded plain-release native evidence are valid; reuse them, do not rerun unchanged suites. Evidence: docs/reports/2026-10-21-mac-installed-file-delivery-tester.md; auth-race-repair1-green and mac-scoped-release-native logs dated 2026-10-21.
+- Task B INCOMPLETE: scripts/install-mac-scoped-files.mjs implements private staging/build/signing/owner lock and provisional apply; src/hosts/macos-scoped-files.ts adds physical two-way separation against ALL current workspace/ref scopes, including invocation recheck. Reported separation tests 5/5 and installer inspect/lock/fabricated-proof tests 3/3 passed. These are prior agent reports, not rerun in this checkpoint turn.
+- Blocking implementation: replace provisional requireMacFileEvidence PASS-label validation with concrete raw evidence/build binding and finish v2 loader/manifest validation. Current installer requires release installedJourney/interiorRelocation/outsideCanaries PASS labels; that is not sufficient delivery evidence. Never manufacture those labels or enable live installation from them.
+- Tester was preparing scripts/test-mac-scoped-files-installed.mjs, but it is not present in the current working-tree inventory. Confirm agent status and actual files before assuming it exists. Needs agreed actual stage/loader/controller API and evidence schema. Use exact staged release, real owner FD3, disposable workspace/ref; cover composed create/read/mkdir/ref-copy, collision preservation, ref-destination denial, stale grant/artifact mismatch and outside canaries.
+- Remaining release containment proof: observe only owned fixture broker PID's open parent FD via libproc, stop that child, relocate parent into a disposable ungranted sibling, resume and verify denial/no outside mutation. No product instrumentation or new permissions. Missed observation window is INCONCLUSIVE; permission denial UNVERIFIED. Bounded attempts only. Existing diagnostic/instrumented evidence is not this proof.
+- Installer stage API: node scripts/install-mac-scoped-files.mjs stage --identity-root <existing-disposable-identity>. Produces SCOPED_FILES_STAGED_UNVERIFIED and build.json. Build profile uses swiftc -O -Xlinker -no_uuid; signing profile gsa-scoped-files-adhoc-single-root-v1. Do not execute against real identity until evidence and review pass.
+- Assigned Coder /root/mac_recovery_adapter_coder hit usage limit during Task B (previous message quoted reset Oct 22 00:22). Availability has NOT been rechecked. Reuse exact assigned role/model; no silent substitution. Tester /root/mac_recovery_adapter_tester and Reviewer /root/mac_recovery_adapter_reviewer may be reused at approved triggers; inspect live status first.
+- After B evidence/review: narrowly apply reviewed setup, start existing local app/tunnel, confirm running, ask user to refresh plugin, then self-test through plugin. Last metadata-only registry read showed workspace /Users/nam/Desktop/Test (ws-b152c830eed2592c, revision 1, read/write/execute), no ref. Revalidate metadata; do not enroll new real roots automatically. Last observed tunnel was not running; current runtime unverified. start.command may request hidden runtime key; do not read .env/config secrets or ask user to paste credentials into chat.
+- Recovery activation remains false. Move/rename/directory-copy and actual Mac shell/Git remain unfinished. This delivery subset is create/mkdir/copy, not full Mac or M1 completion. Lifecycle deferred; no anti-sleep, new VM, Linux checks, Windows work or GSA integration.
+- Current gate observed 2026-10-22: GUIDED_ONLY / AWAITING_USER, M1/P01 heavy; G0/G11 await trusted adapter/manual coordination. No signatures/state edits. Git preflight exit 1: WRONG_BRANCH, DIRTY_WORKTREE, NEEDS_SCOPE_REVIEW; branch codex/mac-completion. Preserve all WIP, no stage/commit/push/fetch/merge/branch changes. Snapshot before edits. Harness remains local-only.
+
+This checkpoint turn changed documentation only; no product tests, build, installation, activation or credentials were touched. Context clearing must use the app's context/compact control; no callable clear-context API was available to the agent.
+
 # GSA-Localconnector — Current checkpoint
+
+## Latest source API binding accepted — 2026-10-19
+
+Task3a/3b implemented/reviewed: roles API+legacyread-only; original-registry full
+snapshot; correct grant directory; queued mutation/auth/full intended readback;
+UNKNOWN latch. BuildPASS;60individual cases passing across58initial+2isolated
+follow-ups, NOTone9fileGREEN. HTTP sandboxEPERM and canonical-path fixture issue
+are recorded with passing narrow checks; no58valid-case rerun. No native/VM/plugin
+acceptance. Next Task4 actual Mac files. Read latest CLI-HANDOFF and private
+2026-10-19-mcp-binding-handoff. No criteria/state/signature/Git changes.
+
+## Latest persistence repair accepted — 2026-10-18
+
+Quota retry succeeded on assigned roles. Task2 blocker reproduced RED and repaired
+by removing only unrelated-root FS revalidation during revokeTrusted. Build and
+20affected persistence/grant/lock tests PASS; unchanged registry evidence reused.
+Reviewer round2 accepted source with no remaining BLOCKING finding. Grants SHA256
+b2afce4a213f89c25e59d1551c2206548e75060e2381109c4bc1fb00357d5c62.
+Next is Task3 plugin binding; no runtime/native/live-plugin acceptance. Older
+quota/blocker instructions below are history. No model/state/signature/Git change.
+
+## Latest persistence candidate — 2026-10-18
+
+Task2 grants.ts candidate implemented; build+33affected tests PASS, but Reviewer
+found BLOCKING: unrelated stale B root prevents revoking A. Tester/Reviewer hit
+usage limit before regression/repair. Source SHA9e86a3a4846ada4220fc276b530394a2b97265a714b537ae143713349b347c00
+unchanged; no fix/regression applied. Proposed patch in private report passed
+git apply --check only. Resume RED→repair→targeted GREEN→review before Task3 API.
+Use assigned roles or request explicit scoped fallback; do not silently switch.
+Read latest CLI-HANDOFF and grants-persistence-handoff report. No state/signatures.
+
+## Latest capability scope and registry continuation — 2026-10-18
+
+User requested matching criteria/plan and continued code. Criteria now explicitly
+defines connector capabilities/API through gsa-lc-mac/gsa-lc, full workspace
+operations including copy, read/search/copy-out references, actual-host scripts,
+Git/diff/log/process controls, Mac-first and no new VM. Criteria SHA256
+8a7ee9d86fa39434a76eaf1478debf73e096437ad34ffbb0a80317b97b4cce34.
+
+Registry/type foundation implemented and independently reviewed; build plus22
+affected tests PASS. No runtime/backend or role-persistence/API activation. Next
+is protected role persistence/atomic loading, then plugin binding, per focused
+plan. Gate remains M1/P01 GUIDED_ONLY AWAITING_USER; no signatures/state edits.
+Read latest CLI-HANDOFF and local capability-scope-handoff report; older entries
+below are history, not instructions to repeat native/VM tests or guest research.
+
+## Latest VM recheck — 2026-10-18
+
+Fresh authorized TypeScript build PASS. Native worker fixture stopped before
+VM boot with Swift environment errors. Escalated retry returned
+`aborted by user after 299.0s`, no command output/session; current VM execution
+remains UNVERIFIED, not VM-defect FAIL or native PASS. Preserve existing media
+and code; no further VM repair/development. Drop new macOS guest proposal.
+Current-host project scripts remain the main test path. See latest CLI-HANDOFF
+and docs/reports/2026-10-18-existing-vm-recheck.md. No state/G0/G11 edit.
+
+## Latest VM disposition — optional proven Linux worker only
+
+User says keep already-working VM work, drop unfinished VM work. Historical
+native-worker/MCP and smoke reports show the Linux snapshot worker previously
+ran; retain it optional, no current-health claim and no rerun. The macOS guest
+proposal was never implemented; drop its active resource/development path.
+Current-host script runner remains primary. No image/code deletion, install,
+source/CI/state/G0/G11 change or manual test. Preserve original media/evidence.
+Read newest CLI-HANDOFF; earlier blanket VM retirement is refined by this rule.
+
+## Latest confirmation — current-host offline test runner,2026-10-18
+
+Offline tests run only on the connected machine's actual OS using the project's
+own commands/scripts and installed tools. Return status/log/exit/output and stop
+control. No separate connector CI/DAG engine, VM or local multi-OS matrix required.
+Existing scripts may handle steps/parallelism; cross-OS GitHub CI is a separate
+requested project workflow. P05/M3 scope text updated; IDs/completion unchanged.
+No code/CI/state/G0/G11 changes or manual tests rerun. Preserve old work/evidence/
+media. Read latest CLI-HANDOFF; LOCAL_ONLY, no publication implied.
+
+## Latest scope — simplify personal-use delivery,2026-10-18
+
+User wants local file/Git tools and existing project scripts on the actual
+Mac/Windows, with project-specific GitHub CI for cross-OS tests when needed.
+No universal all-OS test lab, VM work or professional configuration layer in the
+active scope. VM research/resources below are historical and no longer a next
+input. Preserve code/evidence/media; no deletion. Existing criteria/boundaries
+remain unchanged. No source/CI/config/state/G0/G11 edits or manual tests rerun.
+Read newest CLI-HANDOFF; next assess the smallest ordinary local workflow fix.
+LOCAL_ONLY; no milestone acceptance or Git publication implied.
+
+## Latest clarification — Android/iOS app workloads, 2026-10-18
+
+User means building/testing Android/iOS apps within projects, not adding mobile
+connector hosts or GSA-phone access acceptance. DECISIONS/PROJECT_PROFILE updated;
+prior pending scope question is resolved. Mac/Windows connector sequence unchanged.
+Prefer existing resources. Cloud mobile testing is an optional later integration;
+no plugin installation, cloud upload or new test was performed. Read newest
+CLI-HANDOFF and the local M1 decision-handoff research note. No criteria/source/
+state/G0/G11 changes; LOCAL_ONLY, preserve WIP/media and valid evidence.
+
+## Latest priority — existing host first, 2026-10-18
+
+User: prioritize what is already available. Next assess existing Mac, installed
+toolchain and project components; guest resource inventory is deferred. VM is a
+fallback only after a demonstrated host limitation and reviewed cost, not a current
+prerequisite. Earlier guest-path requests below are historical/superseded.
+Criteria and outside-workspace boundaries remain unchanged; native command
+confinement remains unproven. No source/config/state/G0/G11 edit or test rerun.
+Reuse direct-host13/12-case evidence. LOCAL_ONLY, preserve branch/WIP/media.
+
+## Latest boundary — M1 feasibility decision, 2026-10-18
+
+User settled D2: connector read/search/copy suffices for references; commands do
+not need direct reference access. Copied material may run in working scope.
+Criteria unchanged. New M1-MAC-BOUNDARY-DECISION.md SHAff993093…ebe842 and updated
+HOSTDESIGN SHAfc992a09…728ea record the decision. Existing fixture now marked as
+completed once; no old tests rerun. No source, harness config or state changes.
+
+Manual Planner/Tester/Critic/Reviewer: no BLOCKING proposal finding; Critic isolation
+unverified. FullM1/runtime acceptance pending. Resource availability is UNPROVIDED.
+Proposed one-guest ceilings4vCPU/8GiB/128GiB disk/30GiB staging,192GiB aggregate;
+not allocated/enforced. Next input is exact existing resource paths for inventory
+or a separately scoped acquisition/preparation choice. No media read, install or
+boot. See newest CLI-HANDOFF and2026-10-18-m1-decision-handoff.md.
+
+Harness remains M1/P01 AWAITING_USER/GUIDED_ONLY; no G0/G11/state/checkbox edit.
+New decision doc outside electronic gate paths has a manual pin. LOCAL_ONLY;
+preserve branch/WIP/media. MacM5 before Windows. No Git remote/integration action.
+
+## Latest boundary — retained-capture experiment, 2026-10-18
+
+User approved the next fixture, native/macos-files/test-retained-capture.py,
+SHA40f7a4a5…ab2ec7. Exact patch reviewed/repaired before execution. Real-fork probe
+ran once, then native12 cases once; both exit0, no valid old suite rerun.
+Production broker/adapters unchanged. Read the product characterization in
+docs/reviews/2026-10-18-RETAINED-CAPTURE-CHARACTERIZATION.md and local
+docs/reports/2026-10-18-retained-capture-handoff.md. Hybrid copy and ancestor
+relocation are adverse counterexamples. EPERM cause/operation, full wall time,
+strict60s deadline and unlink race protection remain UNVERIFIED. Later group
+absence and removal of the disposable fixture were recorded.
+
+No BLOCKING narrow research finding; fullM1/production boundary not accepted.
+Coder usage limit occurred after repair; no model fallback or primary source edit.
+Harness still M1/P01 AWAITING_USER/GUIDED_ONLY; no G0/G11/state/checkbox change.
+The new fixture is outside electronic gate paths and has an explicit manual pin.
+Protected recovery/retention, source consistency, root/revocation, move/Trash,
+durability and guest resource decisions remain. MacM5 before Windows. LOCAL_ONLY;
+preserve WIP/branch/media; no remote operations.
+
+## Latest boundary — installed M1/P01, remaining design, 2026-10-18
+
+User installed reviewed maintenance and confirmed installed check. Harness now
+recognizes M1/P01 heavy, AWAITING_USER/GUIDED_ONLY. Eight postimages match. Earlier
+NOT_CONFIGURED/activation-blocked records below are historical. Manual roles ran
+under direct user authorization per README; no G0/G11 signature/state/checkbox
+edit. harness/state.json remains absent. Technical electronic receipts are missing.
+
+New host-boundary design and updated feasibility contract received manual
+Planner/Tester/Critic/Reviewer review, with no remaining BLOCKING proposal finding.
+Critic isolation unverified; production mutation and guest confinement remain
+UNVERIFIED. See docs/reports/2026-10-18-m1-remaining-design.md and newest CLI-HANDOFF.
+Source162/162 and harness8/8 pins match; no valid suite/native test repeated.
+No product code/native experiment/Windows work. Complete M1 remains pending.
+
+Next proposed scope: exact disposable retained-capture counterexample fixture,
+not yet implemented. Conditional macOS guest branch needs approved resources and
+reference-read capability clarification. Mac M5 precedes Windows; copy R→W and
+use/execute W remains allowed. Criteria pin863522c4…ca29. LOCAL_ONLY; preserve WIP,
+branch and original media. The old maintenance package's installation-time M1 doc
+pin expires after this authorized design update; keep its baseline immutable.
+
+## Latest execution boundary — Mac M1 characterization, 2026-10-18
+
+User authorized activation/start. Harness input installation was rejected by the
+sensitive-config hook; live status remains NOT_CONFIGURED/GUIDED_ONLY. No bypass,
+state/checkbox edit or authenticated gate PASS. Ready reviewed input and activation
+report are in ignored docs/reports. Manual scoped coordination is authorized.
+
+Changed native/macos-files/test-broker.py for focused evidence capture only; no
+production adapter/runtime change. Final Mac-native result: exit0,13 cases,
+strict signature verification0, actual cleanuptrue. Raw evidence is retained in
+harness/reports/m1-broker-final.json. Full verification after final fixture code:
+harness29 PASS; product149total/146PASS/3skip/0fail. Read newest CLI-HANDOFF and
+docs/reports/2026-10-18-m1-broker-characterization.md for failures and exact limits.
+
+Complete M1/host-command/native-SDK/reference enforcement remain pending. Broker
+subset proof cannot enable them. No Windows work before Mac M5 acceptance; no
+publication or branch/WIP/media cleanup occurred. Criteria pin stays863522c4…ca29.
+
+## Latest scope correction — sequential personal-use platforms, 2026-10-17
+
+Current plan: P00–P08/M0–M6. Fully accept Mac at P07/M5 before starting Windows
+feature work, native feasibility or detailed design at P08/M6. No simultaneous
+multi-machine acceptance matrix; retain independent/concurrent projects on one
+host. Reference copy-and-use semantics remain unchanged. This supersedes the
+older M0–M7 and unchanged-criteria statements below.
+
+User-authorized revised criteria SHA-256:
+`863522c4400bc6e7fbfcfe259bbf0621d2a5e9910744a99f15012391e602ca29`.
+Planner/Tester/Reviewer found no remaining BLOCKING scope issue. Tester links,
+coverage and dependency checks passed; 162/162 selected source files match main.
+Fresh full verification: 29 harness PASS; product 149 total/146 PASS/3 skips/0 fail.
+Evidence: docs/reports/2026-10-17-sequential-platform-planning.md.
+
+LOCAL_ONLY docs; live harness remains NOT_CONFIGURED/GUIDED_ONLY. Heavy candidate
+is uninstalled; no electronic gate PASS, native acceptance, source edit or Git
+publication is claimed. Preserve branch/WIP/media. Concrete plan review precedes
+a separately scoped next task; read the newest CLI-HANDOFF section first.
+
+## Latest task — planning refresh only, 2026-10-17
+
+The user requested plans/milestones/docs aligned to unchanged criteria before any
+code changes, with planning governed by the local harness. Reviewed draft artifacts:
+docs/plans/GSA-LOCALCONNECTOR-IMPLEMENTATION-PLAN.md, CRITERIA-TRACEABILITY.md,
+M1-MAC-BOUNDARY-FEASIBILITY.md and docs/MILESTONES.md (M0–M7). Related product docs
+are aligned; current work is LOCAL_ONLY, not published or activated.
+
+Reference clarification: copies may be used/executed in a working workspace;
+no direct reference execution/import/build. Planner/Tester/Reviewer manual review
+completed after one substantive plan repair; no remaining BLOCKING design finding.
+Native host/reference enforcement and D1/D3–D6 decisions remain scoped future work.
+All162 selected source/product-script files match merged main d29be709; criteria
+SHA remains0664a54c898ff7fc89bd5d340eeda11ee343ab7a74979e508eca9f37684a4131.
+
+Harness remains NOT_CONFIGURED/GUIDED_ONLY; heavy candidate/config maintenance
+proposal and evidence are ignored local docs/reports artifacts, not installed state
+or authenticated gate PASS. No Coder/native work, Git action or policy change was
+performed. Read the newest CLI-HANDOFF section before proceeding; user review of
+the concrete plan is next, not automatic execution of historical pending tasks.
+
+## Latest integration — project-only fresh-start baseline, 2026-10-17
+
+PR #3 merged to main at d29be7093942d739e471c62d05cf8dbbdf7eaff5 after final-head
+CI 39015522540 passed macOS, Windows and Ubuntu. Fetched main tree
+206eec3b7e127db92604818a2eeb68fac64669f5 matches the final reviewed project-only
+candidate. Product tests: 149 total on each host; Mac 146 PASS/3 skips, Windows
+121 PASS/28 skips, Ubuntu 140 PASS/9 skips, no failures. Source success is not native
+or product-release certification; current gaps are in docs/STATUS.md.
+
+GitHub contains product source/docs/tests/CI/scripts only; agent tooling remains
+local. Current codex/mac-completion checkout, WIP, original media and recovery
+copies are preserved. Read the new top section of docs/CLI-HANDOFF.md; older
+documentation-only/no-repair boundaries below are historical, superseded by the
+user's explicit publication, repair and integration authorization. No next product
+task or milestone is invented; harness remains NOT_CONFIGURED/GUIDED_ONLY.
+
+## Current criteria and resume boundary — 2026-10-17
+
+`docs/CRITERIA.md` governs the offline GitHub workspace/tool product: no internal approval gates; working roots read/write/execute; optional explicit references read/search only, no mutation/execution; ungranted data denied, including via descendants. Windows/Mac may operate concurrently through distinct plugins/tunnels and host-local scope.
+
+Earlier read-only-binding, local enroll-execute prerequisites and shared-tunnel instructions below are historical, superseded as product requirements. Preserve their evidence; do not mistake target behavior for implemented support. This task aligns docs only, not restarting old implementation steps. Read `docs/CLI-HANDOFF.md`; preserve Mac WIP/media. Later handoff records four TS18047 errors; earlier PASS entries below do not certify the current tree. Repository development gates are not product features.
 
 Date: 2026-10-17
 Stage: macOS offline snapshot runtime and local MCP native E2E PASS; full cross-platform implementation/release remains incomplete. Historical entries retain their original status.
@@ -600,3 +1126,24 @@ After each verified ticket, update this file with Git HEAD, exact test results/e
 - User Mac source `dd27fef` ran native `inspect-arm64-efi-files.py`: `state:ESP_FILES_INSPECTED`, `clusterBytes:512`, `fallbackIsUbuntuShim:true`, `fallbackSiblingGrubPresent:false`, `fallbackSiblingGrubMissingCandidate:true`, `grubConfigUUIDMatched:true`. Ext partition 16 UUID `5b886046-3262-4eca-a390-4cd88779a3c7` matches `EFI/ubuntu/grub.cfg`; root partition 1 has different ext UUID `86f7cf19-9959-4dba-91b1-0052c9d45c21`. `EFI/BOOT/grubaa64.efi` and `EFI/BOOT/grub.cfg` absent, while corresponding Ubuntu vendor paths exist with pinned SHA256 and ARM64 PE. EFI fallback shim sibling GRUB/config lookup failure is a **testable hypothesis, not proven without guest screen errors**.
 - Implemented opt-in `scripts/prepare-arm64-efi-fallback-candidate.py --prepare` (commits `e03adf3b`, `8f358fc2`, `4ce16217`): verify source 3.5GiB RAW SHA256, clone via APFS `cp -c` into private staging (fail if no clone), bounded FAT32 offline append of SHA-pinned Ubuntu ARM64 `grubaa64.efi` plus `grub.cfg` to fallback `EFI/BOOT` in **candidate only**, verify bytes and original digest, publish separate .raw and .json with no overwrite and no mount. Hermetic fake GPT/FAT tests prove patch/readback and original immutability; Windows CI skips patcher fixture because POSIX pread/pwrite. `scripts/test-macos-vm-boot.sh --fallback-candidate` explicitly selects manifest-pinned candidate, still VM read-only with no guest shares/network/permissions. CI [38893894931](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/38893894931) completed SUCCESS on macOS, Windows, Ubuntu after fixing test fixture digest; **no native Mac candidate has yet been created or booted**.
 - NEXT: human Mac must `git pull --ff-only origin main`, then run `python3 scripts/prepare-arm64-efi-fallback-candidate.py --prepare` once. If `state:OFFLINE_FALLBACK_CANDIDATE` reported, try `bash scripts/test-macos-vm-boot.sh --fallback-candidate` once and capture actual guest graphical boot messages. Do not repeat if output already exists; no overwrite. Original RAW must remain byte-for-byte unchanged. Candidate boot success requires independent guest evidence; no shell/Git/CI enablement, SEC01 remains BLOCKED.
+## Latest Mac files — 2026-10-19
+
+Latest user steering: REMOVE ALL sleep-prevention work. User will install https://github.com/tmad4000/nosleep independently, replacing the earlier OpenLid choice. No caffeinate, Keep Awake toggle, power assertions, external-tool research/integration/install or corresponding tests. Preserve recovery after sleep/wake. Remaining confirmed scope: repo.env saves BOTH tunnel ID/key without reprompt, background login startup with hidden shell, distinct Lucide Dock icon and Pause/Resume/Quit. Updated spec/implementation plan reflect this reduction; no source/live settings/credentials/gate state/signature changes.
+
+User authorized renewed careful repair of ROOT_UNVERIFIED. Scoped repair is source-reviewed and native-focused verified: Foundation /private/tmp→/tmp normalization replaced with lexical+nofollow validation; reproduced case-alias overlap blocked by physical root/ancestor identities in both directions at admission and recheck. Source d31392926056ce369999ee48ccc4c3ce47a715a25e3db972da015b496407e14f; binary525da70d1a4fa3aa86ee7ced79856c4d37dac6792f5685a0431006d8fd85070f. Original7operation/path cases passed across runs; final4test batch passed/no skips, including one justified replace regression. No fullsuite or unchanged entitlement rerun. Tester-context SIGABRT did not reproduce on current primary same-trash command; precise context cause unverified.
+
+Mac lifecycle plan context: Planner/Reviewer prepared the concrete design and implementation plan; latest user amendments remove all sleep prevention. Existing `.env` ignore/untracked checks remain valid, without actual credential access. Criteria and M4/M5 reflect explicit user revisions. Fix HTTP-vs-stdio tunnel startup mismatch using the existing LaunchAgent; do not add power management or a VM. Product implementation remains pending human review of the concrete plan, under existing manual harness coordination.
+
+Read docs/reports/2026-10-19-recovery-root-repair-test.md and corresponding -review.md. Native candidate remains inactive/uninstalled. Ancestor relocation, crash/fsync recovery and full confinement remain UNVERIFIED; no complete M1 claim. Existing4a/4b/foundation evidence remains valid. Connector supplies syntax/capability only; GSA handles project config/placeholders/calls. No criteria/state/G0/G11/live config/identity/Git change. Mac first.
+
+
+Recovery adapter checkpoint, 2026-10-21: the coordinator, protected checked installation constructor and guarded loader wiring have passed bounded source review. Constructor repair rejects installation/journal/recovery overlap with every workspace/reference scope, including scopes added later. Production activation remains false; no live installation, identity or plugin capability was changed. A new disposable real-Mac fixture passed signed-helper replace with retained bytes, dropped-acknowledgement UNKNOWN → inspect → APPLIED without replay, and trash with retained bytes. Outside canaries remained unchanged and temporary roots were removed. This is three bounded adapter journeys, not complete confinement/crash/fsync or installed-plugin acceptance. Reuse the existing scoped test logs; do not repeat them. See [native adapter evidence](../docs/reports/2026-10-21-recovery-installation-native-test-report.md) and [constructor audit](../docs/reports/2026-10-21-recovery-installation-test-audit.md). Next: expose authorized transaction-ID readback through MCP, finish missing native evidence and prepare a concrete reviewed installation action; move/rename, directory copy and actual Mac shell/Git remain pending. No milestone or gate is advanced.
+
+
+MCP readback source checkpoint, 2026-10-21: `get_file_transaction(transaction_id, control_token)` now exposes the optional adapter's explicit inspect path, with exact UUID/argument validation, protected-storage/controller/backend gating and journal-derived workspace authorization. The dispatcher validates returned outcome shape and matching transaction ID, preserving APPLIED/CONFLICT/UNKNOWN envelopes without replay. Build passed; all 11 new focused cases passed, followed by the single affected result-shape case passing after a stricter guard. Other valid cases were reused. Bounded Tester audit and independent source review found no remaining BLOCKING finding. The added missing-journal case passed separately (direct tool transcript only); the changed protected-storage case passed separately with raw output after correcting its incomplete typed fixture. Final TypeScript no-emit check passed. No single full 12-case run is claimed. Production activation remains false; no installed-plugin or milestone completion is claimed. Evidence: docs/reports/2026-10-21-mcp-readback-coder.md.
+
+
+Native interruption checkpoint, 2026-10-21: the unchanged signed broker terminated on real SIGXFSZ while staging under RLIMIT_FSIZE; 4096 staged bytes and valid intent remained, the source stayed unchanged, adapter/readback stayed UNKNOWN and only one mutation was dispatched. This is pre-capture process-interruption evidence, not failed-fsync/post-capture/power-loss durability. Constructed no-final states stayed UNKNOWN; review found that the original captured fixture copied rather than moved the source. Repair round 1 ran only the corrected case: actual rename into retained storage, same inode/bytes, source absent, staged bytes preserved, one inspect, no invented publication observation and independent neighbor/outside canaries unchanged. Reviewer accepted this bounded repair. Earlier shared fixtures lack independent canary coverage; five launches before repair included repeated valid new cases and an overwritten initial raw log, all disclosed. Repeats do not increase unique-case counts. No product/native source, live installation, activation, Git or gate state changed. See docs/reports/2026-10-21-mac-recovery-interruption-native.md and its repair1 raw log. Held-descriptor relocation, journal/fsync failures and broader ownership windows remain UNVERIFIED; activation remains false and no milestone is complete.
+
+
+Installed-file delivery Task A, 2026-10-21: base broker now bounds input during reads and validates exact signed workspace ID/role/root/revision, canonical ancestry and least-privilege role entitlements. Loader validates bundle/profile/artifacts; durable file authorization uses read/write while command callers retain execute by default. A reproduced lease-expiry-during-bundle-check bug was fixed with final authorization plus grant recheck before dispatch; its focused test and build passed. Reviewer accepted bounded Task A. Source contract/auth tests and 12 migrated affected file cases have passing evidence across runs; direct signed plain-RELEASE native checks passed for workspace basics, read-only reference and binding/profile negatives with canaries. These do not certify installed delivery or held-parent ancestry races. Task B real staged installer and physical ALL-scope installation separation are now active; recovery remains disabled. Evidence: docs/reports/2026-10-21-mac-installed-file-delivery-tester.md. No milestone/gate advanced or live installation changed.

@@ -1,3 +1,5 @@
+import {assertDirectoryCopyId} from "../core/directory-copy.js";
+import {validateWorkspaceRelative} from "../core/workspace-path.js";
 import {WorkspaceRegistry} from "../core/workspace.js";
 import {requireNativeBackend,type NativeScopedFiles,type ScopedFileRef} from "../core/native-io.js";
 import {createFile,updateFile,editFile,applyPatch,createDirectory,trashFile,copyFile,moveFile} from "../core/write-engine.js";
@@ -9,11 +11,25 @@ const ref=(reg:WorkspaceRegistry,id:string,path:string,permission:"read"|"write"
  reg.requireGrant(id,permission);
  return {workspace_id:id,path};
 };
+export function directoryPath(value:unknown,source:boolean):string {
+ if(typeof value!=="string"||!value||Buffer.byteLength(value)>4096||Buffer.from(value).toString("utf8")!==value||value.split("/").some(p=>p.toLowerCase()===".gsa-trash"))throw Error("INVALID_ARGUMENTS");
+ return validateWorkspaceRelative(value,source);
+}
 /** Functional MCP mutation dispatcher; may only be called when a native backend has
  * been securely provided AND the Workspace registry has the required grants. */
 export async function dispatchFileMutation(name:string,args:Record<string,unknown>,registry:WorkspaceRegistry,backend:NativeScopedFiles|null){
  const io=requireNativeBackend(backend);
  switch(name){
+  case "copy_directory":{
+   fields(args,["copy_id","source_workspace_id","source_path","destination_workspace_id","destination_path","expected_manifest_sha256"]);
+   try{assertDirectoryCopyId(str(args.copy_id));}catch{throw Error("INVALID_ARGUMENTS");}
+   if(typeof args.expected_manifest_sha256!=="string"||!/^[a-f0-9]{64}$/.test(args.expected_manifest_sha256))throw Error("INVALID_ARGUMENTS");
+   const src=ref(registry,str(args.source_workspace_id),directoryPath(args.source_path,true),"read");
+   const dst=ref(registry,str(args.destination_workspace_id),directoryPath(args.destination_path,false),"write");
+   if(registry.requireGrant(dst.workspace_id,"write").role!=="workspace")throw Error("SECURITY_BLOCKED");
+   if(!io.directoryCopies||!io.supportedOperations?.includes("copy_directory"))throw Error("SECURITY_BLOCKED");
+   return io.directoryCopies.copy(str(args.copy_id),src,dst,args.expected_manifest_sha256);
+  }
   case "create_file":{
    fields(args,["workspace_id","path","content"]);
    const file=ref(registry,str(args.workspace_id),str(args.path),"write");

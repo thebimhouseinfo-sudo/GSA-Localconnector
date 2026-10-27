@@ -70,7 +70,7 @@ must be handled directly in the conversation and primary-agent workflow; this se
 must not be advertised as a fully authenticated, autonomous milestone engine.
 
 The executable engine supports task source/evidence hashes, dependency expiry, profile
-escalation, role next-step selection, two repair-round limits and completion marker
+escalation, role next-step selection, five repair-round limits and a 30-minute continuation checkpoint and completion marker
 advance in disposable simulations. Simulated approval is rejected at the live root.
 All agent gate signatures are SELF_REPORTED_UNAUTHENTICATED, not identity attestation.
 The primary agent is the dispatcher; script status is GUIDED_ONLY. No background daemon
@@ -110,7 +110,7 @@ minimal README/run instructions and no review debates. If chat/docs/AGENTS leake
 its context or are accessible, report CONTEXT_ISOLATION_UNVERIFIED. A named agent with
 full parent access cannot certify a blind review. Reviewer classifies observations by
 approved criteria: BLOCKING, OUT_OF_SCOPE, UNVERIFIED. No blocking finding is valid.
-Two failed repair rounds per pair require user decision. Never invent features to fix
+Five review/repair rounds per pair or 30 minutes per work window, whichever comes first, require a user continuation decision. Preserve the checkpoint, ask whether to continue and wait for an explicit reply; do not silently exit or abandon unfinished work. Record start/deadline before the primary begins, count delegated wall time, and check at tool/agent boundaries. Explicit continuation opens a fresh 30-minute window; round extensions follow the user’s stated allowance. Gate simulation timestamps begin at the first signature and are not a background timer for manual work. The live adapter remains GUIDED_ONLY, so the primary must enforce the clock in conversation. Do not reset live gate state to simulate approval. Never invent features to fix
 an observation outside the approved goal. See templates in docs/reports/ and lessons/.
 
 ## Updated usage profile (CLI 0.163.0)

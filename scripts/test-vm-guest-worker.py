@@ -65,6 +65,32 @@ class WorkerTests(unittest.TestCase):
         messages = [json.loads(s) for s in output.getvalue().splitlines()]
         self.assertEqual([m['code'] for m in messages[1:]], ['invalid_json','request_too_large'])
 
+    def test_artifact_paths_and_binary_descriptor_collection(self):
+        import base64
+        import hashlib
+        with tempfile.TemporaryDirectory() as root:
+            target = Path(root) / 'out'
+            target.mkdir()
+            data = bytes(range(256)) + b'\0'
+            (target / 'result.bin').write_bytes(data)
+            files = worker.collect_artifacts(root, ['out/result.bin'])
+            self.assertEqual(base64.b64decode(files[0]['base64']), data)
+            self.assertEqual(files[0]['size'], len(data))
+            self.assertEqual(files[0]['sha256'], hashlib.sha256(data).hexdigest())
+            (Path(root) / 'link').symlink_to(target, target_is_directory=True)
+            os.link(target / 'result.bin', target / 'hard.bin')
+            for name in ['missing', 'link/result.bin', 'out/hard.bin', 'out']:
+                with self.subTest(name=name), self.assertRaises((OSError, worker.ProtocolError)):
+                    worker.collect_artifacts(root, [name])
+            (target / 'big').write_bytes(b'x' * (1048576 + 1))
+            with self.assertRaises(worker.ProtocolError):
+                worker.collect_artifacts(root, ['out/big'])
+
+    def test_rejects_nonportable_or_duplicate_artifact_paths(self):
+        for paths in [['../x'], ['a/*'], ['a?'], ['a\\b'], ['CON'], ['a.'], ['a//b'], ['a', 'A'], ['x']*21, [3]]:
+            with self.subTest(paths=paths), self.assertRaises(worker.ProtocolError):
+                worker.validate_request(request(artifact_paths=paths), NONCE, 'fixture', 0)
+
     def run_child(self, code, limit=4096, timeout=1000):
         return worker.capture_process([sys.executable, '-c', code], cwd='/tmp',
                                       env={'PATH':'/usr/bin:/bin'}, time_limit_ms=timeout,

@@ -1,3 +1,4 @@
+import {validateArtifactPaths} from "../core/ci-dag.js";
 import {spawn,type ChildProcessWithoutNullStreams} from "node:child_process";
 import {constants} from "node:fs";
 import fs from "node:fs/promises";
@@ -20,7 +21,7 @@ export interface MacVmRuntime {
  sandbox:VerifiedNativeSandbox;processes:VerifiedNativeProcessController;sourceCapture:VerifiedWorkspaceSourceCapture;
  executeSnapshot(request:SandboxedProcessRequest,entries:readonly {path:string;bytes:Uint8Array}[]):Promise<SandboxedProcessReceipt>;
 }
-export interface MacVmRuntimeOptions {authorize?:(workspaceId:string)=>Promise<void>}
+export interface MacVmRuntimeOptions {authorize?:(workspaceId:string)=>Promise<void>;ownerLockFD?:3}
 class RuntimeBlocked extends Error {readonly code="SECURITY_BLOCKED";constructor(reason:string){super("SECURITY_BLOCKED: "+reason);}}
 function blocked(reason:string):never{throw new RuntimeBlocked(reason);}
 function object(value:unknown):Record<string,any>{if(!value||typeof value!=="object"||Array.isArray(value))blocked("invalid object");return value as Record<string,any>;}
@@ -28,7 +29,7 @@ function sha(data:Uint8Array|string){return createHash("sha256").update(data).di
 export function validateMacVmInstallBody(value:unknown):InstallBody{
  const b=object(value);
  if(b.format!=="gsa-native-vm-v1"||b.platform!=="darwin"||b.arch!=="arm64"||b.hostRelease!==os.release()||
- typeof b.imagePath!=="string"||!path.isAbsolute(b.imagePath)||path.normalize(b.imagePath)!==b.imagePath||/[\0\r\n]/.test(b.imagePath)||
+ typeof b.imagePath!=="string"||!path.posix.isAbsolute(b.imagePath)||path.posix.normalize(b.imagePath)!==b.imagePath||/[\0\r\n]/.test(b.imagePath)||
  b.imageSHA256!==MAC_VM_IMAGE_SHA256||b.imageBytes!==3758096384||!Array.isArray(b.checks)||
  !MAC_VM_REQUIRED_CHECKS.every(c=>b.checks.includes(c)))blocked("installation proof binding");
  const artifacts=object(b.artifacts);
@@ -71,10 +72,10 @@ async function protectedRead(file:string,max:number){
  }finally{await fd.close();}
 }
 const environment={PATH:"/usr/bin:/bin:/usr/sbin:/sbin",LANG:"C.UTF-8",HOME:"/var/empty",TMPDIR:"/private/tmp"};
-function child(file:string,args:readonly string[]=[]){return spawn(file,[...args],{stdio:["pipe","pipe","pipe"],env:environment,shell:false});}
-async function boundedCommand(file:string,args:readonly string[],input:string,max:number,timeout=45000):Promise<Buffer>{
+function child(file:string,args:readonly string[]=[],ownerLockFD?:3){return spawn(file,[...args],{stdio:ownerLockFD===undefined?["pipe","pipe","pipe"]:["pipe","pipe","pipe",ownerLockFD],env:environment,shell:false}) as ChildProcessWithoutNullStreams;}
+async function boundedCommand(file:string,args:readonly string[],input:string,max:number,timeout=45000,ownerLockFD?:3):Promise<Buffer>{
  return await new Promise((resolve,reject)=>{
-  const proc=child(file,args);let output=Buffer.alloc(0);let size=0;let error:Error|undefined;
+  const proc=child(file,args,ownerLockFD);let output=Buffer.alloc(0);let size=0;let error:Error|undefined;
   const abort=(reason:string)=>{error=new RuntimeBlocked(reason);proc.kill("SIGKILL");};
   const timer=setTimeout(()=>abort("trusted helper timeout"),timeout);
   proc.stdout.on("data",(chunk:Buffer)=>{size+=chunk.length;if(size>max)abort("trusted helper output cap");else output=Buffer.concat([output,chunk]);});
@@ -89,7 +90,27 @@ function validateRequest(req:SandboxedProcessRequest){
  !Array.isArray(req.argv)||req.argv.some(x=>typeof x!=="string"||x.includes("\0"))||Buffer.byteLength(JSON.stringify(req))>60000||
  !Number.isSafeInteger(req.time_limit_ms)||req.time_limit_ms<1||req.time_limit_ms>120000||!Number.isSafeInteger(req.max_output_bytes)||req.max_output_bytes<1||req.max_output_bytes>1048576||req.network_allowed!==false)blocked("invalid process request");
  validateWorkspaceRelative(req.cwd_relative,true);
+ validateArtifactPaths(req.artifact_paths);
 }
+/** Validates the entire bounded payload before any protected CI evidence is written. */
+export function validateMacVmArtifacts(request:SandboxedProcessRequest,result:Record<string,any>):Pick<SandboxedProcessReceipt,"artifacts"|"artifact_error">{
+ const paths=validateArtifactPaths(request.artifact_paths);
+ if(request.artifact_paths===undefined&&result.artifacts===undefined&&result.artifact_error===undefined)return {};
+ if(!Array.isArray(result.artifacts)||result.artifacts.length>20||!(result.artifact_error===null||result.artifact_error==="artifact_missing_unsafe_or_over_quota"))blocked("VM artifact receipt");
+ if(result.artifact_error!==null){if(result.artifacts.length!==0)blocked("VM partial artifact receipt");return {artifacts:[],artifact_error:result.artifact_error};}
+ if(result.artifacts.length!==paths.length)blocked("VM artifact count");
+ const seen=new Set<string>();let total=0;
+ const artifacts=result.artifacts.map((raw:unknown)=>{
+  const entry=object(raw);
+  if(Object.keys(entry).some(k=>!["path","size","sha256","base64"].includes(k))||typeof entry.path!=="string"||!paths.includes(entry.path)||seen.has(entry.path.toLowerCase())||!Number.isSafeInteger(entry.size)||entry.size<0||entry.size>1048576||typeof entry.sha256!=="string"||!/^[a-f0-9]{64}$/.test(entry.sha256)||typeof entry.base64!=="string"||entry.base64.length>1398104)blocked("VM artifact integrity");
+  seen.add(entry.path.toLowerCase());total+=entry.size;if(total>1048576)blocked("VM artifact quota");
+  const bytes=Buffer.from(entry.base64,"base64");
+  if(bytes.toString("base64")!==entry.base64||bytes.length!==entry.size||sha(bytes)!==entry.sha256)blocked("VM artifact bytes");
+  return {path:entry.path,size:entry.size,sha256:entry.sha256,base64:entry.base64};
+ });
+ return {artifacts,artifact_error:null};
+}
+
 type Run={id:string;request:SandboxedProcessRequest;authorize:()=>Promise<void>;source?:SourceSnapshot;status:NativeProcessStatus;receipt?:SandboxedProcessReceipt;done:Promise<SandboxedProcessReceipt>;proc?:ChildProcessWithoutNullStreams;stopRequested:boolean;clean:boolean;failure?:unknown};
 export async function loadMacVmRuntime(registry:WorkspaceRegistry,installationRoot=path.join(identityDirectory(),"native-vm"),options:MacVmRuntimeOptions={}):Promise<MacVmRuntime>{
  try{
@@ -127,7 +148,7 @@ export async function loadMacVmRuntime(registry:WorkspaceRegistry,installationRo
   }
   async function snapshot(workspaceId:string,authorize=authorization(workspaceId)){
    await authorize();const enrolled=grant(workspaceId);await verifyArtifacts();await authorize();
-   const output=await boundedCommand(path.join(installationRoot,"bin/source-capture"),[],JSON.stringify({protocolVersion:"gsa-source-capture-v1",canonicalRoot:enrolled.canonicalRoot,maxBytes:MAX_SOURCE,excludeNames:[".git","node_modules","dist","local-state",".continue"]}),7*1024*1024);
+   const output=await boundedCommand(path.join(installationRoot,"bin/source-capture"),[],JSON.stringify({protocolVersion:"gsa-source-capture-v1",canonicalRoot:enrolled.canonicalRoot,maxBytes:MAX_SOURCE,excludeNames:[".git","node_modules","dist","local-state",".continue"]}),7*1024*1024,45000,options.ownerLockFD);
    await authorize();const raw=object(JSON.parse(output.toString("utf8")));const identity=object(raw.rootIdentity);
    const pinned=(enrolled as typeof enrolled&{rootIdentity?:{device:string;inode:string}}).rootIdentity;
    if(!pinned||!Number.isSafeInteger(identity.device)||!Number.isSafeInteger(identity.inode)||String(identity.device)!==pinned.device||String(identity.inode)!==pinned.inode||grant(workspaceId).revision!==enrolled.revision)blocked("SOURCE_UNVERIFIED");
@@ -143,7 +164,7 @@ export async function loadMacVmRuntime(registry:WorkspaceRegistry,installationRo
     scratch=await fs.mkdtemp(path.join(installationRoot,"run-"));await fs.chmod(scratch,0o700);
     const sourcePath=path.join(scratch,"snapshot.json");await fs.writeFile(sourcePath,JSON.stringify(source),{mode:0o600,flag:"wx"});
     const nonce=randomBytes(32).toString("hex");
-    const seed=object(JSON.parse((await boundedCommand("/usr/bin/python3",[path.join(installationRoot,"scripts/prepare-vm-worker-seed.py"),path.join(scratch,"seed"),nonce,run.request.workspace_id,sourcePath],"",16384)).toString("utf8")));
+    const seed=object(JSON.parse((await boundedCommand("/usr/bin/python3",[path.join(installationRoot,"scripts/prepare-vm-worker-seed.py"),path.join(scratch,"seed"),nonce,run.request.workspace_id,sourcePath],"",16384,45000,options.ownerLockFD)).toString("utf8")));
     if(typeof seed.seedImagePath!=="string"||seed.seedImagePath!==path.join(scratch,"worker-seed.iso")||!Number.isSafeInteger(seed.seedBytes)||seed.seedBytes<4096||seed.seedBytes>16777216||typeof seed.seedSHA256!=="string"||!/^[a-f0-9]{64}$/.test(seed.seedSHA256))blocked("seed receipt");
     await run.authorize();if(grant(run.request.workspace_id).revision!==enrolled.revision)blocked("grant changed");
     if(run.stopRequested){run.clean=true;return {exit_code:null,signal:null,stdout:"",stderr:"",cancelled:true,timed_out:false};}
@@ -151,7 +172,7 @@ export async function loadMacVmRuntime(registry:WorkspaceRegistry,installationRo
     await run.authorize();
     return await new Promise<SandboxedProcessReceipt>((resolve,reject)=>{
      if(grant(run.request.workspace_id).revision!==enrolled.revision)blocked("grant changed before VM start");
-     const proc=child(path.join(installationRoot,"bin/worker-host"));run.proc=proc;
+     const proc=child(path.join(installationRoot,"bin/worker-host"),[],options.ownerLockFD);run.proc=proc;
      let buffered=Buffer.alloc(0),total=0,diagnostics=0;let ready=false,started=false,executeSent=false,shutdown=false,clean=false;let receipt:SandboxedProcessReceipt|undefined;let failure:Error|undefined;
      function send(value:object){proc.stdin.write(JSON.stringify(value)+"\n");}
      function abort(reason:string){
@@ -169,7 +190,7 @@ export async function loadMacVmRuntime(registry:WorkspaceRegistry,installationRo
      proc.stderr.on("data",(data:Buffer)=>{diagnostics+=data.length;if(diagnostics>65536)abort("VM diagnostic cap");});
      proc.stdout.on("data",(data:Buffer)=>{
       try{
-       total+=data.length;if(total>8*1024*1024)blocked("VM transcript cap");buffered=Buffer.concat([buffered,data]);if(buffered.length>7*1024*1024)blocked("VM frame cap");
+       total+=data.length;if(total>10*1024*1024)blocked("VM transcript cap");buffered=Buffer.concat([buffered,data]);if(buffered.length>8*1024*1024+65536)blocked("VM frame cap");
        while(buffered.includes(10)){
         const end=buffered.indexOf(10),frame=object(JSON.parse(buffered.subarray(0,end).toString("utf8")));buffered=buffered.subarray(end+1);
         if(frame.nonce!==nonce||frame.workspace_id!==run.request.workspace_id)blocked("VM frame identity");
@@ -190,7 +211,7 @@ export async function loadMacVmRuntime(registry:WorkspaceRegistry,installationRo
          const r=object(frame.result);
          if(r.source_verified!==true||!(r.exit_code===null||Number.isInteger(r.exit_code))||!(r.signal===null||(Number.isInteger(r.signal)&&r.signal>0&&r.signal<128))||typeof r.stdout!=="string"||typeof r.stderr!=="string"||typeof r.cancelled!=="boolean"||typeof r.timed_out!=="boolean"||typeof r.output_limited!=="boolean"||Buffer.byteLength(r.stdout)+Buffer.byteLength(r.stderr)>run.request.max_output_bytes)blocked("VM result integrity");
          const signal=r.signal===null?null:Object.entries(os.constants.signals).find(([,number])=>number===r.signal)?.[0]??`SIG${r.signal}`;
-         receipt={exit_code:r.exit_code,signal,stdout:r.stdout,stderr:r.stderr,cancelled:r.cancelled,timed_out:r.timed_out,output_limited:r.output_limited};
+         receipt={exit_code:r.exit_code,signal,stdout:r.stdout,stderr:r.stderr,cancelled:r.cancelled,timed_out:r.timed_out,output_limited:r.output_limited,...validateMacVmArtifacts(run.request,r)};
          shutdown=true;send({protocol:"gsa-vm-worker-v1",type:"request",nonce,workspace_id:run.request.workspace_id,seq:2,method:"shutdown"});
         }else if(!(frame.type==="result"&&frame.seq===2&&shutdown&&frame.result?.shutdown===true))blocked("VM guest failure");
        }
@@ -229,7 +250,9 @@ export async function loadMacVmRuntime(registry:WorkspaceRegistry,installationRo
   }
   const sandbox:VerifiedNativeSandbox={platform:"macos",verified:true,policy_fingerprint:fingerprint,execute:async req=>{const authorize=authorization(req.workspace_id);await authorize();return begin(req,undefined,authorize).done;},cancel:async(id,workspace)=>{const run=[...runs.values()].find(r=>r.request.process_id===id&&r.request.workspace_id===workspace);return run?(await stop(run)).stopped:false;}};
   const processes:VerifiedNativeProcessController={platform:"macos",verified:true,policy_fingerprint:fingerprint,
-   start:async req=>{const authorize=authorization(req.workspace_id);await authorize();return {native_id:begin(req,undefined,authorize).id};},status:async id=>({...owned(id).status}),stop:async id=>stop(owned(id)),
+   start:async req=>{const authorize=authorization(req.workspace_id);await authorize();return {native_id:begin(req,undefined,authorize).id};},
+   status:async id=>{const run=owned(id);return {...run.status,stopped:run.status.ended_at!==null&&(!run.proc||run.clean)};},stop:async id=>stop(owned(id)),
+   wait:async id=>{const run=owned(id);await run.done.catch(()=>{});return {...run.status,stopped:run.status.ended_at!==null&&(!run.proc||run.clean)};},
    output:async(id,cursor,limit)=>{
     if(!Number.isSafeInteger(cursor)||cursor<0||!Number.isSafeInteger(limit)||limit<1||limit>65536)blocked("invalid output range");
     const run=owned(id),stdout=Buffer.from(run.receipt?.stdout??""),stderr=Buffer.from(run.receipt?.stderr??"");const all=Buffer.concat([stdout,stderr]);

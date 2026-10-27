@@ -1,5 +1,126 @@
 {
   "$schema": "./milestones.schema.json",
   "version": 1,
-  "milestone": null
+  "milestone": {
+    "id": "M1",
+    "approval": "AWAITING_USER",
+    "tasks": [
+      {
+        "id": "P01",
+        "scope": [
+          "docs/plans/M1-MAC-BOUNDARY-FEASIBILITY.md",
+          "docs/plans/M1-MAC-HOST-BOUNDARY-DESIGN.md"
+        ],
+        "criteria": [
+          "Approved Mac-first criteria SHA-256: 863522c4400bc6e7fbfcfe259bbf0621d2a5e9910744a99f15012391e602ca29.",
+          "Continue the remaining P01/M1 design: multi-root authorization, safe compare-and-mutate and host-supervisor/native-SDK/reference-enforcement feasibility; no unsupported backend claim.",
+          "Reuse the hash-valid 2026-10-18 13-case broker characterization for its narrow observed subset; do not rerun it unless its inputs or claimed scope change.",
+          "Read and compare already retained native evidence; current task is design/research only, not new native experiments or product implementation.",
+          "Mac M5 must be fully accepted before any Windows feature/native/detailed design work. No simultaneous multi-machine acceptance matrix; preserve independent multi-project operation per host.",
+          "No publication or remote integration in this local task. G0/G11 remain pending without an authenticated approval adapter; do not forge receipts or edit state."
+        ],
+        "event": "plan_ready",
+        "profile": "heavy",
+        "gates": [
+          {
+            "id": "G0",
+            "role": "user",
+            "paths": [
+              "docs/CRITERIA.md"
+            ],
+            "depends": []
+          },
+          {
+            "id": "G1",
+            "role": "planner",
+            "paths": [
+              "docs/plans/M1-MAC-BOUNDARY-FEASIBILITY.md",
+              "docs/plans/M1-MAC-HOST-BOUNDARY-DESIGN.md",
+              "docs/CRITERIA.md",
+              "docs/reviews/2026-10-18-MAC-BROKER-CHARACTERIZATION.md",
+              "native/macos-files/broker.swift",
+              "native/macos-files/test-broker.py"
+            ],
+            "depends": [
+              "G0"
+            ]
+          },
+          {
+            "id": "G8",
+            "role": "tester",
+            "paths": [
+              "docs/plans/M1-MAC-BOUNDARY-FEASIBILITY.md",
+              "docs/plans/M1-MAC-HOST-BOUNDARY-DESIGN.md",
+              "docs/CRITERIA.md",
+              "docs/reviews/2026-10-18-MAC-BROKER-CHARACTERIZATION.md",
+              "native/macos-files/broker.swift",
+              "native/macos-files/test-broker.py"
+            ],
+            "depends": [
+              "G1"
+            ]
+          },
+          {
+            "id": "G6",
+            "role": "tester",
+            "paths": [
+              "docs/plans/M1-MAC-BOUNDARY-FEASIBILITY.md",
+              "docs/plans/M1-MAC-HOST-BOUNDARY-DESIGN.md",
+              "docs/CRITERIA.md",
+              "docs/reviews/2026-10-18-MAC-BROKER-CHARACTERIZATION.md",
+              "native/macos-files/broker.swift",
+              "native/macos-files/test-broker.py"
+            ],
+            "depends": [
+              "G1"
+            ]
+          },
+          {
+            "id": "G9",
+            "role": "critic",
+            "paths": [
+              "docs/plans/M1-MAC-BOUNDARY-FEASIBILITY.md",
+              "docs/plans/M1-MAC-HOST-BOUNDARY-DESIGN.md"
+            ],
+            "depends": [
+              "G8",
+              "G6"
+            ]
+          },
+          {
+            "id": "G5",
+            "role": "reviewer",
+            "paths": [
+              "docs/plans/M1-MAC-BOUNDARY-FEASIBILITY.md",
+              "docs/plans/M1-MAC-HOST-BOUNDARY-DESIGN.md",
+              "docs/CRITERIA.md",
+              "docs/reviews/2026-10-18-MAC-BROKER-CHARACTERIZATION.md",
+              "native/macos-files/broker.swift",
+              "native/macos-files/test-broker.py"
+            ],
+            "depends": [
+              "G8",
+              "G6",
+              "G9"
+            ]
+          },
+          {
+            "id": "G11",
+            "role": "user",
+            "paths": [
+              "docs/plans/M1-MAC-BOUNDARY-FEASIBILITY.md",
+              "docs/plans/M1-MAC-HOST-BOUNDARY-DESIGN.md",
+              "docs/CRITERIA.md",
+              "docs/reviews/2026-10-18-MAC-BROKER-CHARACTERIZATION.md",
+              "native/macos-files/broker.swift",
+              "native/macos-files/test-broker.py"
+            ],
+            "depends": [
+              "G5"
+            ]
+          }
+        ]
+      }
+    ]
+  }
 }

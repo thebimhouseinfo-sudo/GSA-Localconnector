@@ -1,0 +1,51 @@
+# Managed process revocation prerequisite — 2026-10-23
+
+**Status: scoped source proposal under existing Mac criteria §§6–8. No native execution, production host activation or new privilege authorized.** Primary implements inline only after the active maintenance task settles; named Coder/Tester unavailability must be disclosed. No new milestone or change to the user's full native-Mac goal.
+
+## Evidence and achievable scope
+
+The static host profile has a reproduced retained-FD escape after external root relocation (`docs/reports/2026-10-23-mac-host-retained-fd-native.md`). Its native quotas are consumed. Neither process-group polling nor a parent's bookmark release repairs that fact. On 2026-10-24 the user answered that the Apple Endpoint Security entitlement is absent or unknown. This prerequisite is unavailable/unverified; do not implement or activate ES, or presume entitlement/root/TCC authority.
+
+There is a concrete independent lifecycle gap in existing source. `unbind_workspace` publishes a revoked grant but never explicitly fences/requests cancellation of the workspace's owned process-manager entries. Subsequent user stop calls require the now-revoked execute grant. Current backend authorization polling can react later, but the unbind response says only revoked:true and reports no managed-work outcome. Pending starts may be between durable reservation and native start acknowledgement.
+
+Implement exactly explicit connector revocation for managed command/process work. Close command admission, durably revoke the grant, request existing backend cancellation for current-owner entries, and return truthful process-stop observations. This is not a claim that all file/CI work is idle or that an external rename has become safe. Never enable an actual host backend from this source task.
+
+## Owned files and exact interfaces
+
+- Modify `src/core/durable-process.ts`, `src/core/process-manager.ts`, `src/mcp/server.ts`; focused new `test/mcp-process-revocation.test.ts` plus affected manager tests. No native helper, VM/media, static profile, ES, desktop IPC or permission changes.
+- Add manager methods `fenceWorkspace(workspaceId: string): void`, `stopWorkspace(workspaceId: string): Promise<WorkspaceProcessStop>`, and `resumeWorkspace(workspaceId: string): boolean`. The fence method is synchronous; it denies subsequent starts even before readiness/journal awaits complete.
+- Shared result type in `src/core/process-manager.ts`: `WorkspaceProcessStop = {state: 'STOPPED'|'UNKNOWN'; pending_starts: number; outcomes: readonly {process_id: string; stopped: boolean; state: ProcessState}[]}`. It describes managed processes only, not desktop IDLE or kernel-wide emptiness.
+- Reuse existing sandbox.cancel/VerifiedNativeProcessController.stop and DurableProcessManager.stop; no PID signalling or invented native kill API. `resumeWorkspace` succeeds only when that manager has no pending start or unconfirmed live entry for the workspace; it does not unlock backend capability.
+
+## Implementation and checks
+
+1. Tester/primary writes focused failing tests using deferred fake journal/start/cancel/status promises. No native spawn, sandbox execution, entitlement or owner-state manipulation.
+2. Give each workspace a monotonically increasing admission generation; fenceWorkspace advances it and closes admission. Each start captures its original generation/owner before any await and rechecks both after initialization, immediately before backend.execute/start, and after native acknowledgement. Reserve/track pending starts before their first await so revocation sees admitted-but-unacknowledged work. Rebinding the same ID must never restore an old captured generation. Keep unconfirmed entries active; deleting a Promise or returned error is not proof of termination.
+3. A start already inside backend.start at fence time remains pending until it returns. As soon as its native ID arrives, request cancellation against the original captured owner/generation before reporting a usable running start; never lose that identity or replay start. A backend start failure with uncertain effects remains UNKNOWN. No previous-owner-session native ID may be queried or stopped; the captured current-owner cancellation continuation must not borrow new bind/controller authority.
+4. `stopWorkspace` requests stop only for this manager's current-owner live entries in the selected workspace, including command-backed async/synchronous paths. A cancel acknowledgement alone remains stopped:false until the existing final receipt/controller stop confirms termination. Missing cancel hooks, errors, unresolved starts or uncertain journal writes yield UNKNOWN and preserve ownership/output evidence. Other workspaces and sealed terminal records are untouched.
+5. Bound the aggregate stop observation to15s, parallelizing already-known owned stop requests. An expired observation does not stop background bookkeeping or release unconfirmed ownership. Never invent a stopped receipt because the caller timed out. Snapshot outcome arrays; do not expose raw host PIDs, tokens or private journal paths.
+6. Inside the existing serialized `unbind_workspace` operation, after existing controller/scope authorization and before the first revoke await, synchronously fence both managers for that workspace. Publish/reconcile revocation through unchanged publishScope. Request bounded stop observations and preserve the existing onScopeChanged reload. Return `{workspace_id, revoked:true, managed_processes:{state,pending_starts,outcomes}}`; merge both managers without duplicating process IDs. Durable revocation is never rolled back because cancellation is unavailable.
+7. Once revocation is published, cancellation runs as an internal continuation of the already-authorized revoke call, not a new user stop tool with a revoked grant. Do not weaken public stop/status grant/control checks. Failed/uncertain publication keeps admission fenced and preserves existing RESULT_UNKNOWN behavior; do not return revoked:true unless durable readback confirms it.
+8. A later confirmed explicit bind may call resumeWorkspace for the returned IDs under a fresh admission generation. If an old managed process remains unconfirmed, keep command admission fenced and report that concrete reason; do not silently restore it or claim a new grant revokes old handles. Repeated unbind may retry observation/stop only for same-owner entries from a previously durably confirmed revocation tracked by this dispatcher, after durable absent-grant readback and valid current control; it never repeats start or manufactures successful revocation from a prior publication failure. A new bind invalidates that repeated-revocation continuation. Preserve ordinary not-found behavior without that known continuation. A new owner must still enter through existing FD3 fencing and journal reconciliation; no in-memory fence grants ownership across restart.
+9. Preserve existing capabilities and environment labels. This task adds no public tool/endpoint, task approval gate or backend. `ownedWorkState` remains UNKNOWN; process-only results cannot prove file/native/CI inactivity. Controller expiry/release, external root changes and CI-wide quiesce remain distinct gaps, not implicitly fixed by unbind handling.
+
+Required focused assertions:
+
+Reviewer amendment: revoked custom workspace IDs disappear from trusted active root bindings. Retain the confirmed revocation's original workspace ID/generation, canonical root path and physical device/inode identity. On later bind, unresolved old work matched by canonical path OR physical identity must keep admission fenced even if enrollment produces a different ID. Same-path replacement and same-inode relocation remain conservatively fenced. Never derive new cleanup authority from the new binding. A possibly effectful native.start rejection must retain UNKNOWN/unconfirmed ownership rather than infer stopped from a missing returned native ID.
+
+- Unbind during journal create: no subsequent native execute begins; durable revocation confirmed and outcome truthful.
+- Unbind during native start acknowledgement: returned native ID is retained/cancelled exactly once, never replayed or returned as new authority.
+- Confirmed controller stop versus cancel-request-only versus missing cancel: STOPPED only for actual confirmation; others UNKNOWN.
+- Timeout/stop error/final-journal failure preserves uncertain entry and saved bytes; no false output_complete or quota release.
+- A revoked workspace cannot start while another workspace continues; concurrent start/unbind and repeated unbind do not duplicate effects.
+- Failed publication stays fail-closed; rebind cannot reopen with pending/unconfirmed old work; fully stopped entries permit a later valid bind.
+- Historical/other-owner process IDs remain read-only evidence; no native stop call targets them.
+- Existing file scope serialization, token checks and capability blocking stay intact; file/CI work is never summarized as stopped by this process result.
+
+Run build and focused compiled tests, then required project verification and gate status. Report exact failures/skips and source-only evidence. Reviewer checks existing criteria and uncertainty semantics, maximum two repair rounds. No native rerun/slot reset, installation or production policy change is implied.
+
+## What this does not solve
+
+The available public cancellation hooks are enforceable only to the extent their independently verified backend owns its execution domain. This task does not replace that proof with an interface, PID scan, process group or fake observer. It uses current trusted backends without developing a new VM or substituting guest execution for the required native Mac target.
+
+A complete native repair still needs supported pre-effect root/ancestor transition handling and a non-escapable owned-process termination domain. ES_AUTH_RENAME is a candidate pre-effect event, not complete coverage of all scope changes or existing descriptors. Missing Apple entitlement/root/TCC prerequisites prevent an ES implementation/activation now; answering the existing prerequisite question does not itself approve installation. Keep native host shell/Git blocked, unchanged criteria unmet rather than relaxed, and Windows deferred.
