@@ -85,7 +85,7 @@ test('history capability is separate from execution and advertises persisted pro
  const f=await fixture();t.after(async()=>fs.rm(f.root,{recursive:true,force:true}));
  const capabilities=decode(await f.invoke({name:'list_capabilities',arguments:{}})).result;
  assert.equal(capabilities.processHistory,'persisted-start_process-and-run_command');
- assert.equal(capabilities.processHistoryLimit,1000);assert.equal(capabilities.processJournalLimit,10000);
+ assert.equal(capabilities.processHistoryLimit,1000);assert.equal(capabilities.processJournalLimit,null);
  assert.ok(capabilities.read.includes('list_processes'));
  assert.ok(capabilities.read.includes('process_status'));
  assert.ok(capabilities.read.includes('process_output'));
@@ -112,16 +112,19 @@ test('persisted dispatcher waits for process journal hydration before answering 
  assert.equal(capabilities.processHistory,'persisted-start_process-and-run_command');
 });
 
-test('unsafe process journal blocks MCP responses instead of being ignored',async t=>{
+test('unsafe process journal is reported without granting access to its contents',async t=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'gsa-process-history-corrupt-'));await fs.chmod(root,0o700);
  t.after(async()=>fs.rm(root,{recursive:true,force:true}));
  const records=path.join(root,'process-runs');await fs.mkdir(records,{mode:0o700});
- await fs.writeFile(path.join(records,uuid()+'.json'),'{}\n', {mode:0o600});
+ const badId=uuid();await fs.writeFile(path.join(records,badId+'.json'),'{}\n', {mode:0o600});
+ const diagnostics:string[]=[];t.mock.method(process.stderr,'write',(text:string)=>{diagnostics.push(String(text));return true;});
  const store=new ProcessJournalStore(records),registry=new WorkspaceRegistry();
  const invoke=factory(registry,null,null,null,null,null,null,null,null,null,null,{processPersistence:{store,ownerSession:uuid()}});
  const response=await invoke({name:'list_capabilities',arguments:{}});
- assert.equal(response.isError,true,'failed journal initialization must not be swallowed');
- assert.equal(decode(response).code,'PROCESS_JOURNAL_UNSAFE');
+ assert.equal(decode(response).ok,true);
+ assert.ok(diagnostics.some(line=>line.includes('PROCESS_JOURNAL_UNREADABLE')&&line.includes(badId)));
+ await assert.rejects(store.load(badId),e=>(e as any).code==='PROCESS_JOURNAL_UNSAFE');
+ assert.equal(await fs.readFile(path.join(records,badId+'.json'),'utf8'),'{}\n');
 });
 
 test('old unfinished owner entry outside the 1000-record page stays UNKNOWN and cannot query or stop its old native ID',async t=>{

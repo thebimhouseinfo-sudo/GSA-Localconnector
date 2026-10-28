@@ -165,6 +165,8 @@ export class ControlLeaseStore {
  /** Privileged startup only, after kernel fencing proves every old helper exited. */
  async invalidateAfterOwnerFence(session:string):Promise<void>{
   if(process.env.GSA_OWNER_LOCK_FD!=="3"||process.env.GSA_OWNER_SESSION!==session||!UUID.test(session))unsafe("Verified owner fence required");
+  requireProtectedState();
+  const task=this.pending.then(async()=>{
   await this.directory();
   const stale=await this.read("control-lease.lock");
   if(stale!==null){
@@ -172,9 +174,12 @@ export class ControlLeaseStore {
    if(prior?.owner_session===session)unsafe("Current owner control lock is active");
    await fs.unlink(this.file("control-lease.lock"));
   }
-  await this.locked(async()=>{
+  await this.withFileLock(async()=>{
    const installation_id=await this.identity(),previous=await this.load(installation_id);
    if(previous?.token_sha256)await this.save({version:1,installation_id,session_id:null,token_sha256:null,expires_at:0,revision:this.revision(previous)});
   });
+  });
+  this.pending=task.catch(()=>undefined);
+  await task;
  }
 }

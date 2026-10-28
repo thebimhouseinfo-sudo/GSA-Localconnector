@@ -112,3 +112,35 @@ test("one controller can authorize simultaneous operations through its shared st
   assert.deepEqual(checks.map(check=>check.status),["fulfilled","fulfilled","fulfilled"]);
  }finally{await f.cleanup();}
 });
+import {constants} from 'node:fs';
+import {randomUUID} from 'node:crypto';
+platformTest('owner-fence invalidation waits for an in-process lock whose metadata write is stalled',{skip:process.platform==='win32',timeout:5000},async t=>{
+ const f=await fixture(),owner=randomUUID(),lock=path.join(f.dir,'control-lease.lock');
+ const previousFD=process.env.GSA_OWNER_LOCK_FD,previousSession=process.env.GSA_OWNER_SESSION;
+ process.env.GSA_OWNER_LOCK_FD='3';process.env.GSA_OWNER_SESSION=owner;
+ let unblock!:()=>void,entered!:()=>void,stalled=false;
+ const gate=new Promise<void>(r=>unblock=r),ready=new Promise<void>(r=>entered=r),open=fs.open.bind(fs);
+ t.mock.method(fs,'open',async(...args:Parameters<typeof fs.open>)=>{
+  const handle=await open(...args);
+  if(String(args[0])===lock&&typeof args[1]==='number'&&(args[1]&constants.O_EXCL)&&!stalled){
+   stalled=true;const write=handle.writeFile.bind(handle);
+   t.mock.method(handle,'writeFile',async(...values:Parameters<typeof handle.writeFile>)=>{entered();await gate;return write(...values);});
+  }
+  return handle;
+ });
+ const store=new ControlLeaseStore(f.dir),acquiring=store.acquire();void acquiring.catch(()=>{});
+ let invalidating:Promise<void>|undefined;
+ try{
+  await ready;const before=await fs.stat(lock);
+  invalidating=store.invalidateAfterOwnerFence(owner);void invalidating.catch(()=>{});
+  await new Promise(r=>setTimeout(r,100));
+  assert.equal((await fs.stat(lock)).ino,before.ino,'a live lock must not be unlinked before its metadata is written');
+  unblock();const acquired=await acquiring;await invalidating;
+  await assert.rejects(store.require(acquired.control_token),code('SESSION_INVALID'));
+ }finally{
+  unblock();await Promise.allSettled([acquiring,...(invalidating?[invalidating]:[])]);
+  if(previousFD===undefined)delete process.env.GSA_OWNER_LOCK_FD;else process.env.GSA_OWNER_LOCK_FD=previousFD;
+  if(previousSession===undefined)delete process.env.GSA_OWNER_SESSION;else process.env.GSA_OWNER_SESSION=previousSession;
+  await f.cleanup();
+ }
+});

@@ -153,3 +153,22 @@ test('background final-save failure retains UNKNOWN ownership after acknowledgem
  assert.equal((await f.store.load(started.process_id))?.stopped,false);
  const output=await manager.output('A',started.process_id);assert.ok('complete' in output);assert.equal(output.complete,false);
 });
+test('oversized receipts retain exit code and UTF-8 output prefixes with a durable output_limited flag',{skip:process.platform==='win32'},async t=>{
+ for(const [stdout,stderr,limit,want] of [['πππ','warn',5,'ππ'],['ok','x'.repeat(20),8,'ok']] as const){
+  const f=await fixture(t,async()=>({...receipt,stdout,stderr}));
+  const manager=new DurableProcessManager(null,16,f.persistence);
+  const result=await manager.run({...request,max_output_bytes:limit},f.sandbox);
+  assert.equal(result.state,'UNKNOWN');assert.ok(result.receipt);assert.equal(result.receipt.exit_code,0);assert.equal(result.receipt.output_limited,true);
+  assert.equal(result.receipt.stdout,want);assert.ok(Buffer.byteLength(result.receipt.stdout)+Buffer.byteLength(result.receipt.stderr)<=limit);
+  const saved=(await f.store.load(result.process_id))!;assert.equal(saved.status.exit_code,0);assert.equal(saved.stdout,want);assert.equal(saved.output_complete,false);
+  const restarted=new DurableProcessManager(null,16,{...f.persistence,ownerSession:randomUUID()});
+  const output=await restarted.output('A',result.process_id);
+  assert.equal((output as any).output_limited,true);assert.equal((output as any).complete,false);assert.equal(output.stdout,want);
+ }
+});
+test('timed out command preserves its receipt and reports UNKNOWN consistently with Git',{skip:process.platform==='win32'},async t=>{
+ const f=await fixture(t,async()=>({...receipt,timed_out:true,exit_code:124}));
+ const result=await new DurableProcessManager(null,16,f.persistence).run(request,f.sandbox);
+ assert.equal(result.state,'UNKNOWN');assert.equal(result.receipt!.exit_code,124);
+ const saved=(await f.store.load(result.process_id))!;assert.equal(saved.status.state,'UNKNOWN');assert.equal(saved.stdout,receipt.stdout);assert.equal(saved.output_complete,false);
+});

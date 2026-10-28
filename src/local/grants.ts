@@ -22,7 +22,7 @@ async function protectedDirectory(dir:string,create=false):Promise<boolean>{
  }
 }
 function validateEntries(value:unknown):Entry[]{
- if(!Array.isArray(value)||value.length>128)throw Error("INVALID_GRANT_STORE");
+ if(!Array.isArray(value)||value.filter(raw=>!raw?.revoked).length>128)throw Error("INVALID_GRANT_STORE");
  const ids=new Set<string>(),roots=new Set<string>();
  return value.map(raw=>{
   if(!raw||typeof raw!=="object"||typeof raw.id!=="string"||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(raw.id)||
@@ -134,10 +134,13 @@ async function withGrantLock<T>(dir:string,operation:(publication:Publication)=>
  return result as T;
 }
 async function persistEntries(dir:string,entries:Entry[],publication:Publication,beforePublish?:BeforePublish):Promise<void>{
- validateEntries(entries);const tmp=path.join(dir,".workspaces-"+randomBytes(16).toString("hex"));
+ validateEntries(entries);
+ const payload=JSON.stringify(entries,null,2)+"\n";
+ if(Buffer.byteLength(payload)>1024*1024)throw Error("GRANT_STORE_QUOTA");
+ const tmp=path.join(dir,".workspaces-"+randomBytes(16).toString("hex"));
  const handle=await fs.open(tmp,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
  try{
-  try{await handle.writeFile(JSON.stringify(entries,null,2)+"\n");await handle.sync();}finally{await handle.close();}
+  try{await handle.writeFile(payload);await handle.sync();}finally{await handle.close();}
   if(beforePublish){
    const active=entries.filter(entry=>!entry.revoked&&pinned(entry)).map(entry=>{
     const grant=asGrant(entry as Entry&{rootIdentity:NonNullable<Entry['rootIdentity']>;revision:number});

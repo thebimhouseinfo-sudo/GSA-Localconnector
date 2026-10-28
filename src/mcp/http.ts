@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { connectorStatus } from "../index.js";
 import {loadTrustedRegistry} from "../local/grants.js";
 import { WorkspaceRegistry } from "../core/workspace.js";
-import { createReadOnlyTools, toolDefinitions,type ToolCall,type ToolResult } from "./server.js";
+import { createReadOnlyTools, toolDefinitions,limitToolCalls,type ToolCall,type ToolResult } from "./server.js";
 import {bootstrapMcpTools} from "./runtime-bootstrap.js";
 
 const DEFAULT_PORT = 58347;
@@ -55,7 +55,8 @@ function isObject(value: unknown): value is Record<string, unknown> {
  */
 export function createHttpMcpServer(token: string, registry = new WorkspaceRegistry(),invoke:(call:ToolCall)=>Promise<ToolResult>=createReadOnlyTools(registry)) {
   if (token.length < 32) throw Error("MCP_HTTP_TOKEN must be at least 32 characters");
-  return createServer(async (req, res) => {
+  const callTool=limitToolCalls(invoke);
+  return createServer({requestTimeout:30000,headersTimeout:10000,connectionsCheckingInterval:1000},async (req, res) => {
     if (!allowedOrigin(req)) { respond(res, 403, { error: "ORIGIN_FORBIDDEN" }); return; }
     if (req.url === "/health" && req.method === "GET") {
       respond(res, 200, { status: "alive", name: "gsa-localconnector", exposedTools: "capability-gated" });
@@ -103,15 +104,16 @@ export function createHttpMcpServer(token: string, registry = new WorkspaceRegis
         case "tools/list": result = {tools:toolDefinitions()}; break;
         case "tools/call":
           if (!isObject(params) || typeof params.name !== "string" || (params.arguments !== undefined && !isObject(params.arguments))) throw Error("INVALID_PARAMS");
-          result = await invoke({name:params.name, arguments:(params.arguments ?? {}) as Record<string,unknown>});
+          result = await callTool({name:params.name, arguments:(params.arguments ?? {}) as Record<string,unknown>});
           break;
         default: respond(res, 200, error(id, -32601, "Method not found")); return;
       }
       respond(res, 200, {jsonrpc:"2.0",id,result});
-    } catch {
-      respond(res, 200, error(id, -32602, "Invalid params"));
+    } catch(cause) {
+      const busy=cause instanceof Error&&cause.message==="SERVER_BUSY";
+      respond(res, 200, error(id, busy?-32603:-32602, busy?"SERVER_BUSY":"Invalid params"));
     }
-  });
+  }).setTimeout(30000,socket=>socket.destroy());
 }
 export async function startHttpMcp(token: string, port = DEFAULT_PORT,owner?:import("../local/mac-owner.js").MacOwner): Promise<void> {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw Error("Invalid HTTP MCP port");

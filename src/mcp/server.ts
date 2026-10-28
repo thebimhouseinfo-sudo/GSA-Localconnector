@@ -41,7 +41,7 @@ const definitions = [
   {name:"unbind_workspace",description:"Revoke a previously bound workspace on the selected host; subsequent calls lose the grant",inputSchema:{type:"object",properties:{workspace_id:{type:"string"}},required:["workspace_id"],additionalProperties:false}},
   {name:"get_file_info",description:"Metadata and SHA256 of a file within a bound workspace; max 8 MiB hash",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"}},required:["workspace_id","path"],additionalProperties:false}},
   {name:"search",description:"Search UTF-8 text across bounded files under a workspace-relative directory; no external grep subprocess",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},query:{type:"string"}},required:["workspace_id","path","query"],additionalProperties:false}},
-  {name:"fetch_file",description:"Read UTF-8 text from an enrolled workspace or reference (maximum 64 KiB)",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},start_line:{type:"integer",minimum:1},max_lines:{type:"integer",minimum:1,maximum:500}},required:["workspace_id","path"],additionalProperties:false}}
+  {name:"fetch_file",description:"Read UTF-8 text from an enrolled workspace or reference (maximum 8 MiB; returns up to 500 lines per page)",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},start_line:{type:"integer",minimum:1},max_lines:{type:"integer",minimum:1,maximum:500}},required:["workspace_id","path"],additionalProperties:false}}
 ] as const;
 function validPage(args:Record<string,unknown>,maxLimit:number):boolean{
   return (args.cursor===undefined||(Number.isSafeInteger(args.cursor)&&Number(args.cursor)>=0))&&
@@ -142,7 +142,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
     return {state:observations.every(value=>value.state==="STOPPED")?"STOPPED":"UNKNOWN",pending_starts:observations.reduce((sum,value)=>sum+value.pending_starts,0),outcomes};
   };
   const processHistory=()=>options.processPersistence?{
-    processHistory:"persisted-start_process-and-run_command",processHistoryLimit:1000,processJournalLimit:10000
+    processHistory:"persisted-start_process-and-run_command",processHistoryLimit:1000,processJournalLimit:null
   }:{processHistory:"current-server-only; newest 128 terminal native receipts"};
   const sourceService=()=>new CiSourceCaptureService(sourceCapture,snapshots??new CiSnapshotStore(),ciStore??new CiJournalStore());
   let coordinator:CiRunService|null=null;
@@ -364,12 +364,23 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           {
            const pattern=args.pattern as string;
            if(pattern.includes("..")||pattern.includes("/")||pattern.includes(String.fromCharCode(92))||pattern.includes("**"))throw Error("INVALID_GLOB");
-           const escaped=Array.from(pattern).map(ch=>ch==="*" ? ".*" : ch==="?" ? "." : /[\\^$+?.()|{}\[\]]/.test(ch) ? String.fromCharCode(92)+ch : ch).join("");
-           const re=new RegExp("^"+escaped+"$");
+           // Dynamic programming bounds work by pattern length × filename length.
+           // A regex made from repeated .* can backtrack exponentially.
+           const matches=(name:string)=>{
+            let previous=Array<boolean>(pattern.length+1).fill(false);previous[0]=true;
+            for(let j=1;j<=pattern.length;j++)previous[j]=previous[j-1]&&pattern[j-1]==="*";
+            for(let i=0;i<name.length;i++){
+             const ch=name[i]; // Match UTF-16 units consistently, as the previous regex did.
+             const next=Array<boolean>(pattern.length+1).fill(false);
+             for(let j=1;j<=pattern.length;j++)next[j]=pattern[j-1]==="*"?next[j-1]||previous[j]:previous[j-1]&&(pattern[j-1]==="?"||pattern[j-1]===ch);
+             previous=next;
+            }
+            return previous[pattern.length];
+           };
            const found=[];
            const listing=await scopedRead().list(args.path);
            for(const e of listing.entries)
-             if(!e.symlink&&re.test(e.name))found.push({name:e.name,kind:e.kind});
+             if(!e.symlink&&matches(e.name))found.push({name:e.name,kind:e.kind});
            result={entries:found,truncated:listing.truncated};
           }break;
         case "get_file_info":
@@ -382,14 +393,15 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||typeof args.query!=="string"||Object.keys(args).length!==3||!args.query||args.query.length>200)throw Error("INVALID_ARGUMENTS");
           {
            const matches:Array<{path:string;line:number;snippet:string}>=[];
-           let examined=0,truncated=false,directories=0;
+           let examined=0,truncated=false,directories=0,skippedHidden=0;
            const pending=[args.path as string];
            while(pending.length&&examined<200&&directories<200){
              const rel=pending.shift()!;
              const listing=await scopedRead().list(rel);directories++;
              truncated||=listing.truncated;
              for(const e of listing.entries){
-               if(e.name.startsWith(".")||e.symlink)continue;
+               if(e.name.startsWith(".")){skippedHidden++;truncated=true;continue;}
+               if(e.symlink)continue;
                if(e.kind!=="directory"&&e.kind!=="file")continue;
                if(examined>=200){truncated=true;break;}
                const child=rel==="."?e.name:rel+"/"+e.name;
@@ -406,14 +418,14 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
                }
              }
            }
-           result={matches,files_examined:examined,truncated:truncated||pending.length>0};
+           result={matches,files_examined:examined,skipped_hidden:skippedHidden,truncated:truncated||pending.length>0};
           }break;
         case "fetch_file":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||Object.keys(args).some(k=>!["workspace_id","path","start_line","max_lines"].includes(k))||(args.start_line!==undefined&&(!Number.isInteger(args.start_line)||Number(args.start_line)<1))||(args.max_lines!==undefined&&(!Number.isInteger(args.max_lines)||Number(args.max_lines)<1||Number(args.max_lines)>500)))throw Error("INVALID_ARGUMENTS");
-          {const data=await scopedRead().read(args.path,65536);
+          {const data=await scopedRead().read(args.path,8*1024*1024);
            const value=new TextDecoder("utf-8",{fatal:true}).decode(data);
            const lines=value.split(/\r?\n/);
-           const start=Number(args.start_line??1),count=Number(args.max_lines??lines.length);
+           const start=Number(args.start_line??1),count=Number(args.max_lines??500);
            result={path:args.path,text:lines.slice(start-1,start-1+count).join("\n"),start_line:start,end_line:Math.min(lines.length,start-1+count),total_lines:lines.length,truncated:start-1+count<lines.length};
           }break;
         case "inspect_directory": {
@@ -525,6 +537,18 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
   };
 }
 
+/** Per-transport admission, shared by stdio and HTTP. Controls retain capacity. */
+export function limitToolCalls(invoke:(call:ToolCall)=>Promise<ToolResult>):(call:ToolCall)=>Promise<ToolResult>{
+ const urgentControls=new Set(["release_control","renew_control","stop_process","ci_cancel"]);
+ let activeCalls=0,activeControls=0;
+ return async call=>{
+  const urgent=urgentControls.has(call.name);
+  if(urgent?activeControls>=4:activeCalls>=32)throw Error("SERVER_BUSY");
+  if(urgent)activeControls++;else activeCalls++;
+  try{return await invoke(call);}finally{if(urgent)activeControls--;else activeCalls--;}
+ };
+}
+
 /** JSON-RPC MCP stdio adapter; no external dependencies and no privileges.
  * Framing is newline-delimited JSON per MCP stdio transport.
  */
@@ -532,13 +556,12 @@ export async function runStdio(registry=new WorkspaceRegistry(),invoke:(call:Too
   const {createInterface}=await import("node:readline");
   const version="2025-03-26";
   const pending=new Set<Promise<void>>();
-  const urgentControls=new Set(["release_control","renew_control","stop_process","ci_cancel"]);
-  let activeCalls=0,activeControls=0;
+  const callTool=limitToolCalls(invoke);
   const handle=async(line:string):Promise<void>=>{
-    let id: unknown;
+    let id: unknown,parsed=false;
     try {
       const req=JSON.parse(line) as {jsonrpc?:string;id?:unknown;method?:string;params?:Record<string,unknown>};
-      id=req.id;
+      parsed=true;id=req.id;
       if(req.jsonrpc!=="2.0") throw Error("INVALID_REQUEST");
       if(req.method==="notifications/initialized") return;
       let result:unknown;
@@ -547,14 +570,11 @@ export async function runStdio(registry=new WorkspaceRegistry(),invoke:(call:Too
       else if(req.method==="tools/list") result={tools:toolDefinitions()};
       else if(req.method==="tools/call") {
         if(!req.params||typeof req.params.name!=="string")throw Error("INVALID_PARAMS");
-        const urgent=urgentControls.has(req.params.name);
-        if(urgent?activeControls>=4:activeCalls>=32)throw Error("SERVER_BUSY");
-        if(urgent)activeControls++;else activeCalls++;
-        try{result=await invoke({name:req.params.name,arguments:req.params.arguments as Record<string,unknown>});}
-        finally{if(urgent)activeControls--;else activeCalls--;}
+        result=await callTool({name:req.params.name,arguments:req.params.arguments as Record<string,unknown>});
       } else throw Error("METHOD_NOT_FOUND");
       if(id!==undefined)streams.output.write(JSON.stringify({jsonrpc:"2.0",id,result})+"\n");
     } catch(e) {
+      if(!parsed){streams.output.write(JSON.stringify({jsonrpc:"2.0",id:null,error:{code:-32700,message:"Parse error"}})+"\n");return;}
       if(id!==undefined)streams.output.write(JSON.stringify({jsonrpc:"2.0",id,error:{code:-32603,message:e instanceof Error?e.message:"Internal error"}})+"\n");
     }
   };

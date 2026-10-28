@@ -101,3 +101,16 @@ test("trusted local execute enrollment pins only its explicit root and advances 
   assert.equal((await loadTrustedRegistry(dir)).requireGrant("A","read").revision,3);
  }finally{await fs.rm(tmp,{recursive:true,force:true});}
 });
+test('129 distinct revoked IDs preserve epochs without exhausting the active grant limit',async()=>{
+ const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'gsa-grants-tombstones-'));
+ try{
+  const dir=path.join(tmp,'identity'),root=path.join(tmp,'project');await fs.mkdir(root);
+  for(let i=0;i<129;i++){await enrollReadOnly('id-'+i,root,dir);await revokeTrusted('id-'+i,dir);}
+  assert.deepEqual((await loadTrustedRegistry(dir)).list(),[]);
+  await enrollReadOnly('id-0',root,dir);
+  assert.equal((await loadTrustedRegistry(dir)).requireGrant('id-0','read').revision,3);
+  const entries=JSON.parse(await fs.readFile(path.join(dir,'trusted-workspaces.json'),'utf8'));
+  assert.equal(entries.length,129);assert.equal(entries.filter((e:any)=>e.revoked).length,128);
+  assert.equal(entries.find((e:any)=>e.id==='id-128').revision,2);
+ }finally{await fs.rm(tmp,{recursive:true,force:true});}
+});

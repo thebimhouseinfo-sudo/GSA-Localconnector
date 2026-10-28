@@ -17,7 +17,7 @@ export class ProcessJournalStore implements ProcessJournal {
  private validate(r:ProcessJournalRecord){
   if(!r||r.format!=="gsa-process-v1"||!UUID.test(r.process_id)||!UUID.test(r.owner_session)||!r.workspace_id||
    !Number.isSafeInteger(r.revision)||r.revision<1||(r.native_id!==null&&(typeof r.native_id!=="string"||r.native_id.length>256))||
-   typeof r.stopped!=="boolean"||typeof r.output_complete!=="boolean"||typeof r.stdout!=="string"||typeof r.stderr!=="string"||
+   (r.output_limited!==undefined&&typeof r.output_limited!=="boolean")||typeof r.stopped!=="boolean"||typeof r.output_complete!=="boolean"||typeof r.stdout!=="string"||typeof r.stderr!=="string"||
    Buffer.byteLength(r.stdout)+Buffer.byteLength(r.stderr)>2097152||!r.status||!["QUEUED","RUNNING","SUCCEEDED","FAILED","CANCELLED","UNKNOWN"].includes(r.status.state)||
    !(r.status.exit_code===null||Number.isInteger(r.status.exit_code))||typeof r.status.started_at!=="string"||
    !(r.status.ended_at===null||typeof r.status.ended_at==="string"))bad();
@@ -52,16 +52,25 @@ export class ProcessJournalStore implements ProcessJournal {
   });
   const retained=task.catch(()=>{});this.pending.set(record.process_id,retained);try{await task;}finally{if(this.pending.get(record.process_id)===retained)this.pending.delete(record.process_id);}
  }
+ private async available(id:string):Promise<ProcessJournalRecord|null>{
+  try{return await this.load(id);}catch{
+   // Preserve damaged evidence; never infer that an unreadable process stopped.
+   process.stderr.write("PROCESS_JOURNAL_UNREADABLE "+id+"\n");return null;
+  }
+ }
  async list():Promise<ProcessJournalRecord[]>{
   await this.directory();const names=(await fs.readdir(this.root)).filter(name=>name.endsWith(".json")&&UUID.test(name.slice(0,-5)));
-  if(names.length>10000)bad("PROCESS_JOURNAL_QUOTA");
   const dated=await Promise.all(names.map(async name=>({name,mtime:(await fs.lstat(path.join(this.root,name))).mtimeMs})));
-  const records=await Promise.all(dated.sort((a,b)=>b.mtime-a.mtime).slice(0,1000).map(({name})=>this.load(name.slice(0,-5))));
+  const records=await Promise.all(dated.sort((a,b)=>b.mtime-a.mtime).slice(0,1000).map(({name})=>this.available(name.slice(0,-5))));
   return records.filter((record):record is ProcessJournalRecord=>record!==null);
  }
  async reconcileAfterOwnerFence(session:string):Promise<void>{
   if(process.env.GSA_OWNER_LOCK_FD!=="3"||process.env.GSA_OWNER_SESSION!==session||!UUID.test(session))bad("SERVER_OWNER_REQUIRED");
-  for(const record of await this.list()){
+  await this.directory();
+  // Reconciliation is not a display page: every prior-owner intent must be fenced.
+  for(const name of await fs.readdir(this.root)){
+   if(!name.endsWith(".json")||!UUID.test(name.slice(0,-5)))continue;
+   const record=await this.available(name.slice(0,-5));if(!record)continue;
    if(record.owner_session===session||record.stopped)continue;
    await this.save({...record,revision:record.revision+1,status:{...record.status,state:"UNKNOWN",exit_code:null,ended_at:new Date().toISOString(),stopped:true},stopped:true,output_complete:false},record.revision);
   }

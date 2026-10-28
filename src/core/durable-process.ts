@@ -97,7 +97,7 @@ export class DurableProcessManager{
    const previous=entry.record!;
    const stopped=["SUCCEEDED","FAILED","CANCELLED"].includes(status.state);
    const next:ProcessJournalRecord={...previous,revision:previous.revision+1,status:{...status,stopped},stopped,
-    stdout:receipt?.stdout??previous.stdout,stderr:receipt?.stderr??previous.stderr,output_complete:stopped&&!!receipt};
+    stdout:receipt?.stdout??previous.stdout,stderr:receipt?.stderr??previous.stderr,output_limited:receipt?.output_limited??previous.output_limited??false,output_complete:stopped&&!!receipt&&!receipt.output_limited};
    await this.persistence!.store.save(next,previous.revision);entry.record=next;entry.active=!stopped;
   };
   try{
@@ -111,12 +111,20 @@ export class DurableProcessManager{
     const execution=sandbox.execute({...request,process_id:id});
     token.finish();onStarted?.(id);
     receipt=await execution;
-    if(Buffer.byteLength(receipt.stdout)+Buffer.byteLength(receipt.stderr)>request.max_output_bytes)throw Error("OUTPUT_LIMIT_EXCEEDED");
    }catch{
     await save({state:"UNKNOWN",exit_code:null,started_at:now,ended_at:null,stopped:false});
     return {process_id:id,workspace_id:request.workspace_id,state:"UNKNOWN",created_at:now,updated_at:new Date().toISOString()};
    }
-   const state:ProcessState=receipt.cancelled?"CANCELLED":receipt.output_limited||receipt.signal!==null?"UNKNOWN":receipt.timed_out?"FAILED":receipt.exit_code===0?"SUCCEEDED":receipt.exit_code===null?"UNKNOWN":"FAILED";
+   if(Buffer.byteLength(receipt.stdout)+Buffer.byteLength(receipt.stderr)>request.max_output_bytes){
+    const prefix=(text:string,limit:number)=>{
+     const bytes=Buffer.from(text);let end=Math.min(bytes.length,limit);
+     while(end>0&&end<bytes.length&&(bytes[end]&0xc0)===0x80)end--;
+     return bytes.subarray(0,end).toString("utf8");
+    };
+    const stdout=prefix(receipt.stdout,request.max_output_bytes);
+    receipt={...receipt,stdout,stderr:prefix(receipt.stderr,request.max_output_bytes-Buffer.byteLength(stdout)),output_limited:true};
+   }
+   const state:ProcessState=receipt.cancelled?"CANCELLED":receipt.output_limited||receipt.signal!==null||receipt.timed_out?"UNKNOWN":receipt.exit_code===0?"SUCCEEDED":receipt.exit_code===null?"UNKNOWN":"FAILED";
    const ended=new Date().toISOString();
    await save({state,exit_code:receipt.exit_code,started_at:now,ended_at:ended},receipt);
    return {process_id:id,workspace_id:request.workspace_id,state,created_at:now,updated_at:ended,receipt};
@@ -257,7 +265,7 @@ export class DurableProcessManager{
    if(cursor>all.length||(cursor<all.length&&(all[cursor]&0xc0)===0x80))throw new DurableProcessError("INVALID_PROCESS_REQUEST","Invalid output cursor");
    let end=Math.min(all.length,cursor+limit);while(end>cursor&&end<all.length&&(all[end]&0xc0)===0x80)end--;
    if(end===cursor&&end<all.length)throw new DurableProcessError("INVALID_PROCESS_REQUEST","Output limit splits UTF-8");
-   return {stdout:all.subarray(cursor,Math.min(end,stdout.length)).toString(),stderr:all.subarray(Math.max(cursor,stdout.length),end).toString(),next_cursor:end<all.length?end:null,complete:entry.record.stopped&&entry.record.output_complete};
+   return {stdout:all.subarray(cursor,Math.min(end,stdout.length)).toString(),stderr:all.subarray(Math.max(cursor,stdout.length),end).toString(),next_cursor:end<all.length?end:null,complete:entry.record.stopped&&entry.record.output_complete,...(entry.record.output_limited?{output_limited:true}:{})};
   }
   const native=requireNativeBackend(this.backend);
   const out=await native.output(entry.native_id,cursor,limit);

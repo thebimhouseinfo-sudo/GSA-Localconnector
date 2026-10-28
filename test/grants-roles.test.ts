@@ -117,9 +117,13 @@ test("failed role batches preserve exact store bytes and allow same-role nested 
   assert.equal(nested.length,1);
 }));
 
-test("role batch capacity counts durable tombstones before publication",async()=>fixture(async(tmp,dir)=>{
-  const tombstones=Array.from({length:128},(_,i)=>({id:`tomb-${i}`,root:path.join(tmp,`removed-${i}`),permissions:[],rootIdentity:{device:"0",inode:"1"},revision:1,role:"workspace",revoked:true}));
-  await rawStore(dir,tombstones);const before=await bytes(dir),root=await mkdir(tmp,"candidate");
+test("role batch capacity counts active grants before publication",async()=>fixture(async(tmp,dir)=>{
+  const active=[];
+  for(let i=0;i<128;i++){
+   const root=await fs.realpath(await mkdir(tmp,`active-${i}`)),stat=await fs.stat(root,{bigint:true});
+   active.push({id:`active-${i}`,root,permissions:["read","write","execute"],rootIdentity:{device:String(stat.dev),inode:String(stat.ino)},revision:1,role:"workspace"});
+  }
+  await rawStore(dir,active);const before=await bytes(dir),root=await mkdir(tmp,"candidate");
   await assert.rejects(enroll([{id:"candidate",root,role:"workspace"}],dir));
   assert.deepEqual(await bytes(dir),before);
 }));

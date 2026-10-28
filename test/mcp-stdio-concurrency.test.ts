@@ -38,3 +38,12 @@ test("stdio also bounds the reserved control lane",async()=>{
  try{await new Promise(r=>setTimeout(r,30));assert.equal(held.length,4);assert.equal(frames.filter(frame=>frame.error?.message==="SERVER_BUSY").length,2);}
  finally{for(const resolve of held)resolve(result);input.end();await serve;output.end();}
 });
+test('stdio answers malformed JSON with a parse error and still handles the next request',async()=>{
+ const input=new PassThrough(),output=new PassThrough(),frames:any[]=[];
+ output.on('data',bytes=>{for(const line of bytes.toString().trim().split('\n'))frames.push(JSON.parse(line));});
+ const serve=runStdio(new WorkspaceRegistry(),async()=>result,{input,output});
+ input.end('{"jsonrpc":"2.0",\n'+JSON.stringify({jsonrpc:'2.0',method:'notifications/initialized'})+'\n'+JSON.stringify({jsonrpc:'2.0',id:7,method:'ping'})+'\n');
+ await serve;output.end();
+ assert.equal(frames.length,2);assert.equal(frames[0].id,null);assert.equal(frames[0].error.code,-32700);
+ assert.deepEqual(frames[1],{jsonrpc:'2.0',id:7,result:{}});
+});
