@@ -3,7 +3,7 @@ import {isDeepStrictEqual} from "node:util";
 import type {WorkspaceRegistry} from "../core/workspace.js";
 import type {WorkspaceGrant,WorkspacePermission} from "../core/contracts.js";
 import type {NativeDirectoryCopies,NativeScopedFiles,ScopedFileRef} from "../core/native-io.js";
-import {validateWorkspaceRelative} from "../core/workspace-path.js";
+import {validateWorkspaceRelative,hasReservedWorkspaceSegment} from "../core/workspace-path.js";
 import {assertMacFileInstallationSeparated} from "./macos-scoped-files.js";
 import {assertDirectoryCopyId,assertDirectoryCopyIntentBudget,cloneDirectoryCopyIntent,directoryCopySchedule,validateDirectoryCapture,DirectoryCopyError,type DirectoryCapture,type DirectoryCopyPinnedRef,type DirectoryCopyRecord,type DirectoryCopyOutcome,type DirectoryCopyStoreApi,type NativeDirectoryReader} from "../core/directory-copy.js";
 
@@ -12,7 +12,7 @@ const inside=(a:string,b:string)=>a===b||b.startsWith(a+path.sep);
 const ref=(value:ScopedFileRef,root=false):ScopedFileRef=>{
  const copy=Object.freeze({workspace_id:value.workspace_id,path:value.path});
  validateWorkspaceRelative(copy.path,root);
- if(Buffer.byteLength(copy.path)>4096||Buffer.from(copy.path).toString("utf8")!==copy.path||copy.path.split("/").some(p=>p.toLowerCase()===".gsa-trash"))fail("INVALID_DIRECTORY_COPY","Invalid directory path");
+ if(Buffer.byteLength(copy.path)>4096||Buffer.from(copy.path).toString("utf8")!==copy.path||hasReservedWorkspaceSegment(copy.path))fail("INVALID_DIRECTORY_COPY","Invalid directory path");
  return copy;
 };
 const scoped=(pin:DirectoryCopyPinnedRef):ScopedFileRef=>({workspace_id:pin.workspace_id,path:pin.path});

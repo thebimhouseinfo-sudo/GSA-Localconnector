@@ -1,5 +1,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
+import os from "node:os";
+import {identityDirectory} from "../local/identity.js";
 import {validateWorkspaceRelative} from "./workspace-path.js";
 import { ConnectorError, type WorkspaceGrant, type WorkspacePermission, type WorkspaceRole, type WorkspaceRoleRequest } from "./contracts.js";
 
@@ -18,7 +20,21 @@ export class WorkspaceRegistry {
   private readonly explicitHistory = new Set<string>();
   private readonly pendingExplicit = new Map<string,Set<{cancelled:boolean}>>();
   private mutationGeneration = 0;
-  constructor(private readonly pathApi: typeof path = path) {}
+  constructor(private readonly pathApi: typeof path = path,private readonly privateRoots:readonly string[]=[]) {}
+
+  private async allowedRoot(root:string):Promise<void>{
+    const api=this.pathApi,contains=(a:string,b:string)=>{const r=api.relative(a,b);return r===""||r!==".."&&!r.startsWith(".."+api.sep)&&!api.isAbsolute(r);};
+    const canonical=async(value:string):Promise<string>=>{
+      const tail:string[]=[];let current=api.resolve(value);
+      for(;;){try{return api.join(await fs.realpath(current),...tail.reverse());}
+       catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;const parent=api.dirname(current);if(parent===current)throw error;tail.push(api.basename(current));current=parent;}}
+    };
+    if(root===api.parse(root).root||root===await canonical(os.homedir()))throw new ConnectorError("PERMISSION_DENIED","Reserved HOME or filesystem root");
+    const denied=[...this.privateRoots];
+    if(process.platform==="darwin"||process.platform==="win32")denied.push(identityDirectory());
+    for(const directory of denied){const privateRoot=await canonical(directory);
+      if(contains(root,privateRoot)||contains(privateRoot,root))throw new ConnectorError("PERMISSION_DENIED","Workspace root overlaps private connector storage");}
+  }
 
   private nextRevision(id:string):number {
     const revision=(this.revisions.get(id)??0)+1;
@@ -68,6 +84,7 @@ export class WorkspaceRegistry {
       try {canonicalRoot=await fs.realpath(selection.root);rootStat=await fs.stat(canonicalRoot,{bigint:true});}
       catch {throw new ConnectorError("PATH_OUTSIDE_SCOPE","Root must be an existing directory");}
       if(!rootStat.isDirectory())throw new ConnectorError("PATH_OUTSIDE_SCOPE","Root must be a directory");
+      await this.allowedRoot(canonicalRoot);
       const grant=immutableGrant({id:selection.id,role:selection.role,canonicalRoot,rootIdentity:{device:String(rootStat.dev),inode:String(rootStat.ino)},permissions:rolePermissions(selection.role),revision:1});
       const duplicate=prepared.get(grant.id);
       if(duplicate&&!sameGrant(duplicate,grant))throw new ConnectorError("PERMISSION_DENIED","Conflicting selections for one workspace ID");
@@ -110,6 +127,7 @@ export class WorkspaceRegistry {
     const generation=this.mutationGeneration,prior=new Map([[id,[this.grants.get(id),this.revisions.get(id)] as const]]);
     const copiedPermissions=[...new Set(permissions)];
     const canonicalRoot = await fs.realpath(root);
+    await this.allowedRoot(canonicalRoot);
     const rootStat=await fs.stat(canonicalRoot,{bigint:true});
     if(!rootStat.isDirectory())throw new ConnectorError("PATH_OUTSIDE_SCOPE","Workspace root must be a directory");
     const rootIdentity=Object.freeze({device:String(rootStat.dev),inode:String(rootStat.ino)});
@@ -137,6 +155,7 @@ export class WorkspaceRegistry {
     catch {throw new ConnectorError("SOURCE_UNVERIFIED","Workspace root identity unavailable");}
     if(canonical!==grant.canonicalRoot||!info.isDirectory()||String(info.dev)!==grant.rootIdentity.device||String(info.ino)!==grant.rootIdentity.inode)
       throw new ConnectorError("SOURCE_UNVERIFIED","Workspace root identity changed");
+    await this.allowedRoot(canonical);
     this.checkPreparedState(generation,prior);
     const revision=this.revisions.get(grant.id)??0,active=this.grants.get(grant.id);
     const explicit=this.explicitHistory.has(grant.id)||grant.role!==undefined;
@@ -159,7 +178,7 @@ export class WorkspaceRegistry {
     });
     const prospective=new Map<string,WorkspaceGrant>();
     for(const grant of copied){
-      const pinned=await new WorkspaceRegistry(this.pathApi).importTrusted(grant);
+      const pinned=await new WorkspaceRegistry(this.pathApi,this.privateRoots).importTrusted(grant);
       const duplicate=prospective.get(pinned.id);
       if(duplicate&&(!sameGrant(duplicate,pinned)||duplicate.revision!==pinned.revision))throw new ConnectorError("SOURCE_UNVERIFIED","Conflicting snapshot IDs");
       if(!duplicate)prospective.set(pinned.id,pinned);

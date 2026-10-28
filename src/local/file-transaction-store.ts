@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import {constants} from "node:fs";
 import path from "node:path";
-import {randomUUID} from "node:crypto";
+import {withProtectedJournalLock,publishProtectedJournal,type ProtectedJournalContext} from "./protected-journal-io.js";
 import {isDeepStrictEqual} from "node:util";
 import {assertFileTransactionId,cloneFileTransaction,newFileTransaction,reconcileFileTransaction,transitionFileTransaction,FileTransactionError,type FileTransactionIntent,type FileTransactionReadback,type FileTransactionRecord} from "../core/file-transactions.js";
 
@@ -46,47 +46,14 @@ export class FileTransactionStore {
    const record=cloneFileTransaction(parsed as FileTransactionRecord);if(record.transaction_id!==id)fail("INVALID_FILE_TRANSACTION","Journal identity mismatch");return record;
   }finally{await fd.close();}
  }
- private async locked<T>(id:string,operation:()=>Promise<T>):Promise<T>{
-  assertFileTransactionId(id);await this.directory(true);
-  const lock=path.join(this.root,id+".lock");let fd;
-  try{fd=await fs.open(lock,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);}
-  catch(error){if((error as NodeJS.ErrnoException).code==="EEXIST")fail("FILE_TRANSACTION_LOCKED","Transaction lock exists; automatic stale-lock removal is forbidden");throw error;}
-  let owned;
-  try{owned=await fd.stat({bigint:true});}
-  catch(error){
-   // Identity is unverified: close our descriptor, but retain the named lock.
-   try{await fd.close();}
-   catch{throw new FileTransactionError("RESULT_UNKNOWN","Initial lock identity and descriptor release are uncertain; inspect durable state");}
-   throw error;
-  }
-  try{await fd.sync();await this.syncDirectory();await this.directory();return await operation();}
-  finally{
-   try{
-    await fd.close();
-    // Never remove a replacement lock belonging to another writer.
-    const named=await fs.lstat(lock,{bigint:true});
-    if(identity(named)!==identity(owned)||!named.isFile()||named.nlink!==1n)fail("RESULT_UNKNOWN","Transaction lock ownership changed; inspect durable state");
-    await this.directory();await fs.unlink(lock);await this.syncDirectory();
-   }catch{throw new FileTransactionError("RESULT_UNKNOWN","Journal operation or lock release is uncertain; inspect durable state");}
-  }
+ private journalContext():ProtectedJournalContext{return {root:this.root,directory:create=>this.directory(create),syncDirectory:()=>this.syncDirectory(),error:(code,message)=>new FileTransactionError(code,message),lockedCode:"FILE_TRANSACTION_LOCKED",durableLock:true};}
+ private locked<T>(id:string,operation:()=>Promise<T>):Promise<T>{
+  assertFileTransactionId(id);return withProtectedJournalLock(this.journalContext(),id,operation);
  }
  private async publish(record:FileTransactionRecord,exclusive:boolean):Promise<void>{
   const copy=cloneFileTransaction(record),encoded=JSON.stringify(copy)+"\n";
   if(Buffer.byteLength(encoded)>MAX)fail("INVALID_FILE_TRANSACTION","Journal metadata exceeds limit");
-  const target=this.file(copy.transaction_id),temporary=path.join(this.root,".transaction-"+randomUUID());let published=false,tempExists=false;
-  try{
-   await this.directory();const fd=await fs.open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);tempExists=true;
-   try{await fd.writeFile(encoded);await fd.sync();}finally{await fd.close();}
-   await this.directory();
-   if(exclusive){
-    // Link publishes a complete inode without overwriting an existing ID. The brief
-    // two-link window is rejected by readers until the private temp name is removed.
-    await fs.link(temporary,target);published=true;
-    await fs.unlink(temporary);tempExists=false;
-   }else{await fs.rename(temporary,target);published=true;tempExists=false;}
-   await this.syncDirectory();await this.directory();
-  }catch(error){if(published)throw new FileTransactionError("RESULT_UNKNOWN","Journal publication may have completed; inspect the transaction before continuing");throw error;}
-  finally{if(tempExists&&!published){await this.directory();await fs.unlink(temporary);}}
+  await publishProtectedJournal(this.journalContext(),this.file(copy.transaction_id),encoded,exclusive);
  }
  async create(id:string,intent:FileTransactionIntent):Promise<FileTransactionRecord>{
   const candidate=newFileTransaction(id,intent); // clone before the first await

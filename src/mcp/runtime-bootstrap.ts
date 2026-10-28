@@ -100,7 +100,10 @@ export async function bootstrapMcpTools(registry:WorkspaceRegistry,identityRoot=
   const result=await dispatch(call);
   if((owner||workspaceStartupIssue)&&["connector_status","list_capabilities"].includes(call.name)&&!result.isError){
    const body=JSON.parse(result.content[0].text);
-   if(processPersistence)body.result.restartRecovery="ci-journal-reconciled; async-process-journal-reconciled; native-tree-recovery-not-certified";
+   if(processPersistence){
+    body.result.processRecovery=processPersistence.store.health();
+    body.result.restartRecovery=body.result.processRecovery.admission_blocked?"degraded-process-journal":"ci-journal-reconciled; async-process-journal-reconciled; native-tree-recovery-not-certified";
+   }
    if(workspaceStartupIssue){body.result.workspaceStartupIssue=workspaceStartupIssue;body.result.workspaceSelectionRequired=true;}
    return {...result,content:[{type:"text",text:JSON.stringify(body)}]};
   }

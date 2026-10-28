@@ -114,3 +114,21 @@ test('129 distinct revoked IDs preserve epochs without exhausting the active gra
   assert.equal(entries.find((e:any)=>e.id==='id-128').revision,2);
  }finally{await fs.rm(tmp,{recursive:true,force:true});}
 });
+test('tombstone compaction stays bounded and preserves a monotonic installation revision floor',async()=>{
+ const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'gsa-r3-grant-floor-'));
+ try{
+  const dir=path.join(tmp,'identity'),root=path.join(tmp,'project');await fs.mkdir(root);await fs.mkdir(dir,{mode:0o700});
+  const file=path.join(dir,'trusted-workspaces.json');
+  const entries=Array.from({length:2048},(_,i)=>({id:'old-'+i,root:path.join(tmp,'gone-'+i),permissions:[],rootIdentity:{device:'0',inode:'1'},revision:i===0?9000:2,revoked:true}));
+  await fs.writeFile(file,JSON.stringify(entries),{mode:0o600});
+  await enrollReadOnly('new',root,dir);
+  assert.ok((await fs.stat(file)).size<65536,'compaction must bound the durable grant store rather than accumulate tombstones');
+  await revokeTrusted('new',dir);await enrollExecute('old-0',root,dir);
+  const first=(await loadTrustedRegistry(dir)).requireGrant('old-0','execute');assert.ok(first.revision>9000);
+  await revokeTrusted('old-0',dir);await enrollExecute('old-1',root,dir);
+  const second=(await loadTrustedRegistry(dir)).requireGrant('old-1','execute');assert.ok(second.revision>first.revision);
+  await revokeTrusted('old-1',dir);await enrollExecute('old-0',root,dir);
+  assert.ok((await loadTrustedRegistry(dir)).requireGrant('old-0','execute').revision>second.revision);
+  const durable=JSON.parse(await fs.readFile(file,'utf8'));assert.ok(Number.isSafeInteger(durable.revision_floor)&&durable.revision_floor>=second.revision);
+ }finally{await fs.rm(tmp,{recursive:true,force:true});}
+});

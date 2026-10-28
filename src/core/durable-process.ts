@@ -18,7 +18,7 @@ export class DurableProcessManager{
  private currentOwner(entry:Entry):boolean{return this.persistence?.ownerSession===this.ownerSession&&(!entry.record||entry.record.owner_session===this.ownerSession);}
  fenceWorkspace(workspaceId:string):void{this.admission.fence(workspaceId);}
  resumeWorkspace(workspaceId:string):boolean{
-  if(!this.initialized||this.admission.count(workspaceId)||[...this.owned.values()].some(e=>e.workspace_id===workspaceId&&e.active))return false;
+  if(this.persistence?.store.health?.().admission_blocked||!this.initialized||this.admission.count(workspaceId)||[...this.owned.values()].some(e=>e.workspace_id===workspaceId&&e.active))return false;
   this.admission.resume(workspaceId);return true;
  }
  private stopOwned(entry:Entry):Promise<{stopped:boolean;state:ProcessState}>{
@@ -49,7 +49,7 @@ export class DurableProcessManager{
  }
  private begin(workspaceId:string){
   const token=this.admission.begin(workspaceId),owner=this.ownerSession;
-  return {finish:token.finish,check:()=>{token.check();if(owner!==this.persistence?.ownerSession)throw Error("SECURITY_BLOCKED: Process owner changed");}};
+  return {finish:token.finish,check:()=>{token.check();if(this.persistence?.store.health?.().admission_blocked)throw Error("PROCESS_RECOVERY_DEGRADED");if(owner!==this.persistence?.ownerSession)throw Error("SECURITY_BLOCKED: Process owner changed");}};
  }
  private observe(entry:Entry,status:NativeProcessStatus):NativeProcessStatus{
   if(!this.persistence&&(status.stopped||["SUCCEEDED","FAILED","CANCELLED"].includes(status.state)))entry.active=false;

@@ -43,12 +43,13 @@ function validateEntries(value:unknown):Entry[]{
   return raw as Entry;
  });
 }
-async function readEntries(dir:string):Promise<Entry[]>{
- if(!await protectedDirectory(dir))return [];
+type GrantStore={entries:Entry[];revisionFloor:number};
+async function readStore(dir:string):Promise<GrantStore>{
+ if(!await protectedDirectory(dir))return {entries:[],revisionFloor:0};
  let handle:Awaited<ReturnType<typeof fs.open>>;
  try{handle=await fs.open(grantPath(dir),constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);}
  catch(error){
-  if((error as NodeJS.ErrnoException).code==="ENOENT")return [];
+  if((error as NodeJS.ErrnoException).code==="ENOENT")return {entries:[],revisionFloor:0};
   if(["ELOOP","EISDIR"].includes((error as NodeJS.ErrnoException).code??""))unsafe();throw error;
  }
  try{
@@ -58,9 +59,15 @@ async function readEntries(dir:string):Promise<Entry[]>{
   if((await handle.read(Buffer.alloc(1),0,1,offset)).bytesRead)unsafe();
   const after=await handle.stat();
   if(after.size!==before.size||after.mtimeMs!==before.mtimeMs||after.ctimeMs!==before.ctimeMs)unsafe();
-  return validateEntries(JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes)));
+  const raw=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes));
+  if(Array.isArray(raw))return {entries:validateEntries(raw),revisionFloor:0};
+  if(!raw||raw.format!=="gsa-grants-v2"||Object.keys(raw).length!==3||!Number.isSafeInteger(raw.revision_floor)||raw.revision_floor<1)throw Error("INVALID_GRANT_STORE");
+  const entries=validateEntries(raw.entries);
+  if(entries.some(entry=>(entry.revision??0)>raw.revision_floor))throw Error("INVALID_GRANT_STORE");
+  return {entries,revisionFloor:raw.revision_floor};
  }finally{await handle.close();}
 }
+async function readEntries(dir:string):Promise<Entry[]>{return (await readStore(dir)).entries;}
 const pinned=(entry:Entry):entry is Entry&{rootIdentity:NonNullable<Entry['rootIdentity']>;revision:number}=>entry.rootIdentity!==undefined&&entry.revision!==undefined;
 const asGrant=(entry:Entry&{rootIdentity:NonNullable<Entry['rootIdentity']>;revision:number}):WorkspaceGrant=>({id:entry.id,canonicalRoot:entry.root,rootIdentity:entry.rootIdentity,revision:entry.revision,permissions:entry.permissions,...(entry.role===undefined?{}:{role:entry.role})});
 /** Structural metadata only: no old directory resolution and no access authority. */
@@ -69,9 +76,9 @@ export async function readTrustedRootBindings(dir=identityDirectory()):Promise<r
  return Object.freeze((await readEntries(dir)).filter(entry=>!entry.revoked).map(entry=>Object.freeze({id:entry.id,root:entry.root})));
 }
 /** Validate the complete active set, with explicit entries last so legacy imports cannot hide overlaps. */
-async function validatedRegistry(entries:Entry[]):Promise<WorkspaceRegistry>{
+async function validatedRegistry(entries:Entry[],privateRoot?:string):Promise<WorkspaceRegistry>{
  validateEntries(entries);
- const registry=new WorkspaceRegistry(),active=entries.filter(entry=>!entry.revoked&&pinned(entry));
+ const registry=new WorkspaceRegistry(path,privateRoot?[privateRoot]:[]),active=entries.filter(entry=>!entry.revoked&&pinned(entry));
  for(const entry of [...active.filter(entry=>entry.role===undefined),...active.filter(entry=>entry.role!==undefined)])
   if(pinned(entry))await registry.importTrusted(asGrant(entry));
  if(entries.some(entry=>entry.role!==undefined)){
@@ -92,7 +99,7 @@ async function validatedRegistry(entries:Entry[]):Promise<WorkspaceRegistry>{
  */
 export async function loadTrustedRegistry(dir=identityDirectory()):Promise<WorkspaceRegistry>{
  if(!protectedStateCapability().available)return new WorkspaceRegistry();
- return validatedRegistry(await readEntries(dir));
+ return validatedRegistry(await readEntries(dir),dir);
 }
 /** Recheck durable revocation/epoch and root identity before and during native work. */
 export async function requirePersistedGrant(registry:WorkspaceRegistry,workspaceId:string,dir=identityDirectory(),permission:WorkspacePermission="execute"):Promise<WorkspaceGrant>{
@@ -102,7 +109,7 @@ export async function requirePersistedGrant(registry:WorkspaceRegistry,workspace
  if(!entry||!pinned(entry)||!entry.permissions.includes("read")||!entry.permissions.includes(permission))throw Error("WORKSPACE_GRANT_REVOKED");
  if(entry.role!==live.role||entry.root!==live.canonicalRoot||entry.revision!==live.revision||entry.rootIdentity.device!==live.rootIdentity.device||
    entry.rootIdentity.inode!==live.rootIdentity.inode||JSON.stringify([...entry.permissions].sort())!==JSON.stringify([...live.permissions].sort()))throw Error("WORKSPACE_GRANT_CHANGED");
- return new WorkspaceRegistry().importTrusted(asGrant(entry));
+ return new WorkspaceRegistry(path,[dir]).importTrusted(asGrant(entry));
 }
 /** Cross-process lock files are never guessed stale from PIDs or timestamps. */
 type Publication={published:boolean};
@@ -133,9 +140,14 @@ async function withGrantLock<T>(dir:string,operation:(publication:Publication)=>
  if(failed)throw publication.published?publicationError(error):error;
  return result as T;
 }
-async function persistEntries(dir:string,entries:Entry[],publication:Publication,beforePublish?:BeforePublish):Promise<void>{
+async function persistEntries(dir:string,entries:Entry[],publication:Publication,beforePublish?:BeforePublish,revisionFloor=0):Promise<void>{
  validateEntries(entries);
- const payload=JSON.stringify(entries,null,2)+"\n";
+ const compact=entries.filter(entry=>entry.revoked).length>256;
+ if(compact||revisionFloor>0){
+  revisionFloor=entries.reduce((floor,entry)=>Math.max(floor,entry.revision??0),revisionFloor);
+  if(compact)entries=entries.filter(entry=>!entry.revoked);
+ }
+ const payload=JSON.stringify(revisionFloor>0?{format:"gsa-grants-v2",revision_floor:revisionFloor,entries}:entries,null,2)+"\n";
  if(Buffer.byteLength(payload)>1024*1024)throw Error("GRANT_STORE_QUOTA");
  const tmp=path.join(dir,".workspaces-"+randomBytes(16).toString("hex"));
  const handle=await fs.open(tmp,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
@@ -179,34 +191,34 @@ export async function enrollRolesTrustedBatch(requests:readonly WorkspaceRoleReq
   return {id:request.id,root:request.root,role:request.role};
  });
  return withGrantLock(dir,async publication=>{
-  const previous=await readEntries(dir),requestedIds=new Set(selections.map(request=>request.id));
+  const stored=await readStore(dir),previous=stored.entries,requestedIds=new Set(selections.map(request=>request.id));
   // Selected old roots may have disappeared. Only retained active roots need their old identity verified.
   const retained=previous.filter(entry=>!requestedIds.has(entry.id));
-  const observed=await new WorkspaceRegistry().enrollRolesTrusted(selections);
+  const observed=await new WorkspaceRegistry(path,[dir]).enrollRolesTrusted(selections);
   const chosen=observed.map(grant=>{
    const old=previous.find(entry=>entry.id===grant.id);
    const identical=old&&!old.revoked&&old.role===grant.role&&old.root===grant.canonicalRoot&&
     old.rootIdentity?.device===grant.rootIdentity.device&&old.rootIdentity?.inode===grant.rootIdentity.inode&&
     new Set(old.permissions).size===new Set(grant.permissions).size&&old.permissions.every(permission=>grant.permissions.includes(permission));
-   const revision=identical?old.revision!:(old?.revision??0)+1;
+   const revision=identical?old.revision!:Math.max(old?.revision??0,stored.revisionFloor)+1;
    if(!Number.isSafeInteger(revision))throw Error("INVALID_GRANT_STORE");
    return {...grant,revision};
   });
   const next:Entry[]=[...retained,...chosen.map(grant=>({id:grant.id,root:grant.canonicalRoot,role:grant.role,permissions:[...grant.permissions],rootIdentity:{...grant.rootIdentity},revision:grant.revision}))];
-  const registry=await validatedRegistry(next);
+  const registry=await validatedRegistry(next,dir);
   const bound=chosen.map(grant=>({id:grant.id,root:grant.canonicalRoot,grant:registry.get(grant.id)!}));
-  await persistEntries(dir,next,publication,beforePublish);return bound;
+  await persistEntries(dir,next,publication,beforePublish,stored.revisionFloor);return bound;
  });
 }
 async function enrollBatch(requests:ReadonlyArray<{id:string;root:string}>,permissions:WorkspacePermission[],dir:string,beforePublish?:BeforePublish):Promise<Array<{id:string;root:string;grant:WorkspaceGrant}>>{
  if(!requests.length||requests.length>16)throw Error("INVALID_ARGUMENTS");
  return withGrantLock(dir,async publication=>{
-  const previous=await readEntries(dir),next=previous.slice(),bound:Array<{id:string;root:string;grant:WorkspaceGrant}>=[];
+  const stored=await readStore(dir),previous=stored.entries,next=previous.slice(),bound:Array<{id:string;root:string;grant:WorkspaceGrant}>=[];
   for(const request of requests){
    if(previous.some(entry=>entry.id===request.id&&entry.role!==undefined))
     throw new ConnectorError("PERMISSION_DENIED","This ID has an explicit role; use explicit workspace/reference role selection");
-   const observed=await new WorkspaceRegistry().enrollTrusted(request.id,request.root,permissions);
-   const old=next.find(entry=>entry.id===request.id),revision=(old?.revision??0)+1;
+   const observed=await new WorkspaceRegistry(path,[dir]).enrollTrusted(request.id,request.root,permissions);
+   const old=next.find(entry=>entry.id===request.id),revision=Math.max(old?.revision??0,stored.revisionFloor)+1;
    if(!Number.isSafeInteger(revision))throw Error("INVALID_GRANT_STORE");
    const root=observed.canonicalRoot,grant={...observed,revision};
    if(bound.some(entry=>entry.id===request.id)||next.some(entry=>!entry.revoked&&entry.id!==request.id&&entry.root===root))throw Error("WORKSPACE_DUPLICATE_ROOT");
@@ -214,21 +226,21 @@ async function enrollBatch(requests:ReadonlyArray<{id:string;root:string}>,permi
    next.push({id:request.id,root,permissions:[...permissions],rootIdentity:{...grant.rootIdentity},revision});
    bound.push({id:request.id,root,grant});
   }
-  if(next.some(entry=>entry.role!==undefined))await validatedRegistry(next);
-  await persistEntries(dir,next,publication,beforePublish);return bound;
+  if(next.some(entry=>entry.role!==undefined))await validatedRegistry(next,dir);
+  await persistEntries(dir,next,publication,beforePublish,stored.revisionFloor);return bound;
  });
 }
 export async function revokeTrusted(id:string,dir=identityDirectory(),beforePublish?:BeforePublish):Promise<void>{
  await withGrantLock(dir,async publication=>{
-  const entries=await readEntries(dir),entry=entries.find(value=>value.id===id&&!value.revoked);
+  const stored=await readStore(dir),entries=stored.entries,entry=entries.find(value=>value.id===id&&!value.revoked);
   if(!entry)throw Error("WORKSPACE_NOT_FOUND");
   if(!pinned(entry)){
    // Legacy entries cannot authorize access and have no meaningful persisted epoch.
    const next=entries.filter(value=>value.id!==id);
-   await persistEntries(dir,next,publication,beforePublish);return;
+   await persistEntries(dir,next,publication,beforePublish,stored.revisionFloor);return;
   }
-  const revision=entry.revision+1;if(!Number.isSafeInteger(revision))throw Error("INVALID_GRANT_STORE");
+  const revision=Math.max(entry.revision,stored.revisionFloor)+1;if(!Number.isSafeInteger(revision))throw Error("INVALID_GRANT_STORE");
   const next:Entry[]=entries.map(value=>value===entry?{...entry,permissions:[],revoked:true,revision}:value);
-  await persistEntries(dir,next,publication,beforePublish);
+  await persistEntries(dir,next,publication,beforePublish,stored.revisionFloor);
  });
 }

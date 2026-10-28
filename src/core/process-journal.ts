@@ -5,6 +5,7 @@ export interface ProcessJournalRecord {
  stdout:string;stderr:string;output_complete:boolean;output_limited?:boolean;
 }
 export interface ProcessJournal {
+ health?():{unreadable_records:number;unresolved_records?:number;admission_blocked:boolean};
  list():Promise<ProcessJournalRecord[]>;
  load(id:string):Promise<ProcessJournalRecord|null>;
  create(record:ProcessJournalRecord):Promise<void>;

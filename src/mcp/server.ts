@@ -1,3 +1,4 @@
+import {hasReservedWorkspaceSegment} from "../core/workspace-path.js";
 import {assertDirectoryCopyId,validateDirectoryCopyOutcome,directoryManifestDigest,type DirectoryManifest,type DirectoryEntry} from "../core/directory-copy.js";
 import {assertFileTransactionId,fileTransactionOutcome} from "../core/file-transactions.js";
 import {protectedStateCapability,requireProtectedState} from "../local/protected-state.js";
@@ -64,7 +65,7 @@ function publicDirectoryManifest(value:unknown):DirectoryManifest {
   const descriptor=Object.getOwnPropertyDescriptor(raw,"kind"),kind=descriptor&&"value" in descriptor?descriptor.value:undefined;
   if(kind!=="file"&&kind!=="directory")fail();
   const e=exact(raw,kind==="file"?["path","kind","size","sha256"]:["path","kind"]),name=e.path;
-  if(typeof name!=="string"||Buffer.byteLength(name)>4096||Buffer.from(name).toString("utf8")!==name||seen.has(name)||name!==""&&(name.split("/").length>16||name.split("/").some(p=>!p||p==="."||p===".."||p.includes("\\")||p.includes("\0")||p.toLowerCase()===".gsa-trash")))fail();
+  if(typeof name!=="string"||Buffer.byteLength(name)>4096||Buffer.from(name).toString("utf8")!==name||seen.has(name)||name!==""&&(name.split("/").length>16||(hasReservedWorkspaceSegment(name)||name.split("/").some(p=>!p||p==="."||p===".."||p.includes("\\")||p.includes("\0")))))fail();
   const nameString=name as string;
   if(!entries.length){if(nameString!==""||kind!=="directory")fail();}
   else if(!nameString||Buffer.compare(Buffer.from(entries.at(-1)!.path),Buffer.from(nameString))>=0||seen.get(nameString.includes("/")?nameString.slice(0,nameString.lastIndexOf("/")):"")?.kind!=="directory")fail();
@@ -142,7 +143,9 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
     return {state:observations.every(value=>value.state==="STOPPED")?"STOPPED":"UNKNOWN",pending_starts:observations.reduce((sum,value)=>sum+value.pending_starts,0),outcomes};
   };
   const processHistory=()=>options.processPersistence?{
-    processHistory:"persisted-start_process-and-run_command",processHistoryLimit:1000,processJournalLimit:null
+    processHistory:"persisted-start_process-and-run_command",processHistoryLimit:1000,processJournalLimit:null,
+    processRecovery:options.processPersistence.store.health?.()??{unreadable_records:0,admission_blocked:false},
+    ...(options.processPersistence.store.health?.().admission_blocked?{restartRecovery:"degraded-process-journal"}:{})
   }:{processHistory:"current-server-only; newest 128 terminal native receipts"};
   const sourceService=()=>new CiSourceCaptureService(sourceCapture,snapshots??new CiSnapshotStore(),ciStore??new CiJournalStore());
   let coordinator:CiRunService|null=null;
@@ -188,7 +191,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            readyForShell:!!sandbox?.verified,executionEnvironment:sandbox?.verified?"linux-arm64-vm":null,
            workspaceMode:sandbox?.verified?"disposable-snapshot":null,...fileCapabilities(),git:"blocked",
            workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",
-           ...processHistory(),restartRecovery:"blocked"};}break;
+           ...processHistory(),restartRecovery:options.processPersistence?.store.health?.().admission_blocked?"degraded-process-journal":"blocked"};}break;
         case "list_workspaces":
           if(Object.keys(args).length) throw Error("INVALID_ARGUMENTS");
           result=registry.list().map(g=>({workspace_id:g.id,role:g.role??null,permissions:g.permissions,revision:g.revision}));break;
@@ -357,7 +360,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            if(directoryAvailable())read.push("inspect_directory","get_directory_copy");
            const files=protectedStorage.available?[...fileOperations,...(batchFileWrites?["batch_file_operations"]:[])]:[];
            const enabled=new Set([...read,...files,...execution,...ci,...(controlStore&&protectedStorage.available?["acquire_control","renew_control","release_control"]:[])]);
-           result={workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,read,files,execution,ci,blocked:plannedTools.map(t=>t.name).filter(n=>!enabled.has(n)),shellIsolation:sandbox?.verified?"verified":"blocked",...fileCapabilities(),...processHistory(),git:"blocked",executionEnvironment:sandbox?.verified?"linux-arm64-vm":null,workspaceMode:sandbox?.verified?"disposable-snapshot":null,restartRecovery:"blocked"};
+           result={workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,read,files,execution,ci,blocked:plannedTools.map(t=>t.name).filter(n=>!enabled.has(n)),shellIsolation:sandbox?.verified?"verified":"blocked",...fileCapabilities(),...processHistory(),git:"blocked",executionEnvironment:sandbox?.verified?"linux-arm64-vm":null,workspaceMode:sandbox?.verified?"disposable-snapshot":null,restartRecovery:options.processPersistence?.store.health?.().admission_blocked?"degraded-process-journal":"blocked"};
           }break;
         case "glob":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||typeof args.pattern!=="string"||Object.keys(args).length!==3||args.pattern.length>160||!args.pattern)throw Error("INVALID_ARGUMENTS");

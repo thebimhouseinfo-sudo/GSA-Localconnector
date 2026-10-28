@@ -18,3 +18,6 @@ export function validateWorkspaceRelative(value:string,allowRoot=false):string {
  if(parts.some(x=>!x||x==="."||x===".."||x.endsWith(".")||x.endsWith(" ")||x.includes(":")||WINDOWS_RESERVED.test(x)))fail("Unsafe relative path segment");
  return value;
 }
+
+/** Reserved support names are matched by segment, preserving existing caller-specific errors. */
+export function hasReservedWorkspaceSegment(value:string):boolean {return value.split("/").some(part=>part.toLowerCase()===".gsa-trash");}

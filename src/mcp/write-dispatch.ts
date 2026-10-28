@@ -1,5 +1,5 @@
 import {assertDirectoryCopyId} from "../core/directory-copy.js";
-import {validateWorkspaceRelative} from "../core/workspace-path.js";
+import {validateWorkspaceRelative,hasReservedWorkspaceSegment} from "../core/workspace-path.js";
 import {WorkspaceRegistry} from "../core/workspace.js";
 import {requireNativeBackend,type NativeScopedFiles,type ScopedFileRef} from "../core/native-io.js";
 import {createFile,updateFile,editFile,applyPatch,createDirectory,trashFile,copyFile,moveFile} from "../core/write-engine.js";
@@ -12,7 +12,7 @@ const ref=(reg:WorkspaceRegistry,id:string,path:string,permission:"read"|"write"
  return {workspace_id:id,path};
 };
 export function directoryPath(value:unknown,source:boolean):string {
- if(typeof value!=="string"||!value||Buffer.byteLength(value)>4096||Buffer.from(value).toString("utf8")!==value||value.split("/").some(p=>p.toLowerCase()===".gsa-trash"))throw Error("INVALID_ARGUMENTS");
+ if(typeof value!=="string"||!value||Buffer.byteLength(value)>4096||Buffer.from(value).toString("utf8")!==value||hasReservedWorkspaceSegment(value))throw Error("INVALID_ARGUMENTS");
  return validateWorkspaceRelative(value,source);
 }
 /** Functional MCP mutation dispatcher; may only be called when a native backend has

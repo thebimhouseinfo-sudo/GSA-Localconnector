@@ -307,3 +307,15 @@ Final harness verification and gate/status observations are recorded below after
 ### Follow-up: real Mac check requested by Human
 
 See [2026-10-28 real Mac acceptance evidence](../reports/2026-10-28-REAL-MAC-ACCEPTANCE.md). The signed release broker passed seven narrow native cases on disposable roots. The live gsa-lc-mac endpoint still reports shell/Git and most file mutations blocked, directory installation unsafe/stale, and the previous journal-count limit. The host Seatbelt candidate aborted its allowed command and the test skipped (0 pass). Thus complete Mac readiness and deployment of these source repairs are not established. Human's conditional push/Windows transition was not performed. These observations do not invalidate the recorded source regression-test results or change any milestone status.
+
+### Round3 continuation evidence
+
+Fresh preservation baseline on2026-10-28: build exit0, npm test exit0 **532/529/0/3** (`/tmp/gsa-r3-baseline-test.log`). All per-finding historical red-test commands and final green outcomes above remain recorded; no red history is replaced with an unobserved claim. Item10 remains skipped by Human decision. Later hardening of the1/3 journal repair and12 tombstone repair is explicitly tracked as new findings20/21 in [Round3](2026-10-28-CODE-REVIEW-ROUND3-FOR-CODEX.md), not silently presented as part of the original patch. Final integrated product suite after17–21: **538total/535pass/0fail/3skipped**, build/test exit0. Native qualification remains separate.
+
+
+Round3 independent review reopened item20 for a reproduced create-versus-archive ID race despite the538/535/0/3 green suite. The current integrated source is not approved for the17–21 commit group. Original1–16 patch is preserved separately at `/tmp/gsa-review-group1.patch`; no index changes or commits were performed. See Round3 checkpoint for the exact next regression/repair.
+
+
+### Superseding Round3 verification — 2026-10-28
+
+The item20 create/archive race and subsequent leftover-lock startup regression are repaired and independently reviewed PASS; see Round3 final continuation for actual red tests, failed drafts and independent bootstrap evidence. Final product suite observed540total/537pass/0fail/3skipped, build/test exit0; original pre-Round3 preservation baseline532/529/0/3 and original pre-repair baseline514/511/0/3 remain distinct. Findings1–16 retain their per-item evidence and statuses; item10 stays skipped for P04 by Human decision. No native readiness, deployed-source acceptance, commit, push or milestone completion follows from these source tests.

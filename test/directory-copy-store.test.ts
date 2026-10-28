@@ -148,14 +148,16 @@ async function injectOwnedSyncFailure(t:any,root:string,lock:string,target:(file
 
 async function preserveAssertionFailure(x:Awaited<ReturnType<typeof fixture>>,body:()=>Promise<void>|void){try{await body();}catch(error){x.preserve();throw error;}}
 
-test('initial lock descriptor sync EIO preserves the error and publishes no transaction',async t=>{
- const copyId='6c3cdce6-0d6d-4be5-93e9-c711ae66a00c',x=await fixture(t),lock=path.join(x.protectedRoot,copyId+'.lock'),record=path.join(x.protectedRoot,copyId+'.json');
- const failure=await injectOwnedSyncFailure(t,x.protectedRoot,lock,file=>file===lock,'lock');let observed:any;
- try{await x.store.create(copyId,x.intent);}catch(error){observed=error;}finally{await failure.finish(x.preserve);}
- await preserveAssertionFailure(x,async()=>{assert.equal(observed,failure.failure);assert.equal(failure.injected,true);assert.deepEqual(failure.events,['open:lock','sync:lock','inject:lock']);
- await assert.rejects(fs.lstat(lock),{code:'ENOENT'});await assert.rejects(fs.lstat(record),{code:'ENOENT'});
- assert.deepEqual((await fs.readdir(x.protectedRoot)).filter(name=>name.startsWith('.transaction-')),[]);
- const retry=await new DirectoryCopyStore(x.protectedRoot).create(copyId,x.intent);assert.equal(retry.created,true);assert.equal(retry.record.revision,1);});
+test('unused coordination-lock sync failure cannot prevent a durably published intent',async t=>{
+ const copyId='6c3cdce6-0d6d-4be5-93e9-c711ae66a00c',x=await fixture(t),lock=path.join(x.protectedRoot,copyId+'.lock');
+ const failure=await injectOwnedSyncFailure(t,x.protectedRoot,lock,file=>file===lock,'lock');let created;
+ try{created=await x.store.create(copyId,x.intent);}finally{await failure.finish(x.preserve);}
+ await preserveAssertionFailure(x,async()=>{
+  assert.equal(failure.injected,false);assert.deepEqual(failure.events,['open:lock']);assert.equal(created?.created,true);
+  await assert.rejects(fs.lstat(lock),{code:'ENOENT'});assert.equal((await x.store.load(copyId)).status,'PENDING');
+  assert.deepEqual((await fs.readdir(x.protectedRoot)).filter(name=>name.startsWith('.transaction-')),[]);
+  assert.equal((await new DirectoryCopyStore(x.protectedRoot).create(copyId,x.intent)).created,false);
+ });
 });
 
 test('initial publication temp sync EIO follows a real write then cleans only its temp',async t=>{
@@ -166,4 +168,14 @@ test('initial publication temp sync EIO follows a real write then cleans only it
  await assert.rejects(fs.lstat(record),{code:'ENOENT'});assert.deepEqual((await fs.readdir(x.protectedRoot)).filter(name=>name.startsWith('.transaction-')),[]);
  assert.deepEqual((await fs.readdir(x.protectedRoot)).filter(name=>name===`${copyId}.lock`),[]);
  const retry=await new DirectoryCopyStore(x.protectedRoot).create(copyId,x.intent);assert.equal(retry.created,true);assert.equal(retry.record.revision,1);});
+});
+test('coordination locks avoid sync while every journal publication stays durable',async t=>{
+ const x=await fixture(t),open=fs.open.bind(fs);let lockSyncs=0,recordSyncs=0,directorySyncs=0;
+ t.mock.method(fs,'open',async(file:any,...args:any[])=>{
+  const fd=await (open as any)(file,...args),sync=fd.sync.bind(fd);
+  t.mock.method(fd,'sync',async()=>{if(String(file).endsWith('.lock'))lockSyncs++;else if(String(file).includes('.transaction-'))recordSyncs++;else if(String(file)===x.protectedRoot)directorySyncs++;return sync();});return fd;
+ });
+ await x.store.create(id,x.intent);await x.store.beginEntry(id,1,'');
+ assert.equal(lockSyncs,0,'empty coordination locks do not need data durability');
+ assert.equal(recordSyncs,2);assert.equal(directorySyncs,2,'each published intent/progress must sync its directory');
 });

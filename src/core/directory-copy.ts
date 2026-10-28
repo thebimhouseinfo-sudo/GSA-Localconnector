@@ -1,6 +1,6 @@
 import {createHash} from "node:crypto";
 import type {ScopedFileRef} from "./native-io.js";
-import {validateWorkspaceRelative} from "./workspace-path.js";
+import {validateWorkspaceRelative,hasReservedWorkspaceSegment} from "./workspace-path.js";
 
 export type DirectoryEntry =
  {readonly path:string;readonly kind:"directory"} |
@@ -42,7 +42,7 @@ function safeSize(value:unknown):value is number{return typeof value==="number" 
 function validPath(value:unknown):value is string {
  if(typeof value!=="string" || Buffer.byteLength(value)>4096 || Buffer.from(value).toString("utf8")!==value)return false;
  if(value==="")return true;
- const parts=value.split("/");return parts.length<=16 && parts.every(p=>p!=="" && p!=="." && p!==".." && !p.includes("\\") && !p.includes("\0") && p.toLowerCase()!==".gsa-trash");
+ const parts=value.split("/");return parts.length<=16 && !hasReservedWorkspaceSegment(value) && parts.every(p=>p!=="" && p!=="." && p!==".." && !p.includes("\\") && !p.includes("\0"));
 }
 function compare(a:{path:string},b:{path:string}):number{return Buffer.compare(Buffer.from(a.path),Buffer.from(b.path));}
 function canonical(entries:readonly DirectoryEntry[]):string {
@@ -149,7 +149,7 @@ export function cloneDirectoryCopyIntent(value:unknown):DirectoryCopyIntent {
  const pin=(value:unknown,source:boolean):DirectoryCopyPinnedRef=>{
   const p=metadataObject(value,["workspace_id","path","canonical_root","role","revision","rootIdentity","permissions"]);
   if(typeof p.workspace_id!=="string"||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(p.workspace_id))invalidCopy("workspace ID");
-  if(typeof p.path!=="string"||!p.path||Buffer.byteLength(p.path)>4096||Buffer.from(p.path).toString("utf8")!==p.path||p.path.split("/").some(part=>part.toLowerCase()===".gsa-trash"))invalidCopy("path");
+  if(typeof p.path!=="string"||!p.path||Buffer.byteLength(p.path)>4096||Buffer.from(p.path).toString("utf8")!==p.path||hasReservedWorkspaceSegment(p.path))invalidCopy("path");
   try{validateWorkspaceRelative(p.path,source);}catch{invalidCopy("path");}
   if(typeof p.canonical_root!=="string"||!p.canonical_root.startsWith("/")||p.canonical_root==="/"||p.canonical_root.split("/").slice(1).some(x=>!x||x==="."||x==="..")||p.canonical_root.includes("\0")||Buffer.byteLength(p.canonical_root)>4096||Buffer.from(p.canonical_root).toString("utf8")!==p.canonical_root)invalidCopy("canonical root");
   if(!Number.isSafeInteger(p.revision)||(p.revision as number)<1||!["reference","workspace"].includes(p.role as string))invalidCopy("pin revision/role");
@@ -210,7 +210,7 @@ export function validateDirectoryCopyOutcome(value:unknown):DirectoryCopyOutcome
  const hash=(v:unknown):v is string=>typeof v==="string"&&/^[a-f0-9]{64}$/.test(v);
  const ref=(value:unknown,source:boolean):ScopedFileRef=>{
   const p=metadataObject(value,["workspace_id","path"]);
-  if(typeof p.workspace_id!=="string"||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(p.workspace_id)||!text(p.path,4096)||p.path.split("/").some(x=>x.toLowerCase()===".gsa-trash"))invalidCopy("public reference");
+  if(typeof p.workspace_id!=="string"||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(p.workspace_id)||!text(p.path,4096)||hasReservedWorkspaceSegment(p.path))invalidCopy("public reference");
   try{validateWorkspaceRelative(p.path,source);}catch{invalidCopy("public path");}
   return {workspace_id:p.workspace_id,path:p.path};
  };

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import {constants} from "node:fs";
 import path from "node:path";
-import {randomUUID} from "node:crypto";
+import {withProtectedJournalLock,publishProtectedJournal,type ProtectedJournalContext} from "./protected-journal-io.js";
 import {isDeepStrictEqual} from "node:util";
 import {assertDirectoryCopyId,assertDirectoryCopyIntentBudget,cloneDirectoryCopyIntent,cloneDirectoryCopyRecord,directoryCopySchedule,DirectoryCopyError,type DirectoryCopyIntent,type DirectoryCopyRecord,type DirectoryCopyStoreApi} from "../core/directory-copy.js";
 
@@ -49,47 +49,14 @@ export class DirectoryCopyStore implements DirectoryCopyStoreApi {
    const record=cloneDirectoryCopyRecord(parsed as DirectoryCopyRecord);if(record.copy_id!==id)fail("INVALID_DIRECTORY_COPY","Journal identity mismatch");return record;
   }finally{await fd.close();}
  }
- private async locked<T>(id:string,operation:()=>Promise<T>):Promise<T>{
-  assertDirectoryCopyId(id);await this.directory();
-  const lock=path.join(this.root,id+".lock");let fd;
-  try{fd=await fs.open(lock,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);}
-  catch(error){if((error as NodeJS.ErrnoException).code==="EEXIST")fail("DIRECTORY_COPY_LOCKED","Transaction lock exists; automatic stale-lock removal is forbidden");throw error;}
-  let owned;
-  try{owned=await fd.stat({bigint:true});}
-  catch(error){
-   // Identity is unverified: close our descriptor, but retain the named lock.
-   try{await fd.close();}
-   catch{throw new DirectoryCopyError("RESULT_UNKNOWN","Initial lock identity and descriptor release are uncertain; inspect durable state");}
-   throw error;
-  }
-  try{await fd.sync();await this.syncDirectory();await this.directory();return await operation();}
-  finally{
-   try{
-    await fd.close();
-    // Never remove a replacement lock belonging to another writer.
-    const named=await fs.lstat(lock,{bigint:true});
-    if(identity(named)!==identity(owned)||!named.isFile()||named.nlink!==1n)fail("RESULT_UNKNOWN","Transaction lock ownership changed; inspect durable state");
-    await this.directory();await fs.unlink(lock);await this.syncDirectory();
-   }catch{throw new DirectoryCopyError("RESULT_UNKNOWN","Journal operation or lock release is uncertain; inspect durable state");}
-  }
+ private journalContext():ProtectedJournalContext{return {root:this.root,directory:()=>this.directory(),syncDirectory:()=>this.syncDirectory(),error:(code,message)=>new DirectoryCopyError(code,message),lockedCode:"DIRECTORY_COPY_LOCKED",durableLock:false};}
+ private locked<T>(id:string,operation:()=>Promise<T>):Promise<T>{
+  assertDirectoryCopyId(id);return withProtectedJournalLock(this.journalContext(),id,operation);
  }
  private async publish(record:DirectoryCopyRecord,exclusive:boolean):Promise<void>{
   const copy=cloneDirectoryCopyRecord(record),encoded=JSON.stringify(copy)+"\n";
   if(Buffer.byteLength(encoded)>MAX)fail("DIRECTORY_COPY_RECORD_LIMIT","Journal metadata exceeds limit");
-  const target=this.file(copy.copy_id),temporary=path.join(this.root,".transaction-"+randomUUID());let published=false,tempExists=false;
-  try{
-   await this.directory();const fd=await fs.open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);tempExists=true;
-   try{await fd.writeFile(encoded);await fd.sync();}finally{await fd.close();}
-   await this.directory();
-   if(exclusive){
-    // Link publishes a complete inode without overwriting an existing ID. The brief
-    // two-link window is rejected by readers until the private temp name is removed.
-    await fs.link(temporary,target);published=true;
-    await fs.unlink(temporary);tempExists=false;
-   }else{await fs.rename(temporary,target);published=true;tempExists=false;}
-   await this.syncDirectory();await this.directory();
-  }catch(error){if(published)throw new DirectoryCopyError("RESULT_UNKNOWN","Journal publication may have completed; inspect the transaction before continuing");throw error;}
-  finally{if(tempExists&&!published){await this.directory();await fs.unlink(temporary);}}
+  await publishProtectedJournal(this.journalContext(),this.file(copy.copy_id),encoded,exclusive);
  }
  async create(id:string,intent:DirectoryCopyIntent):Promise<{record:DirectoryCopyRecord;created:boolean}>{
   assertDirectoryCopyId(id);const captured=cloneDirectoryCopyIntent(intent);assertDirectoryCopyIntentBudget(captured);

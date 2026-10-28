@@ -164,7 +164,8 @@ test("HTTP CLI loads persisted workspace grants from an isolated user profile",{
  const socket=createServer();await new Promise<void>((resolve,reject)=>{socket.once("error",reject);socket.listen(0,"127.0.0.1",resolve);});
  const port=(socket.address() as AddressInfo).port;await new Promise<void>(r=>socket.close(()=>r()));
  const local=path.join(tmp,"local");const grants=process.platform==="win32"?path.join(local,"GSA-Localconnector"):path.join(tmp,"Library","Application Support","GSA-Localconnector");
- await enrollReadOnly("fixture",tmp,grants);
+ const project=path.join(tmp,"project");await fs.mkdir(project);
+ await enrollReadOnly("fixture",project,grants);
  const token="test-only-http-cli-token-of-at-least-32-chars";
  const child=spawn(process.execPath,[fileURLToPath(new URL("../src/mcp/http-cli.js",import.meta.url))],{env:{...process.env,HOME:tmp,USERPROFILE:tmp,LOCALAPPDATA:local,MCP_HTTP_PORT:String(port),MCP_HTTP_TOKEN:token},stdio:["ignore","ignore","pipe"]});
  try{
