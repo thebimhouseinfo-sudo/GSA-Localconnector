@@ -103,6 +103,7 @@ export function evaluateCaptureGate(observation,expected){
 
 export function assertStoppedCapture(observation,expected){
  demand(evaluateCaptureGate(observation,expected).eligible,'CAPTURE_GATE');
+ demand(observation.freshCaptured?.present===true&&sameIdentity(observation.freshCaptured,expected.capturedIdentity),'CAPTURE_IDENTITY');
  demand(typeof observation.state==='string'&&/^T/.test(observation.state)&&observation.sourceAbsent===true&&observation.staged?.present===true&&sameIdentity(observation.staged,expected.stagedIdentity),'STOPPED_CAPTURE_PHASE');
  return true;
 }
@@ -122,6 +123,52 @@ export function validateObserverEvent(value,expected,kind){
 export function createObserverLines(expected){
  const decoder=new TextDecoder('utf-8',{fatal:true});let bytes=0,pending='',count=0;
  return Object.freeze({push(chunk){bytes+=chunk.length;demand(bytes<=bounds.observerBytes,'OBSERVER_OUTPUT_LIMIT');pending+=decoder.decode(chunk,{stream:true});const events=[];let end;while((end=pending.indexOf('\n'))>=0){demand(count<2,'OBSERVER_RECORD_ORDER');const line=pending.slice(0,end);pending=pending.slice(end+1);const value=validateObserverEvent(JSON.parse(line),expected,count===0?'ready':'watch');count++;events.push(value);}return events;},finish(){pending+=decoder.decode();demand(count===2&&pending==='','OBSERVER_RECEIPT_MISSING');return true;}});
+}
+
+/** Data-only spawn options; no native authority is exported. */
+export function buildTransportOptions(options={},ownerEnvironment=process.env){
+ const env={PATH:'/usr/bin:/bin',HOME:'/var/empty',LANG:'C',TMPDIR:'/private/tmp',...options.env};
+ if(options.ownerFD){
+  demand(ownerEnvironment.GSA_OWNER_LOCK_FD==='3'&&typeof ownerEnvironment.GSA_OWNER_SESSION==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(ownerEnvironment.GSA_OWNER_SESSION),'OWNER_BINDING');
+  env.GSA_OWNER_LOCK_FD='3';env.GSA_OWNER_SESSION=ownerEnvironment.GSA_OWNER_SESSION;
+ }
+ return {shell:false,env,stdio:options.ownerFD?['pipe','pipe','pipe',3]:['pipe','pipe','pipe']};
+}
+/** Callbacks see a chunk only after its durable write resolves. */
+export function createDurableObserverStream({write,onChunk,signal,maxBytes=bounds.observerBytes}){
+ demand(typeof write==='function'&&typeof onChunk==='function'&&Number.isSafeInteger(maxBytes)&&maxBytes>=0&&maxBytes<=bounds.observerBytes,'OBSERVER_STREAM_ARGUMENT');
+ let bytes=0,tail=Promise.resolve(),failed;
+ const cancel=error=>{failed??=error instanceof Error?error:failure('OBSERVER_CANCELLED');};
+ if(signal){demand(typeof signal.addEventListener==='function'&&typeof signal.aborted==='boolean','OBSERVER_STREAM_ARGUMENT');if(signal.aborted)cancel(signal.reason);else signal.addEventListener('abort',()=>cancel(signal.reason),{once:true});}
+ return Object.freeze({
+  push(chunk){
+   const copy=Buffer.from(chunk);bytes+=copy.length;
+   if(bytes>maxBytes){failed??=failure('OBSERVER_OUTPUT_LIMIT');return Promise.reject(failed);}
+   tail=tail.then(async()=>{await write(copy);if(failed)throw failed;await onChunk(copy);}).catch(error=>{failed??=error;throw error;});return tail;
+  },
+  cancel,
+  async finish(){await tail;if(failed)throw failed;}
+ });
+}
+/** Prevent queued observer events from escaping after a known failed close. */
+export function guardObserverClose(stream,result,{rejected,allowFailure=false}={}){
+ if(!stream)return false;
+ const error=rejected??(result?.timedOut?failure('CHILD_TIMEOUT'):!allowFailure&&result?.code!==0?failure('CHILD_EXIT'):undefined);
+ if(!error)return false;
+ stream.cancel(error);return true;
+}
+function evidenceReceipt({record,receipt,call,transactionId}){
+ demand(record&&receipt&&call&&record.transaction_id===transactionId&&call.transaction_id===transactionId&&record.variant==='production'&&call.variant==='production'&&record.operation==='replace'&&call.operation==='replace'&&Number.isSafeInteger(record.rawReceiptIndex)&&record.rawReceiptIndex>0&&receipt.kind==='broker'&&receipt.closed===true&&receipt.truncated===false&&receipt.files?.request?.sha256===call.requestSha256,'NATIVE_EVIDENCE_MISMATCH');
+}
+export function assertStagingEvidence(value){
+ evidenceReceipt(value);const {record,receipt,stagedBytes}=value;
+ demand(record.mode==='staging'&&record.expectedInterruption===true&&record.exitCode===null&&record.signal==='SIGXFSZ'&&receipt.exitCode===null&&receipt.signal==='SIGXFSZ'&&Number.isSafeInteger(stagedBytes)&&stagedBytes>0&&stagedBytes<=4096,'STAGING_EVIDENCE');return true;
+}
+export function assertLostAckEvidence(value){
+ evidenceReceipt(value);const {record,receipt,raw,transactionId}=value;
+ demand(record.mode==='lost-ack'&&record.deliberatelyDroppedAcknowledgement===true&&record.exitCode===0&&record.signal===null&&receipt.exitCode===0&&receipt.signal===null&&Buffer.isBuffer(raw)&&sha(raw)===receipt.files?.response?.sha256,'LOST_ACK_EVIDENCE');
+ let reply;try{reply=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw));}catch{throw failure('LOST_ACK_EVIDENCE');}
+ demand(reply?.ok===true&&reply.status==='APPLIED'&&reply.transaction_id===transactionId&&isDeepStrictEqual(reply,record.reply),'LOST_ACK_EVIDENCE');return true;
 }
 
 export function assertFrozenInputs(current,pinned){
@@ -238,24 +285,64 @@ async function persistReceipt(ctx,record){
  const prior=ctx.report.receiptTail??Promise.resolve();
  const task=prior.then(async()=>{const index=String(ctx.report.receipts.length+1).padStart(4,'0'),files={};for(const key of ['request','response','stderr']){const value=Buffer.from(record[key]??[]),file=path.join(ctx.stage,'receipts',ctx.role,`${index}-${key}.bin`);await durableWrite(file,value);files[key]={path:path.relative(ctx.stage,file),bytes:value.length,sha256:sha(value)};}const {request,response,stderr,...meta}=record;ctx.report.receipts.push({...meta,files});});ctx.report.receiptTail=task;await task;
 }
+/** A stream is independently reconstructible after interruption: metadata and
+ * request are durable first, then numbered raw chunks and descriptors. */
+export async function createObserverReceiptWriter({directory,streamId,role,phase,kind,pid,parentPid,executable,args,request,reserve}){
+ demand(typeof directory==='string'&&path.isAbsolute(directory)&&path.normalize(directory)===directory,'OBSERVER_RECEIPT_DIRECTORY');
+ await privateDirectory(directory);
+ demand(typeof streamId==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(streamId)&&['owner','worker'].includes(role)&&typeof phase==='string'&&phase.length>0&&phase.length<=128&&kind==='observer'&&Number.isSafeInteger(pid)&&pid>1&&Number.isSafeInteger(parentPid)&&parentPid>1&&typeof executable==='string'&&path.isAbsolute(executable)&&Array.isArray(args)&&args.every(value=>typeof value==='string')&&Buffer.isBuffer(request)&&request.length<=bounds.requestBytes&&typeof reserve==='function','OBSERVER_RECEIPT_BINDING');
+ const prefix='observer-stream-'+streamId,requestFile=prefix+'-request.bin',manifestFile=prefix+'-manifest.json';
+ const manifest=Buffer.from(JSON.stringify({format:'gsa-observer-stream-v1',stream_id:streamId,role,phase,kind,pid,parent_pid:parentPid,executable,args:[...args],request:{file:requestFile,bytes:request.length,sha256:sha(request)}}));
+ demand(manifest.length<=bounds.diagnosticBytes,'OBSERVER_RECEIPT_LIMIT');
+ reserve(request.length);await durableWrite(path.join(directory,requestFile),request);
+ reserve(manifest.length);await durableWrite(path.join(directory,manifestFile),manifest);
+ let index=0,pending=Promise.resolve();
+ return Object.freeze({streamId,manifestFile,write(chunk){
+  const bytes=Buffer.from(chunk);
+  const task=pending.then(async()=>{
+   const current=++index,number=String(current).padStart(6,'0'),file=prefix+'-chunk-'+number+'.bin',descriptorFile=prefix+'-chunk-'+number+'.json';
+   const descriptor=Buffer.from(JSON.stringify({stream_id:streamId,index:current,file,bytes:bytes.length,sha256:sha(bytes)}));
+   reserve(bytes.length);await durableWrite(path.join(directory,file),bytes);
+   reserve(descriptor.length);await durableWrite(path.join(directory,descriptorFile),descriptor);
+   return {stream_id:streamId,index:current,path:file,bytes:bytes.length,sha256:sha(bytes)};
+  });
+  pending=task;return task;
+ }});
+}
+function retainedNativeEvidence(ctx,transactionId,mode){
+ const record=ctx.report.nativeResults.findLast(value=>value.transaction_id===transactionId&&value.mode===mode);
+ const receipt=record&&ctx.report.receipts[record.rawReceiptIndex-1];
+ const call=ctx.nativeCalls.findLast(value=>value.transaction_id===transactionId&&value.operation==='replace'&&value.variant==='production');
+ return {record,receipt,call,transactionId};
+}
 /** Fixed owned handles only. Native authority never escapes this private module. */
 async function transport(ctx,kind,executable,args,input=Buffer.alloc(0),options={}){
  effect(ctx);demand(ctx.deadline-monotonic()>1700,'DEADLINE');ctx.budget.reserve({[kind]:1});const request=Buffer.from(input);demand(request.length<=bounds.requestBytes,'REQUEST_LIMIT');
  await checkpoint(ctx);
- let rejected,abortResolve;const abortPromise=new Promise(resolve=>abortResolve=resolve),abort=code=>{rejected??=failure(code);abortResolve();};
- const child=spawn(executable,args,{shell:false,env:{PATH:'/usr/bin:/bin',HOME:'/var/empty',LANG:'C',TMPDIR:'/private/tmp',...options.env},stdio:options.ownerFD?['pipe','pipe','pipe',3]:['pipe','pipe','pipe']});
- const closed=new Promise(resolve=>child.once('close',(code,signal)=>resolve({code,signal})));child.on('error',error=>{rejected??=error;abortResolve();});child.stdin.on('error',()=>{});
+ const observerAbort=new AbortController();
+ let rejected,abortResolve;const abortPromise=new Promise(resolve=>abortResolve=resolve),abort=cause=>{
+  if(rejected)return;rejected=cause instanceof Error?cause:failure(cause);observerAbort.abort(rejected);abortResolve();options.onFailure?.(rejected);
+ };
+ const child=spawn(executable,args,buildTransportOptions(options));
+ const closed=new Promise(resolve=>child.once('close',(code,signal)=>resolve({code,signal})));child.on('error',error=>abort(error));child.stdin.on('error',()=>{});
  const stdout=captureBoundedStream(child.stdout,kind==='broker'?bounds.responseBytes:kind==='observer'?bounds.observerBytes:65536,()=>abort('OUTPUT_LIMIT'));
  const stderr=captureBoundedStream(child.stderr,bounds.diagnosticBytes,()=>abort('DIAGNOSTIC_LIMIT'));
- let streamTail=Promise.resolve();if(options.onChunk)child.stdout.on('data',chunk=>{streamTail=streamTail.then(()=>options.onChunk(Buffer.from(chunk))).catch(error=>{rejected??=error;abortResolve();options.onFailure?.(error);});});
+ const streamId=options.onChunk?randomUUID():null;
+ const writerReady=streamId?createObserverReceiptWriter({directory:path.join(ctx.stage,'receipts',ctx.role),streamId,role:ctx.role,phase:ctx.report.phase,kind,pid:child.pid,parentPid:process.pid,executable,args,request,reserve:bytes=>{effect(ctx);return reserveReceiptBytes(ctx.report,bytes,ctx.receiptLimit);}}):null;
+ if(writerReady)void writerReady.catch(error=>abort(error));
+ const stream=writerReady?createDurableObserverStream({signal:observerAbort.signal,write:async bytes=>{const writer=await writerReady;const chunk=await writer.write(bytes);(ctx.report.observerChunks??=[]).push(chunk);},onChunk:options.onChunk}):null;
+ if(stream)child.stdout.on('data',chunk=>{void stream.push(chunk).catch(error=>abort(error));});
  const safe={get exitCode(){return child.exitCode;},get signalCode(){return child.signalCode;},kill(signal){ctx.budget.reserve({signals:1});return child.kill(signal);},unref:()=>child.unref(),stdin:child.stdin,stdout:child.stdout,stderr:child.stderr};
- const completion=(async()=>{let result;try{result=await observeOwnedClosure(safe,closed,{owner:kind==='owner',timeoutMs:Math.max(1,Math.min(options.timeoutMs??15000,ctx.deadline-monotonic()-1700)),abortPromise,termGraceMs:500,killGraceMs:1200},ctx.budget,ctx.report);}catch(error){ctx.budget.markUnknown();ctx.report.cleanupState='UNVERIFIED';await persistReceipt(ctx,{kind,executable,args,pid:child.pid??null,closed:false,error:String(error.code??error.message),request,response:stdout.bytes,stderr:stderr.bytes});throw error;}
-  await streamTail;const record={kind,executable,args,pid:child.pid??null,parentPid:process.pid,closed:true,exitCode:result.code,signal:result.signal,truncated:stdout.truncated||stderr.truncated,request,response:stdout.bytes,stderr:stderr.bytes};await persistReceipt(ctx,record);await checkpoint(ctx);
+ const completion=(async()=>{let result;try{result=await observeOwnedClosure(safe,closed,{owner:kind==='owner',timeoutMs:Math.max(1,Math.min(options.timeoutMs??15000,ctx.deadline-monotonic()-1700)),abortPromise,termGraceMs:500,killGraceMs:1200},ctx.budget,ctx.report);}catch(error){stream?.cancel(error);ctx.budget.markUnknown();ctx.report.cleanupState='UNVERIFIED';await persistReceipt(ctx,{kind,executable,args,pid:child.pid??null,closed:false,error:String(error.code??error.message),...(streamId?{observer_stream_id:streamId}:{}),request,response:stdout.bytes,stderr:stderr.bytes});throw error;}
+  guardObserverClose(stream,result,{rejected,allowFailure:options.allowFailure===true});
+  if(writerReady)try{await writerReady;}catch(error){rejected??=error;}
+  if(stream)try{await stream.finish();}catch(error){rejected??=error;}
+  const record={kind,executable,args,pid:child.pid??null,parentPid:process.pid,closed:true,exitCode:result.code,signal:result.signal,truncated:stdout.truncated||stderr.truncated,...(streamId?{observer_stream_id:streamId}:{}),request,response:stdout.bytes,stderr:stderr.bytes};await persistReceipt(ctx,record);await checkpoint(ctx);
   if(rejected)throw rejected;if(result.timedOut){if(kind==='owner'){ctx.budget.markUnknown();ctx.report.cleanupState='UNVERIFIED';}throw failure('CHILD_TIMEOUT');}
   if(!options.allowFailure)demand(result.code===0&&!record.truncated,'CHILD_EXIT');return {raw:stdout.bytes,receipt:record,result};})();completion.catch(()=>{});
  if(options.held)return {child,completion,send:()=>child.stdin.end(request),abort};child.stdin.end(request);return completion;
 }
-async function command(ctx,kind,exe,args,input=''){return (await transport(ctx,kind,exe,args,Buffer.from(input))).raw;}
+async function command(ctx,kind,exe,args,input='',options={}){return (await transport(ctx,kind,exe,args,Buffer.from(input),options)).raw;}
 function parseReply(result){demand(result.receipt.closed===true&&result.receipt.truncated===false&&result.receipt.exitCode===0,'RAW_REPLY_REQUIRED');const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(result.raw));demand(value&&typeof value.ok==='boolean','REPLY_SCHEMA');return value;}
 function reportRequest(q){const {base64,...fields}=q;return base64===undefined?fields:{...fields,payload:{encoding:'raw-receipt-only',bytes:Buffer.from(base64,'base64').length,sha256:sha(Buffer.from(base64,'base64'))}};}
 async function codeDigest(ctx,binary,dir){const copy=path.join(dir,'.code-'+randomUUID());effect(ctx);await fs.copyFile(binary,copy,constants.COPYFILE_EXCL);await fs.chmod(copy,0o700);await command(ctx,'tool','/usr/bin/codesign',['--remove-signature',copy]);const {normalizedStrippedMacFileCode}=await runtimeImport('hosts/macos-file-code.js');return sha(normalizedStrippedMacFileCode(await boundedRead(copy,16*1024*1024)));}
@@ -315,8 +402,9 @@ async function observedMutation(ctx,binary,request,mode){
    const outsideChanged=await hashFile(outsideSource)!==sha(original)||!sameIdentity(ident(await fs.lstat(outsideSource,{bigint:true})),capturedIdentity)||!(await absent(capture))||['captured','published','restored_exclusively'].some(key=>reply.observations?.[key]===true);const phase=reply.reason==='ENTRY_UNAVAILABLE'?'pre-capture-read':'unverified';const observation={request:reportRequest(q),response:reply,phase,phaseVerified:phase!=='unverified',denied:reply.status==='UNKNOWN'||reply.status==='CONFLICT',canariesUnchanged:true,outsideChanged,stop:confirm,parentIdentity:heldIdentity,capturedIdentity,relocatedPath:outside,timeline};ctx.report.observations.heldParent=observation;
    const classification=classifyRelocation(observation);observation.classification=classification;if(classification.state==='BLOCKING'){ctx.report.state='BLOCKING';throw failure('OUTSIDE_EFFECT');}demand(classification.state==='OBSERVED_DENIAL','RELOCATION_PHASE_UNVERIFIED');await checkCanaries(ctx);return result;
   }
-  const captured=await boundedRead(capture,8*1024*1024),staged=await boundedRead(path.join(tx,'staged'),8*1024*1024),stagedIdentity=ident(await fs.lstat(path.join(tx,'staged'),{bigint:true}));
-  assertStoppedCapture({...proof,state:confirm.state,sourceAbsent:await absent(source),staged:{present:true,...stagedIdentity}}, {...expected,stagedIdentity});demand(sha(captured)===sha(original)&&sha(staged)===sha(Buffer.from(q.base64,'base64')),'STOPPED_CAPTURE_BYTES');timeline.namespaceConfirmed=monotonic();
+  const captured=await boundedRead(capture,8*1024*1024),freshCaptureStat=await fs.lstat(capture,{bigint:true}),staged=await boundedRead(path.join(tx,'staged'),8*1024*1024),stagedIdentity=ident(await fs.lstat(path.join(tx,'staged'),{bigint:true}));
+  demand(freshCaptureStat.isFile()&&!freshCaptureStat.isSymbolicLink()&&freshCaptureStat.nlink===1n,'CAPTURE_IDENTITY');
+  assertStoppedCapture({...proof,freshCaptured:{present:true,...ident(freshCaptureStat)},state:confirm.state,sourceAbsent:await absent(source),staged:{present:true,...stagedIdentity}}, {...expected,stagedIdentity});demand(sha(captured)===sha(original)&&sha(staged)===sha(Buffer.from(q.base64,'base64')),'STOPPED_CAPTURE_BYTES');timeline.namespaceConfirmed=monotonic();
   ownedSignal(ctx,held,expected,'SIGTERM');timeline.terminationRequested=monotonic();ownedSignal(ctx,held,expected,'SIGCONT');resumed=true;timeline.resumed=monotonic();const result=await held.completion;demand(result.result.signal==='SIGTERM'||result.result.code!==0,'EXPECTED_PROCESS_INTERRUPTION');ctx.report.observations.postCapture={request:reportRequest(q),stop:confirm,capturedIdentity,stagedIdentity,timeline,sourceAbsent:true,classification:'OBSERVED_PROCESS_INTERRUPTION'};return result;
  }finally{
   if(stopped&&!resumed&&proof&&held.child.exitCode===null&&held.child.signalCode===null){try{ownedSignal(ctx,held,{pid:proof.pid},'SIGCONT');}catch{ctx.budget.markUnknown();}}
@@ -354,13 +442,13 @@ async function exercise(ctx,adapter,diagnosticAdapter,store){
  async function setup(name,bytes=Buffer.from('old-'+name)){await durableWrite(path.join(ctx.work.root,name),bytes);return bytes;}
  async function replace(name,replacement,old,mode){ctx.mode=mode??null;return ctx.call(()=>adapter.replaceIfHash(ref(name),replacement,sha(old)));}
  ctx.report.phase='normal-replace';const normalOld=await setup('normal.txt'),normalNew=Buffer.from('new-normal'),normalBefore=ident(await fs.lstat(path.join(ctx.work.root,'normal.txt'),{bigint:true}));const normal=await replace('normal.txt',normalNew,normalOld);demand(normal.status==='APPLIED'&&await hashFile(path.join(ctx.work.root,'normal.txt'))===sha(normalNew),'NORMAL_REPLACE');const normalCapture=path.join(ctx.recovery,normal.transaction_id,'captured'),normalPublished=ident(await fs.lstat(path.join(ctx.work.root,'normal.txt'),{bigint:true}));demand(await hashFile(normalCapture)===sha(normalOld)&&sameIdentity(ident(await fs.lstat(normalCapture,{bigint:true})),normalBefore)&&sameIdentity(normal.observations.capturedIdentity,normalBefore)&&sameIdentity(normal.observations.publishedIdentity,normalPublished)&&!sameIdentity(normalBefore,normalPublished),'NORMAL_CAPTURE');const normalJournal=JSON.parse((await boundedRead(path.join(ctx.installation,'file-transactions',normal.transaction_id+'.json'),65536)).toString());demand(normalJournal.status==='APPLIED'&&normalJournal.intent.expected_sha256===sha(normalOld)&&normalJournal.intent.after_sha256===sha(normalNew),'NORMAL_DURABLE_JOURNAL');observations.normal={outcome:normal,captured_sha256:await hashFile(normalCapture),sourceIdentityBefore:normalBefore,publishedIdentityAfter:normalPublished,journalStatus:normalJournal.status};await checkCanaries(ctx);
- ctx.report.phase='lost-ack';const ackOld=await setup('lost-ack.txt'),ack=await replace('lost-ack.txt',Buffer.from('new-ack'),ackOld,'lost-ack');demand(ack.status==='UNKNOWN','ACK_NOT_UNKNOWN');const beforeAck=ctx.nativeCalls.length,ackRead=await ctx.call(()=>adapter.readTransaction(ack.transaction_id));demand(ackRead.status==='APPLIED'&&ctx.nativeCalls.length===beforeAck+1&&ctx.nativeCalls.at(-1).operation==='inspect','ACK_RECONCILIATION');observations.lostAck={unknown:ack,readback:ackRead};await checkCanaries(ctx);
+ ctx.report.phase='lost-ack';const ackOld=await setup('lost-ack.txt'),ack=await replace('lost-ack.txt',Buffer.from('new-ack'),ackOld,'lost-ack');demand(ack.status==='UNKNOWN','ACK_NOT_UNKNOWN');const ackEvidence=retainedNativeEvidence(ctx,ack.transaction_id,'lost-ack');demand(ackEvidence.receipt?.files?.response?.path,'LOST_ACK_EVIDENCE');const ackRaw=await boundedRead(path.join(ctx.stage,ackEvidence.receipt.files.response.path),bounds.responseBytes);assertLostAckEvidence({...ackEvidence,raw:ackRaw});const beforeAck=ctx.nativeCalls.length,ackRead=await ctx.call(()=>adapter.readTransaction(ack.transaction_id));demand(ackRead.status==='APPLIED'&&ctx.nativeCalls.length===beforeAck+1&&ctx.nativeCalls.at(-1).operation==='inspect','ACK_RECONCILIATION');observations.lostAck={unknown:ack,readback:ackRead};await checkCanaries(ctx);
  ctx.report.phase='normal-trash';const trashOld=await setup('trash.txt'),trashBefore=ident(await fs.lstat(path.join(ctx.work.root,'trash.txt'),{bigint:true})),trash=await ctx.call(()=>adapter.trashIfHash(ref('trash.txt'),sha(trashOld)));demand(trash.status==='APPLIED'&&await absent(path.join(ctx.work.root,'trash.txt'))&&await hashFile(path.join(ctx.recovery,trash.transaction_id,'captured'))===sha(trashOld)&&sameIdentity(ident(await fs.lstat(path.join(ctx.recovery,trash.transaction_id,'captured'),{bigint:true})),trashBefore)&&sameIdentity(trash.observations.capturedIdentity,trashBefore),'NORMAL_TRASH');observations.trash={outcome:trash,sourceIdentityBefore:trashBefore};await checkCanaries(ctx);
  ctx.report.phase='hash-conflict';const conflictOld=await setup('conflict.txt'),conflict=await ctx.call(()=>adapter.replaceIfHash(ref('conflict.txt'),Buffer.from('must-not-publish'),'0'.repeat(64)));demand(conflict.status==='CONFLICT'&&conflict.reason==='HASH_CONFLICT'&&await hashFile(path.join(ctx.work.root,'conflict.txt'))===sha(conflictOld)&&await absent(path.join(ctx.recovery,conflict.transaction_id,'captured')),'HASH_CONFLICT');observations.hashConflict=conflict;
  ctx.report.phase='duplicate-id';const duplicate=ctx.requests.get(normal.transaction_id),duplicatePaths=[path.join(ctx.work.root,'normal.txt'),normalCapture],beforeDuplicate=await sameFiles(duplicatePaths);await ctx.call(()=>ctx.authorize(ctx.work.id));await unchanged(ctx);assertNativeAdmission(ctx.report,ctx.report.nativeSequence.length,{operation:'replace',variant:'production',direct:true});ctx.report.nativeSequence.push({operation:'replace',variant:'production',direct:true});const duplicateResult=await transport(ctx,'broker',duplicate.binary,[],duplicate.request,{ownerFD:true}),duplicateReply=parseReply(duplicateResult);demand(duplicateReply.ok===false&&duplicateReply.error==='TRANSACTION_EXISTS_OR_DENIED'&&isDeepStrictEqual(await sameFiles(duplicatePaths),beforeDuplicate),'DUPLICATE_REPLAY');observations.duplicate={classification:'DIRECT_NATIVE_DUPLICATE',response:duplicateReply};
  for(const kind of ['staged-only','captured-without-final','published-without-final']){ctx.report.phase=kind;observations[kind]=await constructed(ctx,adapter,store,kind);await checkCanaries(ctx);}
  ctx.report.phase='held-parent-relocation';const relocationOld=Buffer.from('relocation-original');await durableWrite(path.join(ctx.work.root,'relocation/item.txt'),relocationOld);const relocated=await replace('relocation/item.txt',Buffer.alloc(8*1024*1024,90),relocationOld,'relocation');demand(relocated.status==='UNKNOWN','RELOCATION_OUTCOME');const relRead=await ctx.call(()=>adapter.readTransaction(relocated.transaction_id));demand(relRead.status==='UNKNOWN','RELOCATION_READBACK');observations.heldParent.adapter=relocated;observations.heldParent.readback=relRead;await checkCanaries(ctx);
- ctx.report.phase='staging-interruption';const stageOld=await setup('staging.txt'),stage=await replace('staging.txt',Buffer.alloc(8*1024*1024,90),stageOld,'staging');demand(stage.status==='UNKNOWN'&&await hashFile(path.join(ctx.work.root,'staging.txt'))===sha(stageOld),'STAGING_INTERRUPTION');const stageTx=path.join(ctx.recovery,stage.transaction_id),stageIntent=JSON.parse((await boundedRead(path.join(stageTx,'intent.json'),32768)).toString());demand(stageIntent.transaction_id===stage.transaction_id&&await absent(path.join(stageTx,'captured')),'STAGING_EFFECT');const stageRead=await ctx.call(()=>adapter.readTransaction(stage.transaction_id));demand(stageRead.status==='UNKNOWN'&&stageRead.observations.captured===false,'STAGING_READBACK');observations.staging={outcome:stage,readback:stageRead,classification:'WRITE_INTERRUPTION'};await checkCanaries(ctx);
+ ctx.report.phase='staging-interruption';const stageOld=await setup('staging.txt'),stage=await replace('staging.txt',Buffer.alloc(8*1024*1024,90),stageOld,'staging');demand(stage.status==='UNKNOWN'&&await hashFile(path.join(ctx.work.root,'staging.txt'))===sha(stageOld),'STAGING_INTERRUPTION');const stageTx=path.join(ctx.recovery,stage.transaction_id),stageIntent=JSON.parse((await boundedRead(path.join(stageTx,'intent.json'),32768)).toString());demand(stageIntent.transaction_id===stage.transaction_id&&await absent(path.join(stageTx,'captured')),'STAGING_EFFECT');const stageBytes=await boundedRead(path.join(stageTx,'staged'),4096);assertStagingEvidence({...retainedNativeEvidence(ctx,stage.transaction_id,'staging'),stagedBytes:stageBytes.length});const stageRead=await ctx.call(()=>adapter.readTransaction(stage.transaction_id));demand(stageRead.status==='UNKNOWN'&&stageRead.observations.captured===false,'STAGING_READBACK');observations.staging={outcome:stage,readback:stageRead,classification:'WRITE_INTERRUPTION'};await checkCanaries(ctx);
  ctx.report.phase='post-capture-interruption';const crashOld=Buffer.alloc(8*1024*1024,65);await durableWrite(path.join(ctx.work.root,'post-capture/item.txt'),crashOld);const crash=await replace('post-capture/item.txt',Buffer.from('new-after-capture'),crashOld,'post-capture');demand(crash.status==='UNKNOWN','CRASH_OUTCOME');const crashRead=await ctx.call(()=>adapter.readTransaction(crash.transaction_id));demand(crashRead.status==='UNKNOWN'&&crashRead.observations.captured===true&&await hashFile(path.join(ctx.recovery,crash.transaction_id,'captured'))===sha(crashOld),'CRASH_READBACK');Object.assign(observations.postCapture,{outcome:crash,readback:crashRead});await checkCanaries(ctx);
  ctx.report.phase='diagnostic-sync-error';const diagOld=await setup('diagnostic.txt'),diag=await ctx.call(()=>diagnosticAdapter.replaceIfHash(ref('diagnostic.txt'),Buffer.from('diagnostic-new'),sha(diagOld)));demand(diag.status==='UNKNOWN'&&await hashFile(path.join(ctx.diagnosticRecovery,diag.transaction_id,'captured'))===sha(diagOld)&&await absent(path.join(ctx.work.root,'diagnostic.txt')),'DIAGNOSTIC_CAPTURE');const diagRead=await ctx.call(()=>diagnosticAdapter.readTransaction(diag.transaction_id));demand(diagRead.status==='UNKNOWN'&&diagRead.observations.captured===true,'DIAGNOSTIC_READBACK');observations.diagnostic={outcome:diag,readback:diagRead,classification:'DIAGNOSTIC_ONLY',actualKernelFsyncFailure:false};await checkCanaries(ctx);
  demand(!ctx.budget.unknown&&ctx.budget.snapshot().broker===17&&ctx.nativeCalls.length===16&&ctx.report.nativeSequence.length===17,'BROKER_SCHEDULE');ctx.report.state='RECOVERY_SEQUENCE_OBSERVED';ctx.report.phase='finished';ctx.report.nativeCalls=ctx.nativeCalls;ctx.report.cleanupState='CLOSED_EXPLICIT_HANDLES_ONLY';await checkpoint(ctx);
@@ -399,7 +487,7 @@ async function prepareWorker(ctx){
  const registry=await loadTrustedRegistry(ctx.identity),{ControlLeaseStore}=await runtimeImport('local/control-lease.js'),{withControlToken}=await runtimeImport('mcp/control-context.js'),{authorizeMcpWorkspace}=await runtimeImport('mcp/runtime-bootstrap.js');
  const control=new ControlLeaseStore(ctx.identity),lease=await control.acquire();ctx.call=fn=>withControlToken(control,lease.control_token,fn);ctx.authorize=id=>authorizeMcpWorkspace(registry,id,ctx.identity,'write');
  try{
-  const ownerProof=JSON.parse((await command(ctx,'tool','/usr/bin/python3',[ownerLauncher,'--identity',ctx.identity,'--verify'])).toString());demand(ownerProof.format==='gsa-owner-v1'&&ownerProof.session===process.env.GSA_OWNER_SESSION,'OWNER_VERIFY');
+  const ownerProof=JSON.parse((await command(ctx,'tool','/usr/bin/python3',[ownerLauncher,'--identity',ctx.identity,'--verify'],'',{ownerFD:true})).toString());demand(ownerProof.format==='gsa-owner-v1'&&ownerProof.session===process.env.GSA_OWNER_SESSION,'OWNER_VERIFY');
   const adapter=await makeAdapter(ctx,registry,ctx.installation,'production'),diagnosticAdapter=await makeAdapter(ctx,registry,ctx.diagnosticInstallation,'diagnostic'),{FileTransactionStore}=await runtimeImport('local/file-transaction-store.js'),store=new FileTransactionStore(path.join(ctx.installation,'file-transactions'));
   assertPreparedSetup({hostRelease:os.release(),arch:process.arch,driverSha256:ctx.input.sourceHashes.driver,candidateSourceSha256:ctx.input.sourceHashes.candidate,compiledGraphSha256:sha(JSON.stringify(ctx.input.runtime)),ownerLauncherSha256:ctx.input.sourceHashes.owner,observerSha256:ctx.input.sourceHashes.observer,baseEvidenceSha256:sha(JSON.stringify(ctx.input.evidence)),baseReleaseSha256:basePins.release,baseCodeSha256:basePins.code,baseUnchanged:await hashFile(baseRelease.binary)===basePins.release,recipeValidated:schedule.reduce((n,row)=>n+row.calls.length,0)===17,wrappersValidated:(await boundedRead(path.join(ctx.stage,'rlimit-exec.py'),4096)).toString()===wrapper,ownerVerified:true,signingProfile:recoveryProfile,brokerCalls:17,explicitSpawnUpperBound:158});
   await unchanged(ctx);ctx.report.setupComplete=true;await checkpoint(ctx);await exercise(ctx,adapter,diagnosticAdapter,store);

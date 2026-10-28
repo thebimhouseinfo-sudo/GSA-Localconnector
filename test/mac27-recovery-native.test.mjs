@@ -117,7 +117,7 @@ test('capture gate rejects missing and malformed identities without signaling el
 test('STOP phase requires source absence, staged replacement and exact staged identity',()=>{
   const stagedIdentity={device:'42',inode:'101'};
   const expectedWithStage={...expected,stagedIdentity};
-  const observed={...capturedObservation(),state:'T',sourceAbsent:true,staged:{present:true,...stagedIdentity}};
+  const observed={...capturedObservation(),freshCaptured:{present:true,...expected.capturedIdentity},state:'T',sourceAbsent:true,staged:{present:true,...stagedIdentity}};
   assert.equal(assertStoppedCapture(observed,expectedWithStage),true);
   for(const mutate of [o=>{o.state='R';},o=>{o.sourceAbsent=false;},o=>{o.staged.present=false;},o=>{o.staged.inode='102';}]){
     const candidate={...observed,captured:{...observed.captured},staged:{...observed.staged}}; mutate(candidate);
@@ -317,4 +317,147 @@ test('observer output accepts exactly ready then watch, bounded UTF-8 records, a
   }
   const oversized=createObserverLines(observerExpected);
   assert.throws(()=>oversized.push(Buffer.alloc(4097,0x61)),e=>e.code==='OBSERVER_OUTPUT_LIMIT');
+});
+
+// These public helpers carry data only; the privileged native transport stays private.
+test('owner verification transport inherits FD3 and only the owner environment',async()=>{
+ const driver=await import('../scripts/test-mac27-recovery-native.mjs');
+ assert.equal(typeof driver.buildTransportOptions,'function','transport option boundary is missing');
+ const environment={GSA_OWNER_LOCK_FD:'3',GSA_OWNER_SESSION:'11111111-1111-4111-8111-111111111111',GSA_OWNER_IDENTITY:'/private/tmp/owner',UNRELATED:'must-not-leak'};
+ const options=driver.buildTransportOptions({ownerFD:true},environment);
+ assert.deepEqual(options.stdio,['pipe','pipe','pipe',3]);
+ assert.equal(options.env.GSA_OWNER_LOCK_FD,'3');assert.equal(options.env.GSA_OWNER_SESSION,environment.GSA_OWNER_SESSION);
+ assert.equal(options.env.GSA_OWNER_IDENTITY,undefined);assert.equal(options.env.UNRELATED,undefined);
+ const ordinary=driver.buildTransportOptions({},environment);
+ assert.deepEqual(ordinary.stdio,['pipe','pipe','pipe']);assert.equal(ordinary.env.GSA_OWNER_SESSION,undefined);
+ assert.throws(()=>driver.buildTransportOptions({ownerFD:true},{GSA_OWNER_LOCK_FD:'3'}),/OWNER_BINDING/);
+});
+
+test('post-STOP captured identity must be fresh even if observer proof had the old identity',()=>{
+ const stagedIdentity={device:'42',inode:'101'},expectedWithStage={...expected,stagedIdentity};
+ const proof={...capturedObservation(),state:'T',sourceAbsent:true,staged:{present:true,...stagedIdentity}};
+ assert.throws(()=>assertStoppedCapture({...proof,freshCaptured:{present:true,device:'42',inode:'100'}},expectedWithStage),/CAPTURE_GATE|CAPTURE_IDENTITY/);
+ assert.throws(()=>assertStoppedCapture({...proof,freshCaptured:{present:false}},expectedWithStage),/CAPTURE_GATE|CAPTURE_IDENTITY/);
+});
+
+test('staging classification requires matching SIGXFSZ receipt and nonempty staged bytes',async()=>{
+ const driver=await import('../scripts/test-mac27-recovery-native.mjs');
+ assert.equal(typeof driver.assertStagingEvidence,'function','staging evidence boundary is missing');
+ const request=Buffer.from('{"operation":"replace","transaction_id":"t"}');
+ const record={variant:'production',transaction_id:'t',operation:'replace',mode:'staging',exitCode:null,signal:'SIGXFSZ',rawReceiptIndex:1,expectedInterruption:true};
+ const receipt={kind:'broker',closed:true,truncated:false,exitCode:null,signal:'SIGXFSZ',files:{request:{sha256:hashText(request)}}};
+ const call={variant:'production',transaction_id:'t',operation:'replace',requestSha256:hashText(request)};
+ const base={record,receipt,call,transactionId:'t',stagedBytes:4096};
+ assert.equal(driver.assertStagingEvidence(base),true);
+ for(const changes of [{stagedBytes:0},{stagedBytes:4097},{record:{...record,signal:'SIGTERM'}},{receipt:{...receipt,signal:'SIGTERM'}},{receipt:{...receipt,truncated:undefined}},{transactionId:'other'},{call:{...call,requestSha256:hash}}])
+  assert.throws(()=>driver.assertStagingEvidence({...base,...changes}));
+});
+
+test('lost acknowledgement requires the retained matching raw APPLIED reply',async()=>{
+ const driver=await import('../scripts/test-mac27-recovery-native.mjs');
+ assert.equal(typeof driver.assertLostAckEvidence,'function','lost acknowledgement evidence boundary is missing');
+ const request=Buffer.from('{"operation":"replace","transaction_id":"t"}'),raw=Buffer.from('{"ok":true,"status":"APPLIED","transaction_id":"t"}');
+ const record={variant:'production',transaction_id:'t',operation:'replace',mode:'lost-ack',exitCode:0,signal:null,rawReceiptIndex:1,deliberatelyDroppedAcknowledgement:true,reply:JSON.parse(raw.toString())};
+ const receipt={kind:'broker',closed:true,truncated:false,exitCode:0,signal:null,files:{request:{sha256:hashText(request)},response:{sha256:hashText(raw)}}};
+ const call={variant:'production',transaction_id:'t',operation:'replace',requestSha256:hashText(request)};
+ const base={record,receipt,call,transactionId:'t',raw};
+ assert.equal(driver.assertLostAckEvidence(base),true);
+ for(const changes of [{record:{...record,deliberatelyDroppedAcknowledgement:false}},{raw:Buffer.from('{}')},{transactionId:'other'},{receipt:{...receipt,closed:false}},{call:{...call,requestSha256:hash}}])
+  assert.throws(()=>driver.assertLostAckEvidence({...base,...changes}));
+});
+
+test('observer stream persists bounded raw bytes before invoking the parser',async()=>{
+ const driver=await import('../scripts/test-mac27-recovery-native.mjs');
+ assert.equal(typeof driver.createDurableObserverStream,'function','durable observer stream boundary is missing');
+ const temporary=await fs.mkdtemp(path.join(os.tmpdir(),'gsa-observer-stream-')),file=path.join(temporary,'raw');let calls=0;
+ try{
+  const stream=driver.createDurableObserverStream({maxBytes:8,write:async bytes=>{const handle=await fs.open(file,'a',0o600);try{await handle.writeFile(bytes);await handle.sync();}finally{await handle.close();}},onChunk:async bytes=>{calls++;assert.equal((await fs.readFile(file)).subarray(-bytes.length).toString(),bytes.toString());}});
+  await stream.push(Buffer.from('abc'));await stream.push(Buffer.from('de'));await stream.finish();assert.equal(calls,2);
+  await assert.rejects(stream.push(Buffer.from('1234')),/OBSERVER_OUTPUT_LIMIT/);assert.equal(calls,2);
+  const failed=driver.createDurableObserverStream({write:async()=>{throw Error('WRITE_FAILED');},onChunk:()=>{calls++;}});
+  await assert.rejects(failed.push(Buffer.from('x')),/WRITE_FAILED/);assert.equal(calls,2);
+ }finally{await fs.rm(temporary,{recursive:true,force:true});}
+});
+
+
+test('observer overflow prevents an in-flight durable write from publishing an event',async()=>{
+ const driver=await import('../scripts/test-mac27-recovery-native.mjs');let release,entered,calls=0;
+ const wait=new Promise(resolve=>release=resolve),started=new Promise(resolve=>entered=resolve);
+ const stream=driver.createDurableObserverStream({maxBytes:3,write:async()=>{entered();await wait;},onChunk:()=>{calls++;}});
+ const first=stream.push(Buffer.from('abc'));void first.catch(()=>{});await started;
+ const overflow=stream.push(Buffer.from('x'));const denied=assert.rejects(overflow,/OBSERVER_OUTPUT_LIMIT/);
+ release();await denied;await assert.rejects(first,/OBSERVER_OUTPUT_LIMIT/);assert.equal(calls,0);
+});
+
+test('observer raw stream remains ordered and attributed on disk before each split-JSON callback',async()=>{
+ const driver=await import('../scripts/test-mac27-recovery-native.mjs');
+ assert.equal(typeof driver.createObserverReceiptWriter,'function','ordered observer receipt writer is missing');
+ const temporary=await fs.mkdtemp(path.join(os.tmpdir(),'gsa-observer-receipt-')),directory=await fs.realpath(temporary);
+ const streamId='11111111-1111-4111-8111-111111111111',request=Buffer.from('request-bytes');
+ const attribution={streamId,role:'worker',phase:'post-capture-interruption',kind:'observer',pid:700,parentPid:2,executable:'/usr/bin/python3',args:['watch','700'],request};
+ const expectedBytes=Buffer.from(JSON.stringify(readyEvent())+'\n'+JSON.stringify(watchEvent())+'\n');
+ const chunks=[expectedBytes.subarray(0,7),expectedBytes.subarray(7,expectedBytes.length-5),expectedBytes.subarray(expectedBytes.length-5)];
+ let reserved=0,seen=0;const events=[];const parser=createObserverLines(observerExpected);
+ try{
+  const writer=await driver.createObserverReceiptWriter({directory,...attribution,reserve:n=>{reserved+=n;}});
+  const stream=driver.createDurableObserverStream({write:bytes=>writer.write(bytes),onChunk:async bytes=>{
+   seen++;
+   const names=await fs.readdir(directory),prefix=`observer-stream-${streamId}`;
+   const manifest=JSON.parse(await fs.readFile(path.join(directory,`${prefix}-manifest.json`),'utf8'));
+   assert.equal(manifest.stream_id,streamId);assert.equal(manifest.role,'worker');assert.equal(manifest.phase,attribution.phase);
+   assert.equal(manifest.pid,700);assert.equal(manifest.parent_pid,2);assert.equal(manifest.executable,attribution.executable);assert.deepEqual(manifest.args,attribution.args);
+   assert.equal(manifest.request.sha256,hashText(request));assert.deepEqual(await fs.readFile(path.join(directory,manifest.request.file)),request);
+   const descriptors=names.filter(name=>name.startsWith(prefix+'-chunk-')&&/\d{6}\.json$/.test(name)).sort();
+   assert.equal(descriptors.length,seen);
+   const restored=[];
+   for(let i=0;i<descriptors.length;i++){
+    const descriptor=JSON.parse(await fs.readFile(path.join(directory,descriptors[i]),'utf8'));
+    assert.equal(descriptor.stream_id,streamId);assert.equal(descriptor.index,i+1);
+    const data=await fs.readFile(path.join(directory,descriptor.file));assert.equal(descriptor.bytes,data.length);assert.equal(descriptor.sha256,hashText(data));restored.push(data);
+   }
+   assert.deepEqual(Buffer.concat(restored),Buffer.concat(chunks.slice(0,seen)));
+   events.push(...parser.push(bytes));
+  }});
+  for(const chunk of chunks)await stream.push(chunk);
+  await stream.finish();assert.equal(parser.finish(),true);assert.deepEqual(events,[readyEvent(),watchEvent()]);assert.ok(reserved>=expectedBytes.length+request.length);
+ }finally{await fs.rm(directory,{recursive:true,force:true});}
+});
+
+
+test('observer cancellation suppresses an event while durable write is pending',async()=>{
+ const driver=await import('../scripts/test-mac27-recovery-native.mjs');let release,entered,calls=0;
+ const wait=new Promise(resolve=>release=resolve),started=new Promise(resolve=>entered=resolve);
+ const stream=driver.createDurableObserverStream({write:async()=>{entered();await wait;},onChunk:()=>{calls++;}});
+ assert.equal(typeof stream.cancel,'function','stream cancellation boundary is missing');
+ const first=stream.push(Buffer.from('ready'));void first.catch(()=>{});await started;
+ stream.cancel(Error('CLEANUP_UNVERIFIED'));release();
+ await assert.rejects(first,/CLEANUP_UNVERIFIED/);assert.equal(calls,0);
+});
+
+test('failed or timed-out observer close cancels queued events before draining writes',async()=>{
+ const driver=await import('../scripts/test-mac27-recovery-native.mjs');
+ assert.equal(typeof driver.guardObserverClose,'function','observer close guard is missing');
+ for(const [result,options,reason] of [
+  [{closed:true,code:2,signal:null},{},/CHILD_EXIT/],
+  [{closed:true,code:0,signal:null,timedOut:true},{},/CHILD_TIMEOUT/],
+  [{closed:true,code:0,signal:null},{rejected:Error('BAD_OBSERVER')},/BAD_OBSERVER/]
+ ]){
+  let release,entered,calls=0;const wait=new Promise(resolve=>release=resolve),started=new Promise(resolve=>entered=resolve);
+  const stream=driver.createDurableObserverStream({write:async()=>{entered();await wait;},onChunk:()=>{calls++;}});
+  const pending=stream.push(Buffer.from('ready'));void pending.catch(()=>{});await started;
+  assert.equal(driver.guardObserverClose(stream,result,options),true);
+  release();await assert.rejects(pending,reason);await assert.rejects(stream.finish(),reason);assert.equal(calls,0);
+ }
+ let called=0;const clean=driver.createDurableObserverStream({write:async()=>{},onChunk:()=>{called++;}});
+ assert.equal(driver.guardObserverClose(clean,{closed:true,code:0,signal:null},{}),false);
+ await clean.push(Buffer.from('ready'));await clean.finish();assert.equal(called,1);
+});
+
+test('known abort suppresses a queued observer event before child close',async()=>{
+ const driver=await import('../scripts/test-mac27-recovery-native.mjs');let release,entered,calls=0;
+ const wait=new Promise(resolve=>release=resolve),started=new Promise(resolve=>entered=resolve),controller=new AbortController();
+ const stream=driver.createDurableObserverStream({signal:controller.signal,write:async()=>{entered();await wait;},onChunk:()=>{calls++;}});
+ const pending=stream.push(Buffer.from('ready'));void pending.catch(()=>{});await started;
+ controller.abort(Error('OUTPUT_LIMIT'));release();
+ await assert.rejects(pending,/OUTPUT_LIMIT/);await assert.rejects(stream.finish(),/OUTPUT_LIMIT/);assert.equal(calls,0);
 });
