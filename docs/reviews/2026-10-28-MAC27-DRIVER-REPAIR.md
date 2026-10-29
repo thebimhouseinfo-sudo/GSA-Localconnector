@@ -25,3 +25,5 @@ Five review/repair rounds are exhausted for this pair and the final scoped revie
 
 
 Fresh continuation check2026-10-28: `node --test test/mac27-recovery-native.test.mjs` exit0,38/38pass/0fail/0skip,290.673583ms (`/tmp/gsa-mac27-driver-final-guards.log`). Driver source/test unchanged by the Round3 journal repair. Native flags/holds/activation remain false; no new driver repair round or native run.
+
+Human subsequently approved commit dccd5c3 and one native qualification run separately. The two holds were opened only for Reviewer-approved exact SHA97687eda…145d4, then restored to committed65f42c05…c75a after the single exit0run. No guard was weakened. Detailed independently accepted REAL-HOST evidence and limitations are in docs/reports/2026-10-28-mac27-recovery-native.md; held-source postrun guards38/38. Slot consumed/retained; this does not activate production recovery or complete Mac. This is an authorized admission/evidence follow-up, not another driver repair round.

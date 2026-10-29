@@ -8,10 +8,20 @@ import {WorkspaceRegistry} from "../src/core/workspace.js";
 import {loadCheckedMacRecoveryInstallation,type RecoveryInstallationIO} from "../src/hosts/macos-recovery-installation.js";
 import {macFileRecoveryActivation} from "../src/hosts/macos-scoped-files.js";
 import {receiptSample} from "./helpers/mac-file-evidence-fixture.js";
+import {requireMacFileEvidence} from "../src/hosts/macos-file-evidence.js";
 const digest=(b:Uint8Array|string)=>createHash("sha256").update(b).digest("hex");
 const artifactNames=["Contents/MacOS/recovery-broker","Contents/Info.plist","Contents/_CodeSignature/CodeResources"];
 const baseArtifactNames=["Contents/MacOS/broker","Contents/Info.plist","Contents/_CodeSignature/CodeResources"];
+const syntheticHosts=new WeakSet<object>();
+function qualifySyntheticHost(t:any){
+ if(syntheticHosts.has(t))return;syntheticHosts.add(t);
+ const architecture=Object.getOwnPropertyDescriptor(process,"arch")!;
+ t.after(()=>Object.defineProperty(process,"arch",architecture));
+ t.mock.method(os,"release",()=>"27.0.0");
+ Object.defineProperty(process,"arch",{...architecture,value:"arm64"});
+}
 async function fixture(t:any,options:{installationInsideWork?:boolean;peerRecovery?:boolean;peerReference?:boolean;referenceRecovery?:boolean}={}){
+ qualifySyntheticHost(t);
  const base=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),"gsa-recovery-install-")));
  t.after(()=>fs.rm(base,{recursive:true,force:true}));
  const work=path.join(base,"work"),peer=path.join(base,"peer"),recovery=options.peerRecovery?path.join(peer,"private-recovery"):path.join(base,"recovery"),installation=options.installationInsideWork?path.join(work,"installation"):path.join(base,"installation");
@@ -35,13 +45,16 @@ async function fixture(t:any,options:{installationInsideWork?:boolean;peerRecove
  // Recovery and BASE bundles have separate artifact pins and entitlements.
  const workBinding=proofGrants.find(b=>b.id==="work")!;workBinding.recovery={root:recovery,rootIdentity:{...recoveryIdentity},artifacts:{...artifacts}};
  if(options.referenceRecovery){const peer=proofGrants.find(b=>b.id==="peer");if(peer)peer.recovery={root:recovery,rootIdentity:{...recoveryIdentity},artifacts:{...artifacts}};}
- const proof:any={format:"gsa-scoped-files-v2",hostRelease:os.release(),arch:"arm64",build,evidence,grants:proofGrants};
+ const qualification=await fs.readFile(new URL("../../test/fixtures/mac27-recovery-qualification.json",import.meta.url),"utf8"),qualifiedBuild=JSON.parse(qualification).builds.production;
+ for(const binding of proofGrants)if(binding.recovery)binding.recovery.code_sha256=qualifiedBuild.code_sha256;
+ const proof:any={recoveryQualification:qualification,recoveryBuild:structuredClone(qualifiedBuild),format:"gsa-scoped-files-v2",hostRelease:os.release(),arch:"arm64",build,evidence,grants:proofGrants};
  const key=Buffer.alloc(32,17);await fs.writeFile(path.join(installation,"proof-key"),key,{mode:0o600});
  const writeProof=async()=>{const body=JSON.stringify(proof);await fs.writeFile(path.join(installation,"install.json"),JSON.stringify({body,hmac:createHmac("sha256",key).update(body).digest("hex")}),{mode:0o600});};await writeProof();
+ let codeHash=qualifiedBuild.code_sha256,onCode:((binary:string)=>void|Promise<void>)|undefined;const codeCalls:string[]=[];
  let nativeCalls=0,failSign=false,durableAuthorized=true,onCodesign:(()=>void|Promise<void>)|undefined,onProtectedRead:((name:string)=>void|Promise<void>)|undefined;const calls:any[]=[];
  // Synthetic command transport checks the loader's requests. It does not prove
  // native signature validity, plist parsing, entitlements or confinement.
- const io:RecoveryInstallationIO={ownerLockFD:3,authorize:async()=>{if(!durableAuthorized)throw Error("CONTROLLER_REVOKED");},protectedRead:async(name)=>{const value=await fs.readFile(name);await onProtectedRead?.(name);return value;},protectedDirectory:async name=>{const s=await fs.lstat(name);assert(s.isDirectory()&&!s.isSymbolicLink()&&(s.mode&0o777)===0o700);},command:async(executable,args,input,max,fd)=>{
+ const io:RecoveryInstallationIO & {normalizedCodeSha256:(binary:string)=>Promise<string>}={normalizedCodeSha256:async binary=>{codeCalls.push(binary);await onCode?.(binary);return codeHash;},ownerLockFD:3,authorize:async()=>{if(!durableAuthorized)throw Error("CONTROLLER_REVOKED");},protectedRead:async(name)=>{const value=await fs.readFile(name);await onProtectedRead?.(name);return value;},protectedDirectory:async name=>{const s=await fs.lstat(name);assert(s.isDirectory()&&!s.isSymbolicLink()&&(s.mode&0o777)===0o700);},command:async(executable,args,input,max,fd)=>{
   calls.push({executable,args,input,max,fd});
   if(executable==="/usr/bin/codesign") {await onCodesign?.();if(failSign)throw Error("signature invalid");return Buffer.from(args.includes("--display")?JSON.stringify(entitlements):"");}
   if(executable==="/usr/bin/plutil")return Buffer.from(input);
@@ -50,7 +63,7 @@ async function fixture(t:any,options:{installationInsideWork?:boolean;peerRecove
   const intent={protocol:q.protocol,transaction_id:q.transaction_id,operation:q.operation,workspace_id:q.workspace_id,revision:q.revision,path:q.path,expected_sha256:q.expected_sha256,after_sha256:q.operation==="replace"?digest(Buffer.from(q.base64,"base64")):""};
   return Buffer.from(JSON.stringify({ok:true,protocol:q.protocol,transaction_id:q.transaction_id,status:"UNKNOWN",intent,observations:{},retained_handles:[],reason:"IO_UNCERTAIN"}));
  }};
- return {base,work,peer,recovery,installation,app,baseApps,registry,proof,info,entitlements,io,writeProof,calls,nativeCalls:()=>nativeCalls,signCalls:()=>calls.filter(c=>c.executable==="/usr/bin/codesign").length,failSignature:()=>{failSign=true;},onCodesign:(callback:()=>void|Promise<void>)=>{onCodesign=callback;},onProtectedRead:(callback:(name:string)=>void|Promise<void>)=>{onProtectedRead=callback;},revokeDurableAuthorization:()=>{durableAuthorized=false;},durableAuthorization:()=>durableAuthorized};
+ return {codeCalls,setCodeHash:(hash:string)=>{codeHash=hash;},onCode:(callback:(binary:string)=>void|Promise<void>)=>{onCode=callback;},base,work,peer,recovery,installation,app,baseApps,registry,proof,info,entitlements,io,writeProof,calls,nativeCalls:()=>nativeCalls,signCalls:()=>calls.filter(c=>c.executable==="/usr/bin/codesign").length,failSignature:()=>{failSign=true;},onCodesign:(callback:()=>void|Promise<void>)=>{onCodesign=callback;},onProtectedRead:(callback:(name:string)=>void|Promise<void>)=>{onProtectedRead=callback;},revokeDurableAuthorization:()=>{durableAuthorized=false;},durableAuthorization:()=>durableAuthorized};
 }
 test("checked recovery constructor binds fixed executable and protected journal before dispatch",{skip:process.platform!=="darwin"},async t=>{
  const f=await fixture(t),adapter=await loadCheckedMacRecoveryInstallation(f.registry,f.installation,f.io);
@@ -59,7 +72,7 @@ test("checked recovery constructor binds fixed executable and protected journal 
  const record=JSON.parse(await fs.readFile(path.join(f.installation,"file-transactions",out.transaction_id+".json"),"utf8"));assert.equal(record.intent.source.workspace_id,"work");assert.equal(record.status,"UNKNOWN");
  assert(f.calls.some(c=>c.executable==="/usr/bin/codesign"&&c.args.includes("--verify")));
 });
-test("complete v2 release evidence is validated against the current host and architecture",{skip:process.platform!=="darwin"},async t=>{
+test("complete v2 release evidence is validated against the synthetic qualified host and architecture",{skip:process.platform!=="darwin"},async t=>{
  const f=await fixture(t);assert.equal(f.proof.format,"gsa-scoped-files-v2");assert.equal(f.proof.hostRelease,os.release());assert.equal(f.proof.arch,process.arch);assert.equal(f.proof.build.hostRelease,os.release());assert.equal(f.proof.build.arch,process.arch);assert.equal(f.proof.evidence.build.hostRelease,os.release());assert.equal(f.proof.evidence.build.arch,process.arch);
  const adapter=await loadCheckedMacRecoveryInstallation(f.registry,f.installation,f.io);const out=await adapter.trashIfHash({workspace_id:"work",path:"x.txt"},digest("old"));assert.equal(out.status,"UNKNOWN");assert.equal(f.nativeCalls(),1);
 });
@@ -189,4 +202,57 @@ test("new peer workspace overlapping recovery root blocks invocation",{skip:proc
  await f.registry.enrollRolesTrusted([{id:"peer",root:f.peer,role:"workspace"}]);
  const out=await adapter.trashIfHash({workspace_id:"work",path:"x.txt"},digest("old"));
  assert.equal(out.status,"UNKNOWN");assert.equal(f.nativeCalls(),0);
+});
+
+for(const fault of ["missing-report","altered-report","oversized-report","missing-recovery-build","diagnostic-build","drifted-recovery-build"] as const)test(`recovery qualification rejects ${fault} before signing or dispatch`,{skip:process.platform!=="darwin"},async t=>{
+ const f=await fixture(t);
+ if(fault==="missing-report")delete f.proof.recoveryQualification;
+ if(fault==="altered-report")f.proof.recoveryQualification+=" ";
+ if(fault==="oversized-report")f.proof.recoveryQualification="x".repeat(512*1024+1);
+ if(fault==="missing-recovery-build")delete f.proof.recoveryBuild;
+ if(fault==="diagnostic-build")f.proof.recoveryBuild=JSON.parse(f.proof.recoveryQualification).builds.diagnostic;
+ if(fault==="drifted-recovery-build")f.proof.recoveryBuild.code_sha256="0".repeat(64);
+ await f.writeProof();await assert.rejects(loadCheckedMacRecoveryInstallation(f.registry,f.installation,f.io));assert.equal(f.signCalls(),0);assert.equal(f.nativeCalls(),0);
+});
+test("recovery constructor independently checks the fixed binary code",{skip:process.platform!=="darwin"},async t=>{
+ const f=await fixture(t);await loadCheckedMacRecoveryInstallation(f.registry,f.installation,f.io);
+ assert.ok(f.codeCalls.length>0);assert.ok(f.codeCalls.every(binary=>binary===path.join(f.app,"Contents/MacOS/recovery-broker")));
+});
+test("recovery actual code mismatch is denied before construction",{skip:process.platform!=="darwin"},async t=>{
+ const f=await fixture(t);f.setCodeHash("0".repeat(64));await assert.rejects(loadCheckedMacRecoveryInstallation(f.registry,f.installation,f.io));assert.equal(f.nativeCalls(),0);
+});
+test("recovery actual code drift after construction never reaches the broker",{skip:process.platform!=="darwin"},async t=>{
+ const f=await fixture(t),adapter=await loadCheckedMacRecoveryInstallation(f.registry,f.installation,f.io);f.setCodeHash("0".repeat(64));
+ const out=await adapter.trashIfHash({workspace_id:"work",path:"x.txt"},digest("old"));assert.equal(out.status,"UNKNOWN");assert.equal(f.nativeCalls(),0);
+});
+test("qualification rewrite during awaited code verification blocks dispatch",{skip:process.platform!=="darwin"},async t=>{
+ const f=await fixture(t),adapter=await loadCheckedMacRecoveryInstallation(f.registry,f.installation,f.io);let changed=false;
+ f.onCode(async()=>{if(!changed){changed=true;f.proof.recoveryQualification+=" ";await f.writeProof();}});
+ const out=await adapter.trashIfHash({workspace_id:"work",path:"x.txt"},digest("old"));assert.equal(changed,true);assert.equal(out.status,"UNKNOWN");assert.equal(f.nativeCalls(),0);
+});
+test("durable authorization lost during code verification blocks dispatch",{skip:process.platform!=="darwin"},async t=>{
+ const f=await fixture(t),adapter=await loadCheckedMacRecoveryInstallation(f.registry,f.installation,f.io);let changed=false;
+ f.onCode(()=>{changed=true;f.revokeDurableAuthorization();});
+ const out=await adapter.trashIfHash({workspace_id:"work",path:"x.txt"},digest("old"));assert.equal(changed,true);assert.equal(out.status,"UNKNOWN");assert.equal(f.nativeCalls(),0);
+});
+for(const field of ["release","architecture"] as const)test(`recovery rejects a runtime ${field} different from qualification`,{skip:process.platform!=="darwin"},async t=>{
+ const f=await fixture(t);
+ if(field==="release"){
+  t.mock.method(os,"release",()=>"26.0.0");const evidence=receiptSample("26.0.0","arm64");f.proof.hostRelease="26.0.0";f.proof.build=structuredClone(evidence.build);f.proof.evidence=evidence;
+  for(const binding of f.proof.grants){binding.presign_sha256=f.proof.build.release_sha256;binding.code_sha256=f.proof.build.code_sha256;}
+  assert.doesNotThrow(()=>requireMacFileEvidence(f.proof.evidence,f.proof.build),"BASE is valid for this simulated runtime; recovery qualification must reject it");
+ }
+ else {Object.defineProperty(process,"arch",{...Object.getOwnPropertyDescriptor(process,"arch"),value:"x64"});f.proof.arch="x64";}
+ await f.writeProof();await assert.rejects(loadCheckedMacRecoveryInstallation(f.registry,f.installation,f.io));assert.equal(f.signCalls(),0);assert.equal(f.nativeCalls(),0);
+});
+test("synthetic host setup twice registers one restoration of the original architecture",()=>{
+ const original=Object.getOwnPropertyDescriptor(process,"arch")!,release=os.release,callbacks:Array<()=>void>=[];let mocks=0;
+ const fake={after:(fn:()=>void)=>callbacks.push(fn),mock:{method:(object:typeof os,name:"release",fn:()=>string)=>{mocks++;object[name]=fn;}}};
+ try{Object.defineProperty(process,"arch",{...original,value:"synthetic-original"});qualifySyntheticHost(fake);qualifySyntheticHost(fake);assert.equal(mocks,1);assert.equal(callbacks.length,1);callbacks[0]();assert.equal(process.arch,"synthetic-original");}
+ finally{Object.defineProperty(process,"arch",original);os.release=release;}
+});
+
+for(const fault of ["missing","wrong"] as const)test(`recovery binding rejects ${fault} qualified code digest`,{skip:process.platform!=="darwin"},async t=>{
+ const f=await fixture(t);if(fault==="missing")delete f.proof.grants[0].recovery.code_sha256;else f.proof.grants[0].recovery.code_sha256="0".repeat(64);
+ await f.writeProof();await assert.rejects(loadCheckedMacRecoveryInstallation(f.registry,f.installation,f.io));assert.equal(f.signCalls(),0);assert.equal(f.nativeCalls(),0);
 });

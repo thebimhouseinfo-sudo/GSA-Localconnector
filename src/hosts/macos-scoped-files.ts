@@ -25,6 +25,16 @@ async function protectedRead(file:string,max:number):Promise<Buffer>{
  const fd=await fs.open(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
  try{const opened=await fd.stat();if(opened.dev!==before.dev||opened.ino!==before.ino)blocked("Installation changed");const bytes=Buffer.alloc(before.size+1);let pos=0;while(pos<bytes.length){const r=await fd.read(bytes,pos,bytes.length-pos,pos);if(!r.bytesRead)break;pos+=r.bytesRead;}const after=await fd.stat();if(pos!==before.size||after.ctimeMs!==before.ctimeMs||after.mtimeMs!==before.mtimeMs)blocked("Installation changed");return bytes.subarray(0,pos);}finally{await fd.close();}
 }
+/** One loader-owned normalization path for BASE and recovery binaries. */
+async function normalizedCodeSha256(binary:string):Promise<string>{
+ const bytes=await protectedRead(binary,16*1024*1024);
+ const scratch=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),"gsa-file-code-"))),copy=path.join(scratch,"broker");await fs.chmod(scratch,0o700);
+ try{
+  await fs.writeFile(copy,bytes,{flag:"wx",mode:0o700});
+  await command("/usr/bin/codesign",["--remove-signature",copy],"",65536);
+  return sha(normalizedStrippedMacFileCode(await protectedRead(copy,16*1024*1024)));
+ }finally{await fs.unlink(copy).catch(()=>{});await fs.rmdir(scratch);}
+}
 async function protectedDirectory(dir:string){const st=await fs.lstat(dir);if(!st.isDirectory()||st.isSymbolicLink()||![0,process.getuid?.()].includes(st.uid)||(st.mode&0o777)!==0o700||await fs.realpath(dir)!==dir)blocked("Unsafe scoped files directory");}
 /** Physical two-way separation from every currently selected project root. */
 export async function assertMacFileInstallationSeparated(registry:WorkspaceRegistry,installationRoot:string):Promise<readonly WorkspaceGrant[]>{
@@ -151,11 +161,7 @@ async function constructMacScopedFiles(registry:WorkspaceRegistry,installationRo
   let info:Buffer|undefined;
   for(const relative of expected){const bytes=await protectedRead(path.join(app,relative),16*1024*1024),digest=bound.artifacts[relative];if(typeof digest!=="string"||!/^[a-f0-9]{64}$/.test(digest)||sha(bytes)!==digest)blocked("Broker changed");if(relative==="Contents/Info.plist")info=bytes;}
   await validateBundle(app,bound,info!);
-  {
-   const scratch=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),"gsa-file-code-"))),copy=path.join(scratch,"broker");await fs.chmod(scratch,0o700);
-   try{await fs.copyFile(path.join(app,"Contents/MacOS/broker"),copy,constants.COPYFILE_EXCL);await fs.chmod(copy,0o700);await command("/usr/bin/codesign",["--remove-signature",copy],"",65536);if(sha(normalizedStrippedMacFileCode(await fs.readFile(copy)))!==proof.build.code_sha256)blocked("Broker release code changed");}
-   finally{await fs.unlink(copy).catch(()=>{});await fs.rmdir(scratch);}
-  }
+  if(await normalizedCodeSha256(path.join(app,"Contents/MacOS/broker"))!==proof.build.code_sha256)blocked("Broker release code changed");
   requirePinned(grant,"read");
  }
  // Loading must not advertise a stale installation for the currently selected roots.
@@ -165,7 +171,7 @@ async function constructMacScopedFiles(registry:WorkspaceRegistry,installationRo
  const recovery=macFileRecoveryActivation();
  let recoverableMutations:NativeRecoverableFileMutations|undefined;
  if(recovery.available&&options.ownerLockFD===3&&options.authorize){
-  try{recoverableMutations=await loadCheckedMacRecoveryInstallation(registry,installationRoot,{ownerLockFD:3,authorize:id=>options.authorize!(id,"write"),protectedRead,protectedDirectory,command});}
+  try{recoverableMutations=await loadCheckedMacRecoveryInstallation(registry,installationRoot,{ownerLockFD:3,authorize:id=>options.authorize!(id,"write"),protectedRead,protectedDirectory,command,normalizedCodeSha256});}
   catch{/* Missing/stale recovery installation must preserve the legacy subset. */}
  }
  const supportedOperations:readonly NativeFileOperation[]=Object.freeze(["create_file","create_directory","copy_file",...(recoverableMutations?["update_file","edit_file","apply_patch","delete_file"] as const:[])]);

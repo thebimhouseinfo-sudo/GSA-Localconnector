@@ -11,9 +11,11 @@ import {createMacFileRecovery} from "./macos-file-recovery.js";
 import {validateWorkspaceRelative} from "../core/workspace-path.js";
 import {assertFileTransactionId} from "../core/file-transactions.js";
 import {requireMacFileBuild,requireMacFileEvidence} from "./macos-file-evidence.js";
+import {requireMacRecoveryQualification} from "./macos-recovery-evidence.js";
 export interface RecoveryInstallationIO {
  readonly ownerLockFD?:3;
  readonly authorize:(workspaceId:string)=>Promise<void>;
+ readonly normalizedCodeSha256:(binary:string)=>Promise<string>;
  readonly protectedRead:(file:string,max:number)=>Promise<Buffer>;
  readonly protectedDirectory:(directory:string)=>Promise<void>;
  readonly command:(executable:string,args:string[],input:string,max:number,ownerLockFD?:3)=>Promise<Buffer>;
@@ -24,7 +26,7 @@ const BASE_ARTIFACTS=["Contents/MacOS/broker","Contents/Info.plist","Contents/_C
 function fail():never {throw Object.assign(Error("Unsafe or stale recovery installation"),{code:"SECURITY_BLOCKED"});}
 const sha=(bytes:Uint8Array)=>createHash("sha256").update(bytes).digest("hex");
 type Identity={device:string;inode:string};
-type Binding={id:string;root:string;rootIdentity:Identity;revision:number;recovery:{root:string;rootIdentity:Identity;artifacts:Record<string,string>}};
+type Binding={id:string;root:string;rootIdentity:Identity;revision:number;recovery:{root:string;rootIdentity:Identity;artifacts:Record<string,string>;code_sha256:string}};
 function identity(value:unknown):Identity{
  if(!value||typeof value!=="object"||Array.isArray(value))fail();const v=value as Record<string,unknown>;
  if(Object.keys(v).length!==2||!["device","inode"].every(k=>typeof v[k]==="string"&&/^\d{1,32}$/.test(v[k] as string)))fail();return {device:v.device as string,inode:v.inode as string};
@@ -57,7 +59,7 @@ function requestSnapshot(value:Readonly<Record<string,unknown>>,ref:ScopedFileRe
  * production activation flag. Synthetic IO tests do not certify native signing. */
 export async function loadCheckedMacRecoveryInstallation(registry:WorkspaceRegistry,installationRoot:string,io:RecoveryInstallationIO):Promise<NativeRecoverableFileMutations>{
  if(process.platform!=="darwin"||io.ownerLockFD!==3)fail();
- const {protectedRead,protectedDirectory,command,authorize}=io;
+ const {protectedRead,protectedDirectory,command,authorize,normalizedCodeSha256}=io;
  const installedGrants=registry.list();
  const requireInstalledGrants=()=>{if(!isDeepStrictEqual(registry.list(),installedGrants))fail();};
  await ancestry(installationRoot,true);await protectedDirectory(installationRoot);
@@ -71,11 +73,14 @@ export async function loadCheckedMacRecoveryInstallation(registry:WorkspaceRegis
   if(typeof envelope.body!=="string"||typeof envelope.hmac!=="string"||!/^[a-f0-9]{64}$/.test(envelope.hmac)||!timingSafeEqual(createHmac("sha256",key).update(envelope.body).digest(),Buffer.from(envelope.hmac,"hex")))fail();
   const proof=JSON.parse(envelope.body);
   if(proof.format!=="gsa-scoped-files-v2"||proof.hostRelease!==os.release()||proof.arch!==process.arch||!Array.isArray(proof.grants)||proof.grants.length!==installedGrants.length)fail();
-  // These unchanged validators qualify the BASE release only. They are not
-  // native recovery evidence and do not remove the separate activation hold.
+  // BASE and recovery qualification are separate, immutable evidence inputs.
+  // Neither bypasses the checked installation or the outer activation hold.
   requireMacFileBuild(proof.build);
   if(proof.build.hostRelease!==proof.hostRelease||proof.build.arch!==proof.arch)fail();
   requireMacFileEvidence(proof.evidence,proof.build);
+  if(typeof proof.recoveryQualification!=="string"||Buffer.byteLength(proof.recoveryQualification,"utf8")>512*1024)fail();
+  const qualified=requireMacRecoveryQualification(Buffer.from(proof.recoveryQualification,"utf8"),proof.recoveryBuild);
+  if(qualified.host_release!==proof.hostRelease||qualified.arch!==proof.arch)fail();
   const bodyHash=sha(Buffer.from(envelope.body));
   if(initialBodyHash!==undefined&&bodyHash!==initialBodyHash)fail();
   const bindings=new Map<string,Binding>(),seen=new Set<string>();
@@ -94,9 +99,9 @@ export async function loadCheckedMacRecoveryInstallation(registry:WorkspaceRegis
    if(b.role==="reference"){if(Object.hasOwn(b,"recovery"))fail();continue;}
    if(!Object.hasOwn(b,"recovery"))continue;
    const r=b.recovery;
-   if(!r||typeof r!=="object"||Array.isArray(r)||Object.keys(r).length!==3||!Object.keys(r).every(k=>["root","rootIdentity","artifacts"].includes(k))||typeof r.root!=="string"||!r.artifacts||typeof r.artifacts!=="object"||Array.isArray(r.artifacts)||Object.keys(r.artifacts).length!==ARTIFACTS.length)fail();
+   if(!r||typeof r!=="object"||Array.isArray(r)||Object.keys(r).length!==4||!Object.keys(r).every(k=>["root","rootIdentity","artifacts","code_sha256"].includes(k))||r.code_sha256!==qualified.code_sha256||typeof r.root!=="string"||!r.artifacts||typeof r.artifacts!=="object"||Array.isArray(r.artifacts)||Object.keys(r.artifacts).length!==ARTIFACTS.length)fail();
    for(const name of ARTIFACTS)if(typeof r.artifacts[name]!=="string"||!/^[a-f0-9]{64}$/.test(r.artifacts[name]))fail();
-   bindings.set(b.id,{id:b.id,root:b.root,rootIdentity:identity(b.rootIdentity),revision:b.revision,recovery:{root:r.root,rootIdentity:identity(r.rootIdentity),artifacts:{...r.artifacts}}});
+   bindings.set(b.id,{id:b.id,root:b.root,rootIdentity:identity(b.rootIdentity),revision:b.revision,recovery:{root:r.root,rootIdentity:identity(r.rootIdentity),artifacts:{...r.artifacts},code_sha256:r.code_sha256}});
   }
   requireInstalledGrants();
   initialBodyHash??=bodyHash;
@@ -151,7 +156,8 @@ export async function loadCheckedMacRecoveryInstallation(registry:WorkspaceRegis
   const entitlements=JSON.parse((await command("/usr/bin/plutil",["-convert","json","-o","-","-"],signed.toString("utf8"),65536)).toString());
   const rights="com.apple.security.temporary-exception.files.absolute-path.read-write",sandbox="com.apple.security.app-sandbox";
   if(!entitlements||Object.keys(entitlements).length!==2||entitlements[sandbox]!==true||!Array.isArray(entitlements[rights])||entitlements[rights].length!==2||new Set(entitlements[rights]).size!==2||![bound.root+"/",bound.recovery.root+"/"].every(v=>entitlements[rights].includes(v)))fail();
-  // Signing/plist commands await other processes. Do not let an enrollment or
+  if(await normalizedCodeSha256(binary)!==bound.recovery.code_sha256)fail();
+  // Signing/plist/code commands await other processes. Do not let an enrollment or
   // HMAC-valid installation rewrite during those waits reach the broker.
   await manifest();await protectSelectedRoots(initial);
   return {binding:bound,app,binary};
