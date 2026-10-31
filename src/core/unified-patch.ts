@@ -2,14 +2,15 @@
 export class PatchConflict extends Error {constructor(public readonly code:"INVALID_PATCH"|"HASH_CONFLICT",message:string){super(message);}}
 export function applyUnifiedTextPatch(original:string,patch:string):string {
  if(!patch||patch.length>1024*1024||patch.includes("\0"))throw new PatchConflict("INVALID_PATCH","Empty or oversized patch");
- const lines=patch.replace(/\r\n/g,"\n").split("\n");
+ const lines=patch.split("\n");
+ const control=(line:string|undefined)=>line?.endsWith("\r")?line.slice(0,-1):line;
  const source=original===""?[]:(original.endsWith("\n")?original.slice(0,-1):original).split("\n");
  let trailingNewline=original===""||original.endsWith("\n"),annotated=false,unterminatedOutput=-1;
  const out:string[]=[];
  let cursor=0,index=0,hunks=0;
  if(lines[index]?.startsWith("--- ")){index++;if(!lines[index]?.startsWith("+++ "))throw new PatchConflict("INVALID_PATCH","Expected new file marker");index++;}
  while(index<lines.length){
-  const head=lines[index];
+  const head=control(lines[index])!;
   if(head===""){if(index===lines.length-1)break;throw new PatchConflict("INVALID_PATCH","Unexpected blank patch line");}
   const m=/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?:.*)$/.exec(head);
   if(!m)throw new PatchConflict("INVALID_PATCH","Expected unified hunk");
@@ -24,7 +25,7 @@ export function applyUnifiedTextPatch(original:string,patch:string):string {
    const text=lines[index];
    if(text===""){if(index===lines.length-1)break;throw new PatchConflict("INVALID_PATCH","Malformed empty line");}
    const symbol=text[0],value=text.slice(1);
-   const noNewline=lines[index+1]==="\\ No newline at end of file";
+   const noNewline=control(lines[index+1])==="\\ No newline at end of file";
    if(noNewline){annotated=true;index++;}
 
    if(symbol===" "||symbol==="-"){

@@ -15,3 +15,12 @@ test("hash conflicts and ambiguous edits fail closed",()=>{
  assert.throws(()=>planExactEdit(before,sha256(before),"","b"),(e:any)=>e.code==="MATCH_CONFLICT");
  assert.throws(()=>planExactEdit(Buffer.from([255]),sha256(Buffer.from([255])),"a","b"),(e:any)=>e.code==="MATCH_CONFLICT");
 });
+test("overlapping exact matches are ambiguous",()=>{
+ const bytes=Buffer.from("aaa");
+ assert.throws(()=>planExactEdit(bytes,sha256(bytes),"aa","x"),(e:any)=>e.code==="MATCH_CONFLICT");
+});
+test("exact text edits preserve a UTF-8 BOM unless explicitly matched",()=>{
+ const bytes=Buffer.from("\ufeffhello\n");
+ assert.deepEqual(planExactEdit(bytes,sha256(bytes),"hello","world").content,Buffer.from("\ufeffworld\n"));
+ assert.deepEqual(planExactEdit(bytes,sha256(bytes),"\ufeffhello","world").content,Buffer.from("world\n"));
+});

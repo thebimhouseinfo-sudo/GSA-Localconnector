@@ -31,3 +31,19 @@ test('no-newline markers reject stale or non-final source and output annotations
   ['a\nb','@@ -1,2 +1,2 @@\n-a\n+x\n'+mark+' b\n']
  ])assert.throws(()=>applyUnifiedTextPatch(original,patch));
 });
+test("unified patches preserve CRLF data and untouched mixed line endings",()=>{
+ const patch="--- a/x\n+++ b/x\n@@ -1,3 +1,3 @@\n one\r\n-two\r\n+changed\r\n three\n";
+ assert.equal(applyUnifiedTextPatch("one\r\ntwo\r\nthree\n",patch),"one\r\nchanged\r\nthree\n");
+});
+test("CRLF patch data does not match LF source lines",()=>{
+ const patch="--- a/x\r\n+++ b/x\r\n@@ -1 +1 @@\r\n-old\r\n+new\r\n";
+ assert.throws(()=>applyUnifiedTextPatch("old\n",patch),(e:any)=>e.code==="HASH_CONFLICT");
+});
+test("CRLF file patch keeps content line endings",()=>{
+ const patch="--- a/x\r\n+++ b/x\r\n@@ -1 +1 @@\r\n-old\r\n+new\r\n";
+ assert.equal(applyUnifiedTextPatch("old\r\n",patch),"new\r\n");
+});
+test("CRLF additions preserve bytes even when the source is empty",()=>{
+ const patch="--- /dev/null\r\n+++ b/x\r\n@@ -0,0 +1 @@\r\n+new\r\n";
+ assert.equal(applyUnifiedTextPatch("",patch),"new\r\n");
+});
