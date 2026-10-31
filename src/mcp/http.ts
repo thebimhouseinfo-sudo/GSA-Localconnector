@@ -5,9 +5,10 @@ import {loadTrustedRegistry} from "../local/grants.js";
 import { WorkspaceRegistry } from "../core/workspace.js";
 import { createReadOnlyTools, toolDefinitions,limitToolCalls,type ToolCall,type ToolResult } from "./server.js";
 import {bootstrapMcpTools} from "./runtime-bootstrap.js";
+import {loadStartupRegistry} from "./startup-registry.js";
 
 const DEFAULT_PORT = 58347;
-const MAX_REQUEST_BYTES = 1024 * 1024;
+const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
 const PROTOCOL_VERSION = "2025-03-26";
 
 function respond(res: ServerResponse, status: number, payload: unknown): void {
@@ -117,8 +118,9 @@ export function createHttpMcpServer(token: string, registry = new WorkspaceRegis
 }
 export async function startHttpMcp(token: string, port = DEFAULT_PORT,owner?:import("../local/mac-owner.js").MacOwner): Promise<void> {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw Error("Invalid HTTP MCP port");
-  const registry=process.platform==="win32"||process.platform==="darwin"?await loadTrustedRegistry():new WorkspaceRegistry();
-  const tools=process.platform==="darwin"?await bootstrapMcpTools(registry,undefined,undefined,owner):null;
+  const startup=process.platform==="darwin"?await loadStartupRegistry():undefined;
+  const registry=startup?.registry??(process.platform==="win32"?await loadTrustedRegistry():new WorkspaceRegistry());
+  const tools=process.platform==="darwin"?await bootstrapMcpTools(registry,undefined,undefined,owner,startup?.workspaceStartupIssue):null;
   if(tools?.blockedReason)process.stderr.write("Native execution unavailable: "+tools.blockedReason+"\n");
   const server = createHttpMcpServer(token,registry,tools?.invoke);
   await new Promise<void>((resolve, reject) => {

@@ -60,3 +60,11 @@ test('glob preserves literal Unicode filenames including surrogate pairs',{skip:
  const response=JSON.parse((await createReadOnlyTools(registry)({name:'glob',arguments:{workspace_id:'A',path:'.',pattern:name}})).content[0].text);
  assert.equal(response.ok,true);assert.deepEqual(response.result.entries,[{name,kind:'file'}]);
 });
+test('glob accepts double dots in a literal filename while refusing path patterns',{skip:process.platform==='win32'},async t=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'gsa-review-dots-glob-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+ await fs.writeFile(path.join(root,'file..txt'),'fixture');
+ const registry=new WorkspaceRegistry();await registry.enrollTrusted('A',root,['read']);const invoke=createReadOnlyTools(registry);
+ const call=async(pattern:string)=>JSON.parse((await invoke({name:'glob',arguments:{workspace_id:'A',path:'.',pattern}})).content[0].text);
+ const literal=await call('file..txt');assert.equal(literal.ok,true);assert.deepEqual(literal.result.entries,[{name:'file..txt',kind:'file'}]);
+ for(const pattern of ['../file','dir/file','dir\\file','**'])assert.equal((await call(pattern)).code,'INVALID_GLOB');
+});

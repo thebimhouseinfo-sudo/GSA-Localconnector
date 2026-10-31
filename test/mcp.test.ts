@@ -6,7 +6,7 @@ import {WorkspaceRegistry} from "../src/core/workspace.js";
 
 test("full direct tool catalog is discoverable but unsafe operations are blocked",()=>{
  const names: string[]=toolDefinitions().map(t=>t.name);
- assert.deepEqual(names,["connector_status","list_workspaces","get_workspace","list_directory","bind_workspaces","unbind_workspace","get_file_info","search","fetch_file",...plannedTools.map(t=>t.name)]);
+ assert.deepEqual(names,["connector_status","list_workspaces","get_workspace","list_directory","bind_workspaces","unbind_workspace","get_file_info","search","fetch_file_bytes","fetch_file",...plannedTools.map(t=>t.name)]);
  assert.equal(names.includes("run_command"),true);
  assert.equal(names.includes("ci_run"),true);
 });
@@ -30,8 +30,8 @@ test("partial scoped-file backends report only supported mutations",async()=>{
  assert.equal(result.fileBackendAvailable,true);
  assert.deepEqual(result.fileOperations,["create_file","create_directory","copy_file"]);
  assert.equal(result.hostFileWrites,false);
- assert.equal(result.files.length===0||JSON.stringify(result.files)===JSON.stringify(["create_file","create_directory","copy_file"]),true);
- for(const name of ["update_file","edit_file","apply_patch","delete_file","move_file","batch_file_operations"])assert.ok(result.blocked.includes(name),`${name} must remain blocked`);
+ assert.equal(result.files.length===0||JSON.stringify(result.files)===JSON.stringify(["create_file","create_directory","copy_file","create_file_bytes"]),true);
+ for(const name of ["update_file_bytes","update_file","edit_file","apply_patch","delete_file","move_file","batch_file_operations"])assert.ok(result.blocked.includes(name),`${name} must remain blocked`);
  assert.equal(result.shellIsolation,"blocked");assert.equal(result.git,"blocked");
 });
 

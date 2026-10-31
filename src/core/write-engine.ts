@@ -43,13 +43,23 @@ async function replace(io:NativeScopedFiles,ref:ScopedFileRef,bytes:Uint8Array,e
  return receipt(ref,expectedSha256,afterSha256);
 }
 /** Commit boundary is delegated to a native handle-relative filesystem. */
-export async function createFile(io:NativeScopedFiles,ref:ScopedFileRef,content:string):Promise<MutationReceipt>{
- validate(ref);const bytes=body(content);await io.createExclusive(ref,bytes);return receipt(ref,null,sha256(bytes));
+function boundedBytes(content:Uint8Array):Uint8Array {
+ if(content.byteLength>MAX_BYTES)throw new MutationError("FILE_TOO_LARGE","Mutation exceeds 8 MiB");
+ return Buffer.from(content);
 }
-export async function updateFile(io:NativeScopedFiles,ref:ScopedFileRef,content:string,expectedSha256:string):Promise<RecoverableMutationResult>{
- ref=captureRef(ref);const bytes=body(content);const snap=await io.read(ref,MAX_BYTES);
+export async function createFileBytes(io:NativeScopedFiles,ref:ScopedFileRef,content:Uint8Array):Promise<MutationReceipt>{
+ ref=captureRef(ref);const bytes=boundedBytes(content);await io.createExclusive(ref,bytes);return receipt(ref,null,sha256(bytes));
+}
+export async function createFile(io:NativeScopedFiles,ref:ScopedFileRef,content:string):Promise<MutationReceipt>{
+ return createFileBytes(io,ref,body(content));
+}
+export async function updateFileBytes(io:NativeScopedFiles,ref:ScopedFileRef,content:Uint8Array,expectedSha256:string):Promise<RecoverableMutationResult>{
+ ref=captureRef(ref);const bytes=boundedBytes(content);const snap=await io.read(ref,MAX_BYTES);
  requireExpectedHash(snap.bytes,expectedSha256);
  return replace(io,ref,bytes,expectedSha256);
+}
+export async function updateFile(io:NativeScopedFiles,ref:ScopedFileRef,content:string,expectedSha256:string):Promise<RecoverableMutationResult>{
+ return updateFileBytes(io,ref,body(content),expectedSha256);
 }
 export async function editFile(io:NativeScopedFiles,ref:ScopedFileRef,oldText:string,newText:string,expectedSha256:string):Promise<RecoverableMutationResult>{
  ref=captureRef(ref);const snap=await io.read(ref,MAX_BYTES);
@@ -78,7 +88,7 @@ export async function applyPatch(io:NativeScopedFiles,ref:ScopedFileRef,patch:st
  ref=captureRef(ref);
  const snap=await io.read(ref,MAX_BYTES);
  requireExpectedHash(snap.bytes,expectedSha256);
- const original=new TextDecoder("utf-8",{fatal:true}).decode(snap.bytes);
+ const original=new TextDecoder("utf-8",{fatal:true,ignoreBOM:true}).decode(snap.bytes);
  const next=body(applyUnifiedTextPatch(original,patch));
  return replace(io,ref,next,expectedSha256);
 }

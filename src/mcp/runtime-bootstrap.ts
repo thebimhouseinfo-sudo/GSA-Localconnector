@@ -10,7 +10,7 @@ import type {WorkspaceRegistry} from "../core/workspace.js";
 import {identityDirectory} from "../local/identity.js";
 import {requirePersistedGrant} from "../local/grants.js";
 import {ControlLeaseStore} from "../local/control-lease.js";
-import {CiJournalStore} from "../local/ci-store.js";
+import {CiJournalStore,CiStoreError} from "../local/ci-store.js";
 import {ProcessJournalStore} from "../local/process-store.js";
 import {CiSnapshotStore} from "../local/ci-snapshot-store.js";
 import {CiLogStore} from "../local/ci-log-store.js";
@@ -56,7 +56,15 @@ export async function bootstrapMcpTools(registry:WorkspaceRegistry,identityRoot=
  const logs=new CiLogStore(path.join(identityRoot,"ci-logs"));
  const artifacts=new CiArtifactStore(path.join(identityRoot,"ci-artifacts"));
  const processPersistence=process.platform==="darwin"&&owner?.lockFD===3?{store:new ProcessJournalStore(path.join(identityRoot,"process-runs")),ownerSession:owner.session}:undefined;
- if(owner){await controls.invalidateAfterOwnerFence(owner.session);await journal.reconcileAfterOwnerFence(owner.session);}
+ let ciDegraded=false;
+ if(owner){
+  await controls.invalidateAfterOwnerFence(owner.session);
+  try{await journal.reconcileAfterOwnerFence(owner.session);}
+  catch(error){
+   if(!(error instanceof SyntaxError)&&!(error instanceof CiStoreError&&error.code==="INVALID_RUN_RECORD"))throw error;
+   ciDegraded=true;
+  }
+ }
  if(processPersistence)await processPersistence.store.reconcileAfterOwnerFence(processPersistence.ownerSession);
  let runtime:Awaited<ReturnType<typeof loadMacVmRuntime>>|null=null;
  let files:Awaited<ReturnType<typeof loadMacScopedFiles>>|null=null;
@@ -85,8 +93,8 @@ export async function bootstrapMcpTools(registry:WorkspaceRegistry,identityRoot=
  let blockedReason:string|undefined;
  try{runtime=await loadMacVmRuntime(registry,installationRoot,{ownerLockFD:owner?.lockFD,authorize:workspaceId=>authorizeMcpWorkspace(registry,workspaceId,identityRoot)});}
  catch(error){blockedReason=error instanceof Error?error.message:"Native installation unavailable";}
- const executor=runtime?new MacVmCiExecutor(runtime,snapshots,logs,artifacts):null;
- const dispatch=createReadOnlyTools(registry,files,runtime?.sandbox??null,journal,artifacts,logs,runtime?.processes??null,snapshots,runtime?.sourceCapture??null,executor,controls,{
+ const executor=runtime&&!ciDegraded?new MacVmCiExecutor(runtime,snapshots,logs,artifacts):null;
+ const dispatch=createReadOnlyTools(registry,files,runtime?.sandbox??null,journal,artifacts,logs,runtime?.processes??null,snapshots,ciDegraded?null:runtime?.sourceCapture??null,executor,controls,{
   grantDirectory:identityRoot,
   processPersistence,
   fileBackendState:()=>({files,fileBlockedReason,directoryCopyBlockedReason}),
@@ -96,14 +104,16 @@ export async function bootstrapMcpTools(registry:WorkspaceRegistry,identityRoot=
   }
  });
  const invoke=async(call:ToolCall):Promise<ToolResult>=>{
+  if(ciDegraded&&["ci_prepare_source","ci_run","ci_rerun_failed","ci_cancel"].includes(call.name))return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:"CI_JOURNAL_DEGRADED"})}]};
   if(hostGit.has(call.name))return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:"SECURITY_BLOCKED"})}]};
   const result=await dispatch(call);
   if((owner||workspaceStartupIssue)&&["connector_status","list_capabilities"].includes(call.name)&&!result.isError){
    const body=JSON.parse(result.content[0].text);
    if(processPersistence){
     body.result.processRecovery=processPersistence.store.health();
-    body.result.restartRecovery=body.result.processRecovery.admission_blocked?"degraded-process-journal":"ci-journal-reconciled; async-process-journal-reconciled; native-tree-recovery-not-certified";
+    body.result.restartRecovery=body.result.processRecovery.admission_blocked?"degraded-process-journal":(ciDegraded?"degraded-ci-journal":"ci-journal-reconciled")+"; async-process-journal-reconciled; native-tree-recovery-not-certified";
    }
+   if(ciDegraded)body.result.ciRecovery="degraded";
    if(workspaceStartupIssue){body.result.workspaceStartupIssue=workspaceStartupIssue;body.result.workspaceSelectionRequired=true;}
    return {...result,content:[{type:"text",text:JSON.stringify(body)}]};
   }

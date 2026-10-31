@@ -2,10 +2,18 @@ import {assertDirectoryCopyId} from "../core/directory-copy.js";
 import {validateWorkspaceRelative,hasReservedWorkspaceSegment} from "../core/workspace-path.js";
 import {WorkspaceRegistry} from "../core/workspace.js";
 import {requireNativeBackend,type NativeScopedFiles,type ScopedFileRef} from "../core/native-io.js";
-import {createFile,updateFile,editFile,applyPatch,createDirectory,trashFile,copyFile,moveFile} from "../core/write-engine.js";
+import {createFile,updateFile,createFileBytes,updateFileBytes,editFile,applyPatch,createDirectory,trashFile,copyFile,moveFile} from "../core/write-engine.js";
 const str=(v:unknown):string=>{if(typeof v!=="string")throw Error("INVALID_ARGUMENTS");return v;};
 const fields=(args:Record<string,unknown>,keys:readonly string[])=>{
  if(Object.keys(args).some(k=>!keys.includes(k))||keys.some(k=>typeof args[k]!=="string"))throw Error("INVALID_ARGUMENTS");
+};
+const decodeBytes=(value:unknown):Uint8Array=>{
+ const encoded=str(value);
+ if(encoded.length>Math.ceil(8*1024*1024/3)*4)throw Error("FILE_TOO_LARGE");
+ const bytes=Buffer.from(encoded,"base64");
+ if(bytes.toString("base64")!==encoded)throw Error("INVALID_ARGUMENTS");
+ if(bytes.length>8*1024*1024)throw Error("FILE_TOO_LARGE");
+ return bytes;
 };
 const ref=(reg:WorkspaceRegistry,id:string,path:string,permission:"read"|"write"):ScopedFileRef=>{
  reg.requireGrant(id,permission);
@@ -29,6 +37,16 @@ export async function dispatchFileMutation(name:string,args:Record<string,unknow
    if(registry.requireGrant(dst.workspace_id,"write").role!=="workspace")throw Error("SECURITY_BLOCKED");
    if(!io.directoryCopies||!io.supportedOperations?.includes("copy_directory"))throw Error("SECURITY_BLOCKED");
    return io.directoryCopies.copy(str(args.copy_id),src,dst,args.expected_manifest_sha256);
+  }
+  case "create_file_bytes":{
+   fields(args,["workspace_id","path","base64"]);
+   const file=ref(registry,str(args.workspace_id),str(args.path),"write");
+   return createFileBytes(io,file,decodeBytes(args.base64));
+  }
+  case "update_file_bytes":{
+   fields(args,["workspace_id","path","base64","expected_sha256"]);
+   const file=ref(registry,str(args.workspace_id),str(args.path),"write");
+   return updateFileBytes(io,file,decodeBytes(args.base64),str(args.expected_sha256));
   }
   case "create_file":{
    fields(args,["workspace_id","path","content"]);

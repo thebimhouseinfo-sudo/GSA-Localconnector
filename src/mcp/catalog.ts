@@ -10,7 +10,7 @@ function def(name:string,description:string,properties:Record<string,unknown>,re
  return {name,description,inputSchema:{type:"object",properties,required,additionalProperties:false}};
 }
 export const controlledToolNames=new Set([
- "bind_workspaces","unbind_workspace","create_file","update_file","edit_file","apply_patch",
+ "bind_workspaces","unbind_workspace","create_file","update_file","create_file_bytes","update_file_bytes","edit_file","apply_patch",
  "delete_file","create_directory","copy_file","move_file","batch_file_operations","run_command",
  "start_process","stop_process","git_status","git_diff","git_log","git_show","compare_commits",
  "git_fetch","git_pull","git_add","git_commit","git_push","create_branch","git_checkout",
@@ -30,6 +30,8 @@ export const plannedTools=[
  def("list_capabilities","Report enabled and blocked capabilities",{workspace_id:str},[]),
  def("get_file_transaction","Explicitly inspect a file transaction; never retry a mutation or restore files",{transaction_id:{type:"string",pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}}),
  def("glob","Find files by a bounded relative glob",{...target,pattern:str}),
+ def("create_file_bytes","Create a new file from canonical base64 bytes",{...target,base64:str}),
+ def("update_file_bytes","Replace a file with canonical base64 bytes and expected SHA256",{...target,base64:str,expected_sha256:str}),
  def("create_file","Create a new file under a writable workspace, fail on conflict",{...target,content:str}),
  def("update_file","Replace an existing file with expected SHA256 guard",{...target,content:str,expected_sha256:str}),
  def("edit_file","Exact-match replace in a file with expected SHA256",{...target,old_text:str,new_text:str,expected_sha256:str}),

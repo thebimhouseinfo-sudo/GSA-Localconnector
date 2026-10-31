@@ -42,6 +42,7 @@ const definitions = [
   {name:"unbind_workspace",description:"Revoke a previously bound workspace on the selected host; subsequent calls lose the grant",inputSchema:{type:"object",properties:{workspace_id:{type:"string"}},required:["workspace_id"],additionalProperties:false}},
   {name:"get_file_info",description:"Metadata and SHA256 of a file within a bound workspace; max 8 MiB hash",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"}},required:["workspace_id","path"],additionalProperties:false}},
   {name:"search",description:"Search UTF-8 text across bounded files under a workspace-relative directory; no external grep subprocess",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},query:{type:"string"}},required:["workspace_id","path","query"],additionalProperties:false}},
+  {name:"fetch_file_bytes",description:"Read up to 8 MiB as canonical base64 bytes",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"}},required:["workspace_id","path"],additionalProperties:false}},
   {name:"fetch_file",description:"Read UTF-8 text from an enrolled workspace or reference (maximum 8 MiB; returns up to 500 lines per page)",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},start_line:{type:"integer",minimum:1},max_lines:{type:"integer",minimum:1,maximum:500}},required:["workspace_id","path"],additionalProperties:false}}
 ] as const;
 function validPage(args:Record<string,unknown>,maxLimit:number):boolean{
@@ -318,7 +319,10 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
             result=await (artifacts??new CiArtifactStore()).list(args.run_id);
            }else{
             if(typeof args.artifact!=="string")throw Error("INVALID_ARGUMENTS");
+            const expected=run.evidence?.artifact_hashes?.[args.artifact];
+            if(typeof expected!=="string"||!/^[a-f0-9]{64}$/.test(expected))throw Object.assign(Error("Artifact has no verified hash"),{code:"ARTIFACT_HASH_MISMATCH"});
             const data=await (artifacts??new CiArtifactStore()).read(args.run_id,args.artifact);
+            if(data.metadata.sha256!==expected)throw Object.assign(Error("Artifact hash does not match recorded evidence"),{code:"ARTIFACT_HASH_MISMATCH"});
             result={...data.metadata,base64:Buffer.from(data.bytes).toString("base64")};
            }
           }break;
@@ -351,14 +355,14 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           if(Object.keys(args).some(k=>k!=="workspace_id")||(args.workspace_id!==undefined&&typeof args.workspace_id!=="string"))throw Error("INVALID_ARGUMENTS");
           {if(typeof args.workspace_id==="string"&&!registry.get(args.workspace_id))throw Error("WORKSPACE_NOT_FOUND");
            const protectedStorage=protectedStateCapability();
-           const read=["connector_status","list_workspaces","get_workspace","bind_workspaces","unbind_workspace","list_directory","fetch_file","get_file_info","search","glob","list_capabilities","ci_validate_workflow","ci_list_workflows","ci_list_runs","ci_status","ci_artifacts","ci_read_artifact","ci_logs"].filter(name=>protectedStorage.available||!controlledToolNames.has(name));
+           const read=["connector_status","list_workspaces","get_workspace","bind_workspaces","unbind_workspace","list_directory","fetch_file","fetch_file_bytes","get_file_info","search","glob","list_capabilities","ci_validate_workflow","ci_list_workflows","ci_list_runs","ci_status","ci_artifacts","ci_read_artifact","ci_logs"].filter(name=>protectedStorage.available||!controlledToolNames.has(name));
            const execution=sandbox?.verified?["run_command","start_process","stop_process","list_processes","process_status","process_output"]:[];
            if(options.processPersistence&&protectedStorage.available)read.push("list_processes","process_status","process_output");
            const ci=ciExecutor?.verified?["ci_run","ci_rerun_failed","ci_cancel"]:[];
            if(sourceCapture?.verified)ci.push("ci_prepare_source");
            if(fileTransactionReadbackAvailable())read.push("get_file_transaction");
            if(directoryAvailable())read.push("inspect_directory","get_directory_copy");
-           const files=protectedStorage.available?[...fileOperations,...(batchFileWrites?["batch_file_operations"]:[])]:[];
+           const files=protectedStorage.available?[...fileOperations,...(fileOperations.includes("create_file")?["create_file_bytes"]:[]),...(fileOperations.includes("update_file")?["update_file_bytes"]:[]),...(batchFileWrites?["batch_file_operations"]:[])]:[];
            const enabled=new Set([...read,...files,...execution,...ci,...(controlStore&&protectedStorage.available?["acquire_control","renew_control","release_control"]:[])]);
            result={workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,read,files,execution,ci,blocked:plannedTools.map(t=>t.name).filter(n=>!enabled.has(n)),shellIsolation:sandbox?.verified?"verified":"blocked",...fileCapabilities(),...processHistory(),git:"blocked",executionEnvironment:sandbox?.verified?"linux-arm64-vm":null,workspaceMode:sandbox?.verified?"disposable-snapshot":null,restartRecovery:options.processPersistence?.store.health?.().admission_blocked?"degraded-process-journal":"blocked"};
           }break;
@@ -366,7 +370,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||typeof args.pattern!=="string"||Object.keys(args).length!==3||args.pattern.length>160||!args.pattern)throw Error("INVALID_ARGUMENTS");
           {
            const pattern=args.pattern as string;
-           if(pattern.includes("..")||pattern.includes("/")||pattern.includes(String.fromCharCode(92))||pattern.includes("**"))throw Error("INVALID_GLOB");
+           if(pattern.includes("/")||pattern.includes(String.fromCharCode(92))||pattern.includes("**"))throw Error("INVALID_GLOB");
            // Dynamic programming bounds work by pattern length × filename length.
            // A regex made from repeated .* can backtrack exponentially.
            const matches=(name:string)=>{
@@ -423,6 +427,11 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            }
            result={matches,files_examined:examined,skipped_hidden:skippedHidden,truncated:truncated||pending.length>0};
           }break;
+        case "fetch_file_bytes":
+          if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
+          {const data=await scopedRead().read(args.path,8*1024*1024);
+           result={path:args.path,base64:Buffer.from(data).toString("base64"),bytes:data.byteLength,sha256:createHash("sha256").update(data).digest("hex")};
+          }break;
         case "fetch_file":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||Object.keys(args).some(k=>!["workspace_id","path","start_line","max_lines"].includes(k))||(args.start_line!==undefined&&(!Number.isInteger(args.start_line)||Number(args.start_line)<1))||(args.max_lines!==undefined&&(!Number.isInteger(args.max_lines)||Number(args.max_lines)<1||Number(args.max_lines)>500)))throw Error("INVALID_ARGUMENTS");
           {const data=await scopedRead().read(args.path,8*1024*1024);
@@ -467,8 +476,8 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           if(outcome.status!=="APPLIED")return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:outcome.status==="UNKNOWN"?"RESULT_UNKNOWN":"FILE_TRANSACTION_CONFLICT",result:outcome})}]};
           result=outcome;break;
         }
-        case "create_file":case "update_file":case "edit_file":case "apply_patch":case "create_directory":case "delete_file":case "copy_file":case "move_file":
-          if(!fileOperations.includes(call.name))throw Error("SECURITY_BLOCKED");
+        case "create_file_bytes":case "update_file_bytes":case "create_file":case "update_file":case "edit_file":case "apply_patch":case "create_directory":case "delete_file":case "copy_file":case "move_file":
+          if(!fileOperations.includes(call.name==="create_file_bytes"?"create_file":call.name==="update_file_bytes"?"update_file":call.name))throw Error("SECURITY_BLOCKED");
           result=await dispatchFileMutation(call.name,args,registry,nativeFiles);
           if(result&&typeof result==="object"&&"transaction_id" in result&&"status" in result&&(result.status==="CONFLICT"||result.status==="UNKNOWN")){
             return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:result.status==="UNKNOWN"?"RESULT_UNKNOWN":"FILE_TRANSACTION_CONFLICT",result})}]};

@@ -28,3 +28,12 @@ test("file mutations are hash guarded and backend scoped",async()=>{
  assert.equal(f.data.has(key(a)),false);
  await assert.rejects(createFile(f,{workspace_id:"w",path:"../escape"},"no"));
 });
+test("patch preserves the original BOM and rejects stale content before mutation",async()=>{
+ const {applyPatch}=await import("../src/core/write-engine.js");
+ const f=new FakeFiles(),ref={workspace_id:"w",path:"bom.txt"};
+ const before=Buffer.from("\ufeffhello\n");f.data.set(key(ref),before);
+ await assert.rejects(applyPatch(f,ref,"@@ -1 +1 @@\n-\ufeffhello\n+\ufeffworld\n","0".repeat(64)));
+ assert.deepEqual(f.data.get(key(ref)),before);
+ await applyPatch(f,ref,"@@ -1 +1 @@\n-\ufeffhello\n+\ufeffworld\n",sha256(before));
+ assert.deepEqual(f.data.get(key(ref)),Buffer.from("\ufeffworld\n"));
+});

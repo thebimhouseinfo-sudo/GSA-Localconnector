@@ -35,7 +35,14 @@ export class CiJournalStore {
   try{data=await fs.readFile(this.recordPath(id),"utf8");}
   catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")throw new CiStoreError("RUN_NOT_FOUND","Run does not exist");throw e;}
   const record=JSON.parse(data) as CiRunRecord;
-  checkRecord(record);
+  if(!record||typeof record!=="object"||Array.isArray(record)||typeof record.run_id!=="string"||!UUID.test(record.run_id)||
+    typeof record.workspace_id!=="string"||typeof record.workflow!=="string"||typeof record.state!=="string"||
+    !["QUEUED","PREPARING","RUNNING","PASSED","FAILED","CANCELLED","BLOCKED","UNKNOWN"].includes(record.state))
+   throw new CiStoreError("INVALID_RUN_RECORD","Invalid CI record shape");
+  try{checkRecord(record);}catch(error){
+   if(error instanceof CiStoreError&&error.code==="INVALID_RUN_ID")throw new CiStoreError("INVALID_RUN_RECORD","Invalid record identity");
+   throw error;
+  }
   if(record.run_id!==id)throw new CiStoreError("INVALID_RUN_RECORD","Identity mismatch");
   return record;
  }

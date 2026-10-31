@@ -117,3 +117,52 @@ test("native authorization tolerates a transient controller lock but rejects rel
   });
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
+test('damaged optional CI history does not prevent diagnostics or permit CI execution',{skip:process.platform!=='darwin'},async()=>{
+ const {randomUUID}=await import('node:crypto');const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-ci-degraded-'))),id=randomUUID(),session=randomUUID();
+ const oldFd=process.env.GSA_OWNER_LOCK_FD,oldSession=process.env.GSA_OWNER_SESSION;
+ try{
+  await fs.mkdir(path.join(root,'ci-runs'),{mode:0o700});const file=path.join(root,'ci-runs',id+'.json');await fs.writeFile(file,'{',{mode:0o600});
+  process.env.GSA_OWNER_LOCK_FD='3';process.env.GSA_OWNER_SESSION=session;
+  const {invoke}=await bootstrapMcpTools(new WorkspaceRegistry(),root,path.join(root,'missing'),{identityRoot:root,session,lockFD:3});
+  const call=async(name:string,args:Record<string,unknown>={})=>JSON.parse((await invoke({name,arguments:args})).content[0].text);
+  const status=await call('connector_status');assert.equal(status.ok,true);assert.equal(status.result.ciRecovery,'degraded');assert.doesNotMatch(status.result.restartRecovery,/ci-journal-reconciled/);
+  const list=await call('list_workspaces');assert.equal(list.ok,true);assert.deepEqual(list.result,[]);
+  assert.equal((await call('ci_run',{workspace_id:'fixture',workflow:'x',source_run_id:randomUUID()})).code,'CI_JOURNAL_DEGRADED');
+  assert.equal(await fs.readFile(file,'utf8'),'{');
+ }finally{if(oldFd===undefined)delete process.env.GSA_OWNER_LOCK_FD;else process.env.GSA_OWNER_LOCK_FD=oldFd;if(oldSession===undefined)delete process.env.GSA_OWNER_SESSION;else process.env.GSA_OWNER_SESSION=oldSession;await fs.rm(root,{recursive:true,force:true});}
+});
+test('unsafe CI recovery lock still blocks bootstrap',{skip:process.platform!=='darwin'},async()=>{
+ const {randomUUID}=await import('node:crypto');const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-ci-unsafe-lock-'))),session=randomUUID();
+ const oldFd=process.env.GSA_OWNER_LOCK_FD,oldSession=process.env.GSA_OWNER_SESSION;
+ try{
+  await fs.mkdir(path.join(root,'ci-runs'),{mode:0o700});const file=path.join(root,'ci-runs',randomUUID()+'.json.lock');await fs.writeFile(file,'{}',{mode:0o600});await fs.chmod(file,0o644);
+  process.env.GSA_OWNER_LOCK_FD='3';process.env.GSA_OWNER_SESSION=session;
+  await assert.rejects(bootstrapMcpTools(new WorkspaceRegistry(),root,path.join(root,'missing'),{identityRoot:root,session,lockFD:3}),/UNSAFE_CI_LOCK/);
+  assert.equal(await fs.readFile(file,'utf8'),'{}');
+ }finally{if(oldFd===undefined)delete process.env.GSA_OWNER_LOCK_FD;else process.env.GSA_OWNER_LOCK_FD=oldFd;if(oldSession===undefined)delete process.env.GSA_OWNER_SESSION;else process.env.GSA_OWNER_SESSION=oldSession;await fs.rm(root,{recursive:true,force:true});}
+});
+test('valid JSON with invalid CI record shape degrades without deleting history',{skip:process.platform!=='darwin'},async()=>{
+ const {randomUUID}=await import('node:crypto');const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-ci-invalid-record-'))),session=randomUUID();
+ const oldFd=process.env.GSA_OWNER_LOCK_FD,oldSession=process.env.GSA_OWNER_SESSION;
+ try{
+  await fs.mkdir(path.join(root,'ci-runs'),{mode:0o700});const id=randomUUID(),file=path.join(root,'ci-runs',id+'.json');
+  process.env.GSA_OWNER_LOCK_FD='3';process.env.GSA_OWNER_SESSION=session;
+  const {createQueuedRun}=await import('../src/core/ci-journal.js');
+  const invalidState=JSON.stringify({...createQueuedRun('fixture','test','a'.repeat(64)),run_id:id,state:'NOT_A_STATE'});
+  for(const bad of ['null','{}','[]',invalidState]){
+   await fs.writeFile(file,bad,{mode:0o600});const {invoke}=await bootstrapMcpTools(new WorkspaceRegistry(),root,path.join(root,'missing'),{identityRoot:root,session,lockFD:3});
+   const status=JSON.parse((await invoke({name:'connector_status',arguments:{}})).content[0].text);
+   assert.equal(status.result.ciRecovery,'degraded');assert.equal(await fs.readFile(file,'utf8'),bad);
+  }
+ }finally{if(oldFd===undefined)delete process.env.GSA_OWNER_LOCK_FD;else process.env.GSA_OWNER_LOCK_FD=oldFd;if(oldSession===undefined)delete process.env.GSA_OWNER_SESSION;else process.env.GSA_OWNER_SESSION=oldSession;await fs.rm(root,{recursive:true,force:true});}
+});
+test('HTTP permits bounded 8 MiB binary envelopes and rejects oversized requests',{timeout:10000},async()=>{
+ let calls=0;const server=createHttpMcpServer('ephemeral-test-token-at-least-32-characters',new WorkspaceRegistry(),async()=>{calls++;return {content:[{type:'text',text:'ok'}]};});
+ await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+ try{
+  const port=(server.address() as AddressInfo).port;const headers={authorization:'Bearer ephemeral-test-token-at-least-32-characters','content-type':'application/json',accept:'application/json, text/event-stream','mcp-protocol-version':'2025-03-26'};
+  const send=async(content:string)=>fetch(`http://127.0.0.1:${port}/mcp`,{method:'POST',headers,body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'create_file_bytes',arguments:{workspace_id:'A',path:'file',base64:content}}})});
+  const accepted=await send(Buffer.alloc(8*1024*1024).toString('base64'));assert.equal(accepted.status,200);assert.equal(calls,1);
+  const rejected=await send('x'.repeat(12*1024*1024));assert.equal(rejected.status,413);assert.equal(calls,1);
+ }finally{await new Promise<void>((resolve,reject)=>server.close(e=>e?reject(e):resolve()));}
+});

@@ -197,3 +197,20 @@ test("workspace enrollment pins root identity and rejects replacement at the sam
   await assert.rejects(reg.resolveExistingRead("A","file"),(e:any)=>e.code==="SOURCE_UNVERIFIED");
  }finally{await fs.rm(tmp,{recursive:true,force:true});}
 });
+test('HTTP startup reports replaced workspace roots without granting access',{skip:process.platform!=='darwin',timeout:10000},async()=>{
+ const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'gsa-http-stale-regression-'));
+ const socket=createServer();await new Promise<void>((resolve,reject)=>{socket.once('error',reject);socket.listen(0,'127.0.0.1',resolve);});
+ const port=(socket.address() as AddressInfo).port;await new Promise<void>(r=>socket.close(()=>r()));
+ const grants=path.join(tmp,'Library','Application Support','GSA-Localconnector'),project=path.join(tmp,'project');
+ await fs.mkdir(project);await enrollReadOnly('fixture',project,grants);const before=await fs.readFile(path.join(grants,'trusted-workspaces.json'));
+ await fs.rename(project,path.join(tmp,'old'));await fs.mkdir(project);
+ const token='synthetic-test-token-at-least-32-characters';
+ const moduleUrl=new URL('../src/mcp/http.js',import.meta.url).href;
+ const child=spawn(process.execPath,['--input-type=module','-e',`import {startHttpMcp} from ${JSON.stringify(moduleUrl)}; await startHttpMcp(${JSON.stringify(token)},${port});`],{env:{HOME:tmp,PATH:'/usr/bin:/bin'},stdio:['ignore','ignore','pipe']});
+ try{
+  await new Promise<void>((resolve,reject)=>{let error='';const timer=setTimeout(()=>reject(Error('startup timeout '+error)),5000);child.once('error',e=>{clearTimeout(timer);reject(e);});child.once('exit',code=>{clearTimeout(timer);reject(Error('startup exited '+code+' '+error));});child.stderr.on('data',data=>{error+=String(data);if(error.includes('listening')){clearTimeout(timer);resolve();}});});
+  const invoke=async(name:string)=>{const response=await fetch(`http://127.0.0.1:${port}/mcp`,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json',accept:'application/json, text/event-stream','mcp-protocol-version':'2025-03-26'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:{}}})});return parse((await response.json() as any).result);};
+  const status=await invoke('connector_status');assert.equal(status.result.workspaceStartupIssue,'WORKSPACE_ROOT_CHANGED');assert.equal(status.result.workspaceSelectionRequired,true);
+  assert.deepEqual((await invoke('list_workspaces')).result,[]);assert.deepEqual(await fs.readFile(path.join(grants,'trusted-workspaces.json')),before);
+ }finally{if(child.exitCode===null){const exited=once(child,'exit');child.kill();await exited;}await fs.rm(tmp,{recursive:true,force:true});}
+});
