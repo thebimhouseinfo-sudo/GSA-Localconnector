@@ -158,7 +158,7 @@ export class DurableProcessManager{
   if(!this.persistence||!entry.record)return;
   const save=(entry.saving??Promise.resolve()).then(async()=>{
    const previous=entry.record!;
-   if(previous.stopped&&status.ended_at===null)return;
+   if(previous.stopped&&(previous.output_complete||status.ended_at===null))return;
    const stopped=confirmedStop||status.stopped===true||["SUCCEEDED","FAILED","CANCELLED"].includes(status.state);
    let stdout=previous.stdout,stderr=previous.stderr,output_complete=previous.output_complete;
    if(stopped&&!output_complete){
@@ -254,7 +254,8 @@ export class DurableProcessManager{
   if(entry.command)return {...entry.record!.status};
   if(entry.record?.native_id===null)return {...entry.record.status,state:"UNKNOWN",exit_code:null,stopped:false};
   const native=requireNativeBackend(this.backend);
-  const status=this.observe(entry,await native.status(entry.native_id));await this.persist(entry,status);return status;
+  const status=this.observe(entry,await native.status(entry.native_id));await this.persist(entry,status);
+  return entry.record?.stopped?{...entry.record.status,stopped:true}:status;
  }
  async output(workspaceId:string,id:string,cursor=0,limit=65536){
   if(!Number.isSafeInteger(cursor)||cursor<0||!Number.isSafeInteger(limit)||limit<1||limit>65536)

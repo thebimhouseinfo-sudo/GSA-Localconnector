@@ -6,6 +6,7 @@ import {WorkspaceRegistry} from "../src/core/workspace.js";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type {ProcessJournalRecord} from "../src/core/process-journal.js";
 import type {VerifiedNativeProcessController} from "../src/core/native-io.js";
 const request={workspace_id:"A",executable:"node",argv:["--version"],cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:false};
 test("durable process API fails closed without native controller",async()=>{
@@ -83,4 +84,18 @@ test("confirmed UNKNOWN stop releases capacity while unconfirmed UNKNOWN remains
  confirmed=true;assert.deepEqual(await manager.stop("A",first.process_id),{stopped:true,state:"UNKNOWN"});
  const second=await manager.start(request);assert.notEqual(second.process_id,first.process_id);
  assert.equal((await manager.status("A",first.process_id)).state,"UNKNOWN");
+});
+test('concurrent wait and status return the sealed durable result without rewriting it',{skip:process.platform==='win32',timeout:5000},async t=>{
+ const {randomUUID}=await import('node:crypto');const {ProcessJournalStore}=await import('../src/local/process-store.js');
+ const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-terminal-race-')));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+ let releaseWait!:(value:any)=>void,releaseStatus!:()=>void,startedStatus!:()=>void,sealed!:()=>void;
+ const wait=new Promise<any>(resolve=>releaseWait=resolve),statusGate=new Promise<void>(resolve=>releaseStatus=resolve),statusStarted=new Promise<void>(resolve=>startedStatus=resolve),saved=new Promise<void>(resolve=>sealed=resolve);
+ class ObservedStore extends ProcessJournalStore {async save(record:ProcessJournalRecord,revision:number){await super.save(record,revision);if(record.stopped&&record.output_complete)sealed();}}
+ const final={state:'SUCCEEDED' as const,exit_code:0,started_at:'start',ended_at:'end',stopped:true};
+ const native:VerifiedNativeProcessController={verified:true,platform:'macos',policy_fingerprint:'synthetic',start:async()=>({native_id:'one'}),wait:()=>wait,
+  status:async()=>{startedStatus();await statusGate;return {...final,state:'FAILED' as const,exit_code:1};},output:async()=>({stdout:'done',stderr:'',next_cursor:null}),stop:async()=>({stopped:true,state:'SUCCEEDED'})};
+ const store=new ObservedStore(root),manager=new DurableProcessManager(native,16,{store,ownerSession:randomUUID()}),created=await manager.start(request);
+ const status=manager.status('A',created.process_id);await statusStarted;releaseWait(final);await saved;
+ const before=await fs.readFile(path.join(root,created.process_id+'.json'));releaseStatus();
+ assert.equal((await status).state,'SUCCEEDED');assert.deepEqual(await fs.readFile(path.join(root,created.process_id+'.json')),before);
 });
