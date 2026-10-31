@@ -41,11 +41,60 @@ export async function inspectMacScopedFiles(identityRoot=identityDirectory()){
  * No owner session/token is read or rewritten; an active owner simply blocks us. */
 export async function withStoppedMacConnector(identityRoot,operation){
  await privateDirectory(identityRoot);
- const code='import os,sys,stat,fcntl\np=sys.argv[1]\nf=os.open(p,os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW|os.O_NONBLOCK,0o600)\ns=os.fstat(f);n=os.lstat(p)\nif not stat.S_ISREG(s.st_mode) or s.st_uid!=os.getuid() or s.st_mode&0o077 or s.st_nlink!=1 or (s.st_dev,s.st_ino)!=(n.st_dev,n.st_ino): sys.exit(78)\ntry: fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)\nexcept BlockingIOError: sys.exit(75)\nprint("LOCKED",flush=True)\nsys.stdin.buffer.read()\n';
- const child=spawn('/usr/bin/python3',['-c',code,path.join(identityRoot,'server-owner.lock')],{shell:false,stdio:['pipe','pipe','pipe'],env:{PATH:'/usr/bin:/bin',HOME:os.homedir()}});
+ const code=`import os,sys,stat,fcntl,json,re,ctypes
+root=sys.argv[1]; p=os.path.join(root,'server-owner.lock')
+d=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW); ds=os.fstat(d)
+f=os.open(p,os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW|os.O_NONBLOCK,0o600)
+s=os.fstat(f); n=os.lstat(p)
+if not stat.S_ISREG(s.st_mode) or s.st_uid!=os.getuid() or s.st_mode&0o077 or s.st_nlink!=1 or (s.st_dev,s.st_ino)!=(n.st_dev,n.st_ino): sys.exit(78)
+try: fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)
+except BlockingIOError: sys.exit(75)
+print('LOCKED',flush=True)
+line=sys.stdin.buffer.readline(8193)
+if not line: sys.exit(0)
+try:
+ if len(line)>8192 or not line.endswith(b'\\n'): raise ValueError('request')
+ q=json.loads(line); keys={'command','stage','stageIdentity','oldIdentity'}
+ if type(q)!=dict or set(q)!=keys or q['command']!='PUBLISH' or not isinstance(q['stage'],str) or not re.fullmatch(r'\\.scoped-files\\.stage-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}',q['stage']): raise ValueError('request')
+ def pin(v):
+  if type(v)!=dict or set(v)!={'device','inode'} or any(not isinstance(v[k],str) or not re.fullmatch(r'[0-9]{1,32}',v[k]) for k in v): raise ValueError('pin')
+  return (int(v['device']),int(v['inode']))
+ def directory(name):
+  x=os.stat(name,dir_fd=d,follow_symlinks=False)
+  if not stat.S_ISDIR(x.st_mode) or x.st_uid!=os.getuid() or stat.S_IMODE(x.st_mode)!=0o700: raise ValueError('directory')
+  return (x.st_dev,x.st_ino)
+ new=pin(q['stageIdentity']); old=None if q['oldIdentity'] is None else pin(q['oldIdentity'])
+ def check_root():
+  current=os.lstat(root); lock=os.stat('server-owner.lock',dir_fd=d,follow_symlinks=False)
+  held=os.fstat(f)
+  if os.path.realpath(root)!=root or not stat.S_ISDIR(current.st_mode) or current.st_uid!=os.getuid() or stat.S_IMODE(current.st_mode)!=0o700 or (current.st_dev,current.st_ino)!=(ds.st_dev,ds.st_ino) or not stat.S_ISREG(lock.st_mode) or lock.st_uid!=os.getuid() or lock.st_mode&0o077 or lock.st_nlink!=1 or (lock.st_dev,lock.st_ino)!=(s.st_dev,s.st_ino) or (held.st_dev,held.st_ino)!=(s.st_dev,s.st_ino): raise ValueError('changed')
+ check_root()
+ if directory(q['stage'])!=new: raise ValueError('changed')
+ try: live=directory('scoped-files')
+ except FileNotFoundError: live=None
+ if live!=old: raise ValueError('changed')
+ lib=ctypes.CDLL(None,use_errno=True); fn=lib.renameatx_np; fn.argtypes=[ctypes.c_int,ctypes.c_char_p,ctypes.c_int,ctypes.c_char_p,ctypes.c_uint]; fn.restype=ctypes.c_int
+ if fn(d,os.fsencode(q['stage']),d,b'scoped-files',2 if old else 4)!=0: raise OSError(ctypes.get_errno(),'renameatx_np')
+ if directory('scoped-files')!=new or (old is not None and directory(q['stage'])!=old): raise ValueError('postcondition')
+ check_root()
+ os.fsync(d)
+ print('{"ok":true}',flush=True)
+except Exception:
+ print('{"ok":false}',flush=True)
+sys.stdin.buffer.read()
+`;
+ const child=spawn('/usr/bin/python3',['-c',code,identityRoot],{shell:false,stdio:['pipe','pipe','pipe'],env:{PATH:'/usr/bin:/bin',HOME:os.homedir()}});
  let ready=false,closed=false,exitCode;const completion=new Promise((resolve,reject)=>{child.on('error',reject);child.on('close',value=>{closed=true;exitCode=value;resolve(value);});});
- try{await new Promise((resolve,reject)=>{let output='';const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Owner fencing timeout'));},5000);child.stdout.on('data',data=>{output+=data;if(output==='LOCKED\n'){ready=true;clearTimeout(timer);resolve();}else if(output.length>32){clearTimeout(timer);reject(Error('Invalid owner fencing response'));}});child.on('error',e=>{clearTimeout(timer);reject(e);});child.on('close',()=>{clearTimeout(timer);if(!ready)reject(Error('Active connector or unsafe owner storage; stop connector first'));});child.stderr.on('data',()=>{});});const result=await operation(()=>{if(closed)fail('Owner fence was lost before publication');});if(closed)fail('Owner fence was lost during publication');return result;}
- finally{child.stdin.end();await completion;if(ready&&exitCode!==0)fail('Owner fence failed');}
+ child.stdin.on('error',()=>{});
+ let output='',pending,used=false;
+ const unknown=()=>Object.assign(Error('Publication outcome unknown'),{code:'RESULT_UNKNOWN'});
+ child.stdout.on('data',data=>{output+=data;if(pending){if(output.length>4096){pending.reject(unknown());pending=null;}else if(output.includes('\n')){const reply=output;output='';const waiter=pending;pending=null;waiter.resolve(reply);}}});
+ try{await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Owner fencing timeout'));},5000);const onData=()=>{if(output==='LOCKED\n'){output='';ready=true;clearTimeout(timer);child.stdout.off('data',onData);resolve();}else if(output.length>32){clearTimeout(timer);reject(Error('Invalid owner fencing response'));}};child.stdout.on('data',onData);child.on('error',e=>{clearTimeout(timer);reject(e);});child.on('close',()=>{clearTimeout(timer);if(!ready)reject(Error('Active connector or unsafe owner storage; stop connector first'));if(pending){pending.reject(unknown());pending=null;}});child.stderr.on('data',()=>{});});
+  const publish=async(stage,stageIdentity,oldIdentity)=>{if(used||closed)throw unknown();used=true;const request=JSON.stringify({command:'PUBLISH',stage,stageIdentity,oldIdentity})+'\n';if(Buffer.byteLength(request)>8192)throw unknown();
+   const reply=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{pending=null;child.kill('SIGKILL');reject(unknown());},5000);pending={resolve:value=>{clearTimeout(timer);resolve(value);},reject:error=>{clearTimeout(timer);reject(error);}};child.stdin.write(request,error=>{if(error&&pending){pending.reject(unknown());pending=null;}});});
+   if(reply!=='{"ok":true}\n'||closed)throw unknown();};
+  const result=await operation(()=>{if(closed){if(used)throw unknown();fail('Owner fence was lost before publication');}},publish);if(closed){if(used)throw unknown();fail('Owner fence was lost during publication');}return result;}
+ finally{child.stdin.end();await completion;if(ready&&exitCode!==0){if(used)throw unknown();fail('Owner fence failed');}}
 }
 async function unsignedCodeDigest(binary,directory){
  const copy=path.join(directory,'.code-check-'+randomUUID());await fs.copyFile(binary,copy,fs.constants.COPYFILE_EXCL);await fs.chmod(copy,0o700);
@@ -170,17 +219,17 @@ export async function stageMacScopedFiles(identityRoot){
 export async function applyMacScopedFiles(identityRoot,evidence){
  // Reject fabricated metadata before building or touching an existing installation.
  if(!evidence||evidence.format!=='gsa-scoped-files-native-evidence-v2')fail('Native fixture evidence required');
- return withStoppedMacConnector(identityRoot,async assertFence=>{
+ return withStoppedMacConnector(identityRoot,async (assertFence,publish)=>{
   await assertLegacyBaseSafe(identityRoot);
   const staged=await stageMacScopedFiles(identityRoot);requireMacFileEvidence(evidence,staged.build);
   const current=await loadTrustedRegistry(identityRoot);if(!isDeepStrictEqual(snapshot(current),staged.selected))fail('Selected grants changed before publication');await assertMacFileInstallationSeparated(current,staged.stage);
   const installation=path.join(identityRoot,'scoped-files');try{await fs.lstat(installation);await assertMacFileInstallationSeparated(current,installation);}catch(e){if(e.code!=='ENOENT')throw e;}
   const key=await fs.readFile(path.join(staged.stage,'proof-key')),body=JSON.stringify({format:'gsa-scoped-files-v2',hostRelease:os.release(),arch:process.arch,grants:staged.grants,build:staged.build,evidence});await fs.writeFile(path.join(staged.stage,'install.json'),JSON.stringify({body,hmac:createHmac('sha256',key).update(body).digest('hex')}),{mode:0o600});
   if(!isDeepStrictEqual(snapshot(await loadTrustedRegistry(identityRoot)),staged.selected))fail('Selected grants changed at publication');await assertLegacyBaseSafe(identityRoot);assertFence();
-  const previous=path.join(identityRoot,'scoped-files.previous-'+randomUUID());let moved=false;try{await fs.rename(installation,previous);moved=true;}catch(e){if(e.code!=='ENOENT')throw e;}
-  try{assertFence();await fs.rename(staged.stage,installation);}catch(e){if(moved)await fs.rename(previous,installation);throw e;}
-  const parent=await fs.open(identityRoot,'r');try{await parent.sync();}finally{await parent.close();}
-  return {state:'SCOPED_FILES_INSTALLED_PARTIAL',installation,previous:moved?previous:null,operations:['create_file','create_directory','copy_file'],recovery:false};
+  const identity=async p=>{const s=await fs.lstat(p,{bigint:true});if(!s.isDirectory()||s.isSymbolicLink())fail('Unsafe publication directory');return {device:String(s.dev),inode:String(s.ino)};};
+  const stageIdentity=await identity(staged.stage);let oldIdentity=null;try{oldIdentity=await identity(installation);}catch(e){if(e.code!=='ENOENT')throw e;}
+  assertFence();await publish(path.basename(staged.stage),stageIdentity,oldIdentity);
+  return {state:'SCOPED_FILES_INSTALLED_PARTIAL',installation,previous:oldIdentity?staged.stage:null,operations:['create_file','create_directory','copy_file'],recovery:false};
  });
 }
 async function main(){const args=process.argv.slice(2),mode=args.shift();let identityRoot=identityDirectory(),evidencePath;while(args.length){const flag=args.shift(),value=args.shift();if(!value)fail('Missing installer argument');if(flag==='--identity-root')identityRoot=value;else if(flag==='--evidence')evidencePath=value;else fail('Unknown installer argument');}process.umask(0o077);if(mode==='inspect'||mode==='--dry-run')console.log(JSON.stringify(await inspectMacScopedFiles(identityRoot)));else if(mode==='stage'){const staged=await withStoppedMacConnector(identityRoot,()=>stageMacScopedFiles(identityRoot));console.log(JSON.stringify({state:'SCOPED_FILES_STAGED_UNVERIFIED',...staged,buildMetadata:path.join(staged.stage,'build.json')}));}else if(mode==='apply'){if(!evidencePath)fail('Apply requires exact reviewed native fixture evidence');const s=await fs.lstat(evidencePath);if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1||s.uid!==process.getuid()||(s.mode&0o077)||s.size>1024*1024)fail('Unsafe fixture evidence');console.log(JSON.stringify(await applyMacScopedFiles(identityRoot,JSON.parse(await fs.readFile(evidencePath,'utf8')))));}else fail('Usage: install-mac-scoped-files.mjs inspect|--dry-run|stage|apply [--identity-root PATH] [--evidence PATH]');}
