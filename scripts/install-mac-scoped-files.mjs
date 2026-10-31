@@ -6,13 +6,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {spawn} from 'node:child_process';
-import {createHash,createHmac,randomBytes,randomUUID} from 'node:crypto';
+import {createHash,createHmac,randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
 import {loadTrustedRegistry} from '../dist/src/local/grants.js';
 import {identityDirectory} from '../dist/src/local/identity.js';
 import {normalizedStrippedMacFileCode} from '../dist/src/hosts/macos-file-code.js';
 import {requireMacFileEvidence,MAC_FILE_SIGNING_PROFILE} from '../dist/src/hosts/macos-file-evidence.js';
+import {requireMacRecoveryQualification} from '../dist/src/hosts/macos-recovery-evidence.js';
 export {requireMacFileEvidence};
 import {assertMacFileInstallationSeparated} from '../dist/src/hosts/macos-scoped-files.js';
 const here=path.dirname(fileURLToPath(import.meta.url)),source=path.resolve(here,'../native/macos-files/broker.swift');
@@ -21,6 +22,12 @@ const artifacts=['Contents/MacOS/broker','Contents/Info.plist','Contents/_CodeSi
 export const signingProfile=MAC_FILE_SIGNING_PROFILE;
 const fail=message=>{throw Object.assign(Error(message),{code:'SECURITY_BLOCKED'});};
 async function privateDirectory(directory){const s=await fs.lstat(directory);if(!s.isDirectory()||s.isSymbolicLink()||s.uid!==process.getuid()||(s.mode&0o777)!==0o700||await fs.realpath(directory)!==directory)fail('Unsafe installation directory');}
+async function readExactBounded(handle,size){
+ const bytes=Buffer.alloc(size);let offset=0;
+ while(offset<size){const result=await handle.read(bytes,offset,size-offset,offset);if(!result.bytesRead)fail('Protected file changed during read');offset+=result.bytesRead;}
+ if((await handle.read(Buffer.alloc(1),0,1,offset)).bytesRead)fail('Protected file grew during read');
+ return bytes;
+}
 async function run(executable,args,input='',maximum=65536){return new Promise((resolve,reject)=>{const child=spawn(executable,args,{shell:false,env:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:os.homedir(),LANG:'C',TMPDIR:'/private/tmp'},stdio:['pipe','pipe','pipe']});let stdout=Buffer.alloc(0),stderr=Buffer.alloc(0),error;const timer=setTimeout(()=>{error=Error('Installer command timed out');child.kill('SIGKILL');},60000);for(const [stream,isOut] of [[child.stdout,true],[child.stderr,false]])stream.on('data',bytes=>{const prior=isOut?stdout:stderr;if(prior.length+bytes.length>maximum){error=Error('Installer command output limit');child.kill('SIGKILL');}else if(isOut)stdout=Buffer.concat([stdout,bytes]);else stderr=Buffer.concat([stderr,bytes]);});child.on('error',e=>{error=e;});child.on('close',code=>{clearTimeout(timer);if(error||code!==0)reject(error??Error('Installer command failed: '+path.basename(executable)+' ('+code+')'));else resolve(stdout);});child.stdin.on('error',()=>{});child.stdin.end(input);});}
 async function plist(value){return run('/usr/bin/plutil',['-convert','xml1','-o','-','-'],JSON.stringify(value));}
 const roleOf=g=>g.role??(g.permissions.includes('write')?'workspace':'reference');
@@ -66,6 +73,91 @@ export async function buildMacScopedBundle(installation,grant,releaseBinary){
  const codeDigest=await unsignedCodeDigest(binary,installation),releaseDigest=await unsignedCodeDigest(releaseBinary,installation);if(codeDigest!==releaseDigest)fail('Signed broker differs from staged release code');
  const hashes={};for(const name of artifacts)hashes[name]=sha(await fs.readFile(path.join(app,name)));return {id:grant.id,root:grant.root,role:grant.role,rootIdentity:grant.rootIdentity,revision:grant.revision,presign_sha256:presignDigest,code_sha256:codeDigest,artifacts:hashes};
 }
+/** Compare raw BASE inputs with the exact hashes carried by the accepted report. */
+export function requireMacRecoveryBaseInputs(report,baseBuild,baseEvidence,baseBinary){
+ const hashes=report?.sourceHashes;
+ if(!hashes||![baseBuild,baseEvidence,baseBinary].every(bytes=>bytes instanceof Uint8Array)||
+  sha(baseBuild)!==hashes.baseBuild||sha(baseEvidence)!==hashes.baseEvidence||sha(baseBinary)!==hashes.baseBinary)
+  fail('Recovery archive BASE inputs differ from accepted qualification');
+}
+/** Read exact retained qualification bytes; this inspection grants no authority to install. */
+export async function readMacRecoveryArchive(archiveRoot){
+ if(typeof archiveRoot!=='string'||!path.isAbsolute(archiveRoot))fail('Unsafe recovery archive path');
+ await privateDirectory(archiveRoot);const archiveStat=await fs.lstat(archiveRoot),pins=[];
+ const checkArchive=async()=>{await privateDirectory(archiveRoot);const current=await fs.lstat(archiveRoot);if(current.dev!==archiveStat.dev||current.ino!==archiveStat.ino)fail('Recovery archive directory changed');};
+ const read=async(name,max)=>{
+  await checkArchive();
+  const file=path.join(archiveRoot,name);let handle;
+  try{
+   handle=await fs.open(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
+   const before=await handle.stat();
+   if(!before.isFile()||before.uid!==process.getuid()||(before.mode&0o077)||before.nlink!==1||before.size>max)fail('Unsafe recovery archive file');
+   const bytes=await readExactBounded(handle,before.size),after=await handle.stat(),visible=await fs.lstat(file);
+   if(bytes.length!==before.size||before.dev!==after.dev||before.ino!==after.ino||before.size!==after.size||before.mtimeMs!==after.mtimeMs||before.ctimeMs!==after.ctimeMs||visible.isSymbolicLink()||visible.dev!==after.dev||visible.ino!==after.ino)fail('Recovery archive file changed');
+   await checkArchive();pins.push({file,stat:after});return bytes;
+  }catch(error){if(error.code==='SECURITY_BLOCKED')throw error;fail('Unsafe recovery archive file');}
+  finally{if(handle)await handle.close();}
+ };
+ const report=await read('report.json',512*1024),productionBytes=await read('production-build.json',64*1024),recoveryRelease=await read('production-release-recovery',16*1024*1024);
+ const baseBytes=await read('base-build.json',64*1024),baseEvidenceBytes=await read('base-evidence.json',1024*1024),baseRelease=await read('base-release-broker',16*1024*1024);
+ let productionBuild,baseBuild,baseEvidence;
+ try{productionBuild=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(productionBytes));baseBuild=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(baseBytes));baseEvidence=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(baseEvidenceBytes));}
+ catch{fail('Invalid recovery archive metadata');}
+ const qualification=requireMacRecoveryQualification(report,productionBuild);
+ const acceptedReport=JSON.parse(report.toString("utf8"));requireMacRecoveryBaseInputs(acceptedReport,baseBytes,baseEvidenceBytes,baseRelease);
+ requireMacFileEvidence(baseEvidence,baseBuild);
+ if(qualification.host_release!==os.release()||qualification.arch!==process.arch||baseBuild.hostRelease!==os.release()||baseBuild.arch!==process.arch||sha(recoveryRelease)!==qualification.release_sha256||sha(baseRelease)!==baseBuild.release_sha256)fail('Recovery archive host or release differs');
+ const recoverySource=path.resolve(here,'../native/macos-files/recovery-broker.swift');
+ if(sha(await fs.readFile(recoverySource))!==qualification.source_sha256)fail('Recovery source differs from accepted qualification');
+ for(const {file,stat} of pins){const visible=await fs.lstat(file);if(visible.isSymbolicLink()||visible.dev!==stat.dev||visible.ino!==stat.ino||visible.size!==stat.size||visible.mtimeMs!==stat.mtimeMs||visible.ctimeMs!==stat.ctimeMs)fail('Recovery archive changed during inspection');}
+ await checkArchive();
+ return {report,productionBuild,recoveryRelease,baseBuild,baseEvidence,baseRelease,qualification};
+}
+/** Refuse BASE-only replacement when live recovery or its history could be lost. */
+export async function assertLegacyBaseSafe(identityRoot){
+ await privateDirectory(identityRoot);
+ const installation=path.join(identityRoot,'scoped-files');
+ let original;try{original=await fs.lstat(installation);}catch(error){if(error.code==='ENOENT')return;throw error;}
+ await privateDirectory(installation);
+ const requireNoJournal=async()=>{try{await fs.lstat(path.join(installation,'file-transactions'));fail('Recovery journal exists; BASE replacement refused');}
+  catch(error){if(error.code!=='ENOENT')throw error;}};
+ await requireNoJournal();
+ const read=async(name,max)=>{
+  const file=path.join(installation,name);let handle;
+  try{
+   handle=await fs.open(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
+   const before=await handle.stat();
+   if(!before.isFile()||before.uid!==process.getuid()||(before.mode&0o077)||before.nlink!==1||before.size>max)fail('Unsafe installation proof');
+   const bytes=await readExactBounded(handle,before.size),after=await handle.stat(),visible=await fs.lstat(file);
+   if(bytes.length!==before.size||after.dev!==before.dev||after.ino!==before.ino||after.size!==before.size||after.mtimeMs!==before.mtimeMs||after.ctimeMs!==before.ctimeMs||visible.dev!==after.dev||visible.ino!==after.ino||visible.isSymbolicLink())fail('Unsafe installation proof changed');
+   return bytes;
+  }catch(error){if(error.code==='SECURITY_BLOCKED')throw error;fail('Unsafe installation proof');}
+  finally{if(handle)await handle.close();}
+ };
+ const key=await read('proof-key',32);if(key.length!==32)fail('Unsafe installation proof key');
+ let envelope,proof;try{envelope=JSON.parse((await read('install.json',1024*1024)).toString());
+  if(typeof envelope.body!=='string'||typeof envelope.hmac!=='string'||!/^[a-f0-9]{64}$/.test(envelope.hmac)||!timingSafeEqual(createHmac('sha256',key).update(envelope.body).digest(),Buffer.from(envelope.hmac,'hex')))fail('Unsafe installation proof authentication');
+  proof=JSON.parse(envelope.body);
+ }catch(error){if(error.code==='SECURITY_BLOCKED')throw error;fail('Unsafe installation proof');}
+ if(!proof||proof.format!=='gsa-scoped-files-v2'||!Array.isArray(proof.grants))fail('Unsafe installation proof format');
+ if(Object.hasOwn(proof,'recoveryQualification')||Object.hasOwn(proof,'recoveryBuild')||proof.grants.some(grant=>grant&&Object.hasOwn(grant,'recovery')))fail('Recovery installation exists; BASE replacement refused');
+ if(proof.hostRelease!==os.release()||proof.arch!==process.arch||proof.build?.hostRelease!==proof.hostRelease||proof.build?.arch!==proof.arch)fail('Unsafe installation proof host');
+ requireMacFileEvidence(proof.evidence,proof.build);
+ const selected=snapshot(await loadTrustedRegistry(identityRoot));
+ if(!selected.length||proof.grants.length!==selected.length)fail('Unsafe installation proof grants');
+ const names=new Set(),digest=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
+ for(const binding of proof.grants){
+  if(!binding||typeof binding.id!=='string'||names.has(binding.id)||typeof binding.root!=='string'||!binding.rootIdentity||
+   !Number.isSafeInteger(binding.revision)||binding.revision<1||!['workspace','reference'].includes(binding.role)||
+   binding.presign_sha256!==proof.build.release_sha256||binding.code_sha256!==proof.build.code_sha256||
+   !binding.artifacts||Object.keys(binding.artifacts).length!==artifacts.length||!artifacts.every(name=>digest(binding.artifacts[name])))fail('Unsafe installation proof grant binding');
+  names.add(binding.id);const current=selected.find(grant=>grant.id===binding.id);
+  if(!current||current.root!==binding.root||current.role!==binding.role||current.revision!==binding.revision||
+   !isDeepStrictEqual(current.rootIdentity,binding.rootIdentity))fail('Unsafe installation proof grant changed');
+ }
+ await requireNoJournal();await privateDirectory(installation);const visible=await fs.lstat(installation);
+ if(visible.isSymbolicLink()||visible.dev!==original.dev||visible.ino!==original.ino)fail('Unsafe installation directory changed');
+}
 /** Stage is concrete and remains private/unpublished while native evidence is unresolved. */
 export async function stageMacScopedFiles(identityRoot){
  const plan=await inspectMacScopedFiles(identityRoot),registry=await loadTrustedRegistry(identityRoot),stage=path.join(identityRoot,'.scoped-files.stage-'+randomUUID());await fs.mkdir(stage,{mode:0o700});
@@ -79,11 +171,12 @@ export async function applyMacScopedFiles(identityRoot,evidence){
  // Reject fabricated metadata before building or touching an existing installation.
  if(!evidence||evidence.format!=='gsa-scoped-files-native-evidence-v2')fail('Native fixture evidence required');
  return withStoppedMacConnector(identityRoot,async assertFence=>{
+  await assertLegacyBaseSafe(identityRoot);
   const staged=await stageMacScopedFiles(identityRoot);requireMacFileEvidence(evidence,staged.build);
   const current=await loadTrustedRegistry(identityRoot);if(!isDeepStrictEqual(snapshot(current),staged.selected))fail('Selected grants changed before publication');await assertMacFileInstallationSeparated(current,staged.stage);
   const installation=path.join(identityRoot,'scoped-files');try{await fs.lstat(installation);await assertMacFileInstallationSeparated(current,installation);}catch(e){if(e.code!=='ENOENT')throw e;}
   const key=await fs.readFile(path.join(staged.stage,'proof-key')),body=JSON.stringify({format:'gsa-scoped-files-v2',hostRelease:os.release(),arch:process.arch,grants:staged.grants,build:staged.build,evidence});await fs.writeFile(path.join(staged.stage,'install.json'),JSON.stringify({body,hmac:createHmac('sha256',key).update(body).digest('hex')}),{mode:0o600});
-  if(!isDeepStrictEqual(snapshot(await loadTrustedRegistry(identityRoot)),staged.selected))fail('Selected grants changed at publication');assertFence();
+  if(!isDeepStrictEqual(snapshot(await loadTrustedRegistry(identityRoot)),staged.selected))fail('Selected grants changed at publication');await assertLegacyBaseSafe(identityRoot);assertFence();
   const previous=path.join(identityRoot,'scoped-files.previous-'+randomUUID());let moved=false;try{await fs.rename(installation,previous);moved=true;}catch(e){if(e.code!=='ENOENT')throw e;}
   try{assertFence();await fs.rename(staged.stage,installation);}catch(e){if(moved)await fs.rename(previous,installation);throw e;}
   const parent=await fs.open(identityRoot,'r');try{await parent.sync();}finally{await parent.close();}
