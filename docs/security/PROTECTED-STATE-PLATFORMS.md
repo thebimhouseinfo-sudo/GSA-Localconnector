@@ -2,7 +2,7 @@
 
 ## Required model and implementation status
 
-[CRITERIA.md](../CRITERIA.md) requires distinct working roots (read/write/execute, no per-tool approval) and explicit reference roots (read/search only, no mutation/execution or silent promotion). Persist scope identity/revision and revocation safely. Protect credentials, scope records and evidence from project code; storage protection is not a task approval flow.
+[CRITERIA.md](../CRITERIA.md) requires distinct working and reference roots and scoped connector APIs. Persist scope identity/revision and revocation safely. POSIX permissions do not protect credentials, grants or evidence from commands running as the same account; §7 explicitly accepts this risk for trusted projects and requires suspected external changes to be reported and suspect results not trusted.
 
 Windows status-only behavior and legacy execution authorization below are implementation limitations, not the desired user workflow. This update changes no ACLs, grants, credentials or runtime enforcement.
 
@@ -18,6 +18,6 @@ POSIX storage tests are explicitly skipped on Windows. Windows-specific tests in
 
 The scope record must represent working versus reference roles explicitly; legacy permission arrays alone do not prove the desired binding behavior. Scope/installation identity and revision must remain consistent across registry reloads, controller handover, commands, CI, file operations and descendants. A working bind must not require a second per-capability enrollment.
 
-Revocation, root replacement and owner loss need an observable safe outcome for already-running work. New requests must not reuse stale scope or controller epochs. Trusted state, output journals, installation evidence and authentication data must remain inaccessible to project code even where project files are writable. Crash recovery must fence the previous owner before changing uncertain records; it must not erase terminal evidence or replay mutations.
+Revocation, root replacement and owner loss need an observable safe outcome for already-running work. New requests must not reuse stale scope or controller epochs. Report `state_integrity_vs_commands: not_protected`: same-account commands can modify state, journals, installation evidence, tokens and the ignored tunnel environment file. Crash recovery must fence the previous owner before changing uncertain records; it must not erase terminal evidence or replay mutations.
 
-Windows needs actual DACL ownership/access and inherited-process tests on Windows; POSIX fixture success is not a substitute. Mac state protection also needs integration with the chosen host execution boundary, not only file-mode tests. The [plan](../plans/GSA-LOCALCONNECTOR-IMPLEMENTATION-PLAN.md) and [traceability matrix](../plans/CRITERIA-TRACEABILITY.md) define proposed work and evidence. No stored grant, ACL, lock or credential is changed by this document.
+Windows needs actual DACL ownership/access and inherited-process tests on Windows; POSIX fixture success is not a substitute. Mac file modes do not establish integrity against same-account commands. The [plan](../IMPLEMENTATION_PLAN.md) defines current work. No stored grant, ACL, lock or credential is changed by this document.

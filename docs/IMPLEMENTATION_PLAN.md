@@ -10,7 +10,7 @@ Derived from the approved [CRITERIA.md](CRITERIA.md) (Status: APPROVED, kept unc
 
 | Goal ID | Observable result | Approved CRITERIA | Dependencies | Plan section | State |
 |---|---|---|---|---|---|
-| M1 | A concrete Mac boundary decision: what the existing broker proves, its limits, and what stays blocked | §0, §4, §7 | none | PLAN-M1 | Docs decision exists; native host scope BLOCKED by retained-FD authority survival after root relocation |
+| M1 | A concrete Mac boundary decision: what the existing broker proves, its limits, and what stays blocked | §0, §4, §7 | none | PLAN-M1 | Docs decision exists; file boundary remains BLOCKED by retained-FD authority survival after root relocation; §7 accepts unconfined host commands |
 | M2 | GSA edits real projects on the selected Mac across multiple working/reference roots with no per-operation approval | §1–§4, §7 | M1 | PLAN-M2 | IN PROGRESS: source slices have evidence; installed/native file delivery pending |
 | M3 | GSA runs real commands, Git and existing project scripts on this Mac and gets truthful status, logs and outputs | §4, §5, §6 | M1, M2 | PLAN-M3 | PENDING: actual Mac shell/Git not started |
 | M4 | Disconnects, crashes and reboots never produce false results or duplicate mutations | §6, §8 | M3 | PLAN-M4 | PENDING |
@@ -27,7 +27,7 @@ No `docs/discussions/` DEC files exist, so no accepted Decision is linked below;
 
 - **CRITERIA references:** §0, §4, §7
 - **Current state / gap:** [M1 feasibility](plans/M1-MAC-BOUNDARY-FEASIBILITY.md), [design](plans/M1-MAC-HOST-BOUNDARY-DESIGN.md) and [decision](plans/M1-MAC-BOUNDARY-DECISION.md) exist with broker and retained-capture evidence. The reproduced retained-FD authority survival after root relocation is unresolved; the Apple Endpoint Security entitlement is reported absent/unknown and nothing is assumed about it.
-- **Implementation:** keep the existing broker characterization; do not invent a native supervisor or an unrestricted fallback. A failed mechanism needs a revised design and user review, not a waiver.
+- **Implementation:** retain the broker characterization for file operations. The 2026-10-31 §7 decision accepts host commands under the logged-in account without OS confinement; it does not resolve the file broker's retained-FD limitation.
 - **Dependencies:** none
 - **Acceptance:** blocked mutation, cross-root and reference-copy paths stay explicitly disabled until a reviewed mechanism is proven.
 - **Verification:** reviewed documents plus the recorded signed-broker native runs; no new native run is required by this Plan.
@@ -46,12 +46,12 @@ No `docs/discussions/` DEC files exist, so no accepted Decision is linked below;
 ### PLAN-M3 — GOAL: GSA runs real project commands, Git and existing scripts on this Mac and reads back honest results
 
 - **CRITERIA references:** §4, §5, §6
-- **Current state / gap:** process journal and history source exist; actual Mac shell/Git/script execution under the boundary is not implemented or proven.
-- **Implementation:** reuse the existing process manager and logs; run the project's own scripts on the selected host. No connector CI/DAG engine, VM runner or multi-OS matrix.
-- **Dependencies:** M1 host/native-toolchain feasibility, M2
+- **Current state / gap:** process journal and history source exist; actual Mac host shell/Git/script execution is not implemented or proven.
+- **Implementation:** reuse the process journal as the sole run record. Run commands as the logged-in user with validated workspace-relative cwd, timeout, output limit and owned cancellation. Report `command_confinement: none (user account)` and `state_integrity_vs_commands: not_protected`; detect and report suspected state changes. No connector CI/DAG engine or multi-OS matrix.
+- **Dependencies:** M1 decision, M2
 - **Acceptance:** pass/fail, stdout/stderr/exit and outputs; timeout and owned cancellation; dirty-Git and non-Git behavior; no stale-result claims.
 - **Verification:** real commands on the Mac with recorded evidence; relevant working/reference boundary checks.
-- **Limitations / non-goals:** unresolved command-boundary behavior stays a gap, never an unrestricted fallback.
+- **Limitations / non-goals:** commands and descendants can access and change data outside the workspace, including connector state, with the user's permissions. Use trusted projects; file tools and connector APIs retain their scoped boundary. Tunnel credentials in the existing ignored environment file share this risk.
 
 ### PLAN-M4 — GOAL: operations stay truthful across disconnect, service failure and reboot
 
