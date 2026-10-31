@@ -51,3 +51,9 @@ Read docs/reviews/2026-10-30-MAC-FINISH-PLAN.md. The Human decisions D1, D2, D3 
 Goal: finish Mac (M2-M5). Work only on the fix list, in order. Commit the 27 existing uncommitted files first in groups I approve.
 One Reviewer pass per slice. Report exact commands and results. No push. Ask before any Criteria or role change.
 ```
+
+## Quyết định của Human (2026-10-31)
+
+- D1 = B: CRITERIA §7 đã sửa (commit 202297c).
+- D2: làm move/rename thư mục dạng tối thiểu: cùng workspace, cùng volume, rename(2) nguyên tử, không ghi đè; khác volume hoặc khác root thì từ chối và báo lý do. Không cần cơ chế recovery riêng, không đổi chữ Criteria.
+- D3: mỗi lát việc một lượt Reviewer; việc nhỏ chỉ cần build + test; commit theo lô nhỏ; chỉ hỏi khi đổi Criteria hoặc vai trò; việc ngoài M2-M5 vào backlog.
