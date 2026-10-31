@@ -1,3 +1,17 @@
+## CURRENT — Mac finish (2026-10-31)
+
+Human chose D1=B, D2 minimal same-workspace same-volume atomic directory rename without overwrite, and D3 one Reviewer per slice with small batch commits. Follow `docs/reviews/2026-10-30-MAC-FINISH-PLAN.md` in order: finish existing changes, M2 recovery publication/move/log/installed delivery, then M3 host commands, M4 continuity, M5 acceptance. No push. §7 accepts unconfined same-account commands and their risk to connector state. Gate remains AWAITING_USER/GUIDED_ONLY; no Mac milestone is accepted. The following 2026-10-27 checkpoint is historical and its pending approvals and priority are superseded by the current request.
+
+## HISTORICAL — main integration awaiting concrete maintenance approval (2026-10-27)
+
+Latest Human request: merge correct/latest code into main. Repository now main1bbbfed, fetched origin/mainb265f67,0behind/7ahead; codex/mac-completion7220b67 already ancestor. No new branch or history rewrite. Independent review found19required legacy harness/doc files deleted by origin merge; exact files restored from codex/mac-completion and staged. Four stale recovery-driver guard fixtures fixed and3EOF-only warnings cleaned. Build0; TS512PASS/2WindowsSKIP (consumedSeatbelt case excluded); MJS initial218PASS4FAIL then222PASS0FAIL; harness34PASS. Python observer/owner syntax and staged whitespace checks pass.
+
+Real fullverify stillFAIL: restored legacy roles.json disagrees with installed officialBootstrap TOMLs, and oldselfcheck60line total limit rejects approved89lineAGENTS (projectsection47). Reviewed exact maintenance proposal docs/proposals/2026-10-27-main-integration-maintenance.md; patchSHA8779a591dc3b61fa313a4e60824817204489ada246dbf03d28576e5821b3c023. Candidate tested in isolatedtemp, positivePASS and invalidroles/oversizedproject/duplicateBootstrap allreject. Actual protected roles/selfcheck assignment patch NOTAPPLIED. Branchauthority active main/no frozen/workbranches; origin push NOTAUTHORIZED; configure requires explicit --replace after Human decision. Async Human question pending for exactpackage+origin/main authorization+verify+normalcommit/push. NO commit/push yet. Do not infer approval or applyprotectedpacket before answer.
+
+Staged23files are restoration/fixtures/EOF only; proposal files and thischeckpoint/handoff are local task-owned artifacts. No native/sign/install/newquotaconsumption; fullMac incomplete/Windows deferred. Nativequalificationdriver sourceprepared and28guards nowpassed within MJS222, but native orchestration stillunreviewed/unexecuted, bothholdsfalse. Git integration request currently takes priority; do not resume native experiment from historical below.
+
+---
+
 # GSA Mac — compact handoff for Qwen 27B
 
 Current: 2026-10-27 12:53 Vietnam. Reply Vietnamese. Read AGENTS.md, then this file. Do not load every historical report.
