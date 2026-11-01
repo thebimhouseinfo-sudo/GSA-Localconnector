@@ -14,6 +14,7 @@ import {identityDirectory} from '../dist/src/local/identity.js';
 import {normalizedStrippedMacFileCode} from '../dist/src/hosts/macos-file-code.js';
 import {requireMacFileEvidence,MAC_FILE_SIGNING_PROFILE} from '../dist/src/hosts/macos-file-evidence.js';
 import {requireMacRecoveryQualification} from '../dist/src/hosts/macos-recovery-evidence.js';
+import {FileTransactionStore} from '../dist/src/local/file-transaction-store.js';
 export {requireMacFileEvidence};
 import {assertMacFileInstallationSeparated} from '../dist/src/hosts/macos-scoped-files.js';
 const here=path.dirname(fileURLToPath(import.meta.url)),source=path.resolve(here,'../native/macos-files/broker.swift');
@@ -128,6 +129,57 @@ export function requireMacRecoveryBaseInputs(report,baseBuild,baseEvidence,baseB
  if(!hashes||![baseBuild,baseEvidence,baseBinary].every(bytes=>bytes instanceof Uint8Array)||
   sha(baseBuild)!==hashes.baseBuild||sha(baseEvidence)!==hashes.baseEvidence||sha(baseBinary)!==hashes.baseBinary)
   fail('Recovery archive BASE inputs differ from accepted qualification');
+}
+/** Stage protected journal history while the caller continuously holds the owner fence. */
+export async function stageRecoveryJournal(live,stage,assertFence){
+ if(typeof assertFence!=='function')fail('Owner fence required');
+ await privateDirectory(stage);const stagePin=await fs.lstat(stage,{bigint:true});assertFence();
+ const checkStage=async()=>{await privateDirectory(stage);const s=await fs.lstat(stage,{bigint:true});if(s.dev!==stagePin.dev||s.ino!==stagePin.ino)fail('Stage directory changed');assertFence();};
+ const source=path.join(live,'file-transactions'),destination=path.join(stage,'file-transactions');
+ let sourcePin;try{await privateDirectory(live);await privateDirectory(source);sourcePin=await fs.lstat(source,{bigint:true});}
+ catch(error){if(error.code!=='ENOENT')throw error;}
+ await fs.mkdir(destination,{mode:0o700});
+ await privateDirectory(destination);const destinationPin=await fs.lstat(destination,{bigint:true});
+ const checkDestination=async()=>{await checkStage();await privateDirectory(destination);const s=await fs.lstat(destination,{bigint:true});if(s.dev!==destinationPin.dev||s.ino!==destinationPin.ino)fail('Staged journal directory changed');};
+ if(!sourcePin){await checkDestination();try{await fs.lstat(source);fail('Journal appeared during staging');}catch(error){if(error.code!=='ENOENT')throw error;}assertFence();return;}
+ const uuid='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+ const record=new RegExp('^('+uuid+')\\.json$'),marker=new RegExp('^(?:'+uuid+'\\.lock|\\.transaction-'+uuid+')$');
+ const stable=(a,b)=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeNs===b.mtimeNs&&a.ctimeNs===b.ctimeNs;
+ const checkDir=async()=>{assertFence();await checkDestination();await privateDirectory(live);await privateDirectory(source);const s=await fs.lstat(source,{bigint:true});if(s.dev!==sourcePin.dev||s.ino!==sourcePin.ino)fail('Journal directory changed');assertFence();};
+ const store=new FileTransactionStore(source),seen=new Map();
+ await checkDir();
+ for await(const entry of await fs.opendir(source)){
+  const name=entry.name,match=record.exec(name);if(!match&&!marker.test(name))fail('Unsafe journal entry name');
+  await checkDir();const file=path.join(source,name);let input;
+  try{
+   input=await fs.open(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
+   const before=await input.stat({bigint:true});
+   if(!before.isFile()||before.uid!==BigInt(process.getuid())||(before.mode&0o777n)!==0o600n||before.nlink!==1n||before.size>32768n)fail('Unsafe journal entry');
+   const bytes=await readExactBounded(input,Number(before.size));
+   if(name.endsWith('.lock')&&bytes.length!==0)fail('Unsafe journal lock marker');
+   if(match)await store.load(match[1]);
+   const after=await input.stat({bigint:true}),named=await fs.lstat(file,{bigint:true});
+   if(!stable(before,after)||!stable(after,named)||named.nlink!==1n)fail('Journal entry changed');
+   await checkDir();const output=await fs.open(path.join(destination,name),fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);
+   let staged;try{await output.writeFile(bytes);await output.sync();staged=await output.stat({bigint:true});}finally{await output.close();}
+   const stagedName=await fs.lstat(path.join(destination,name),{bigint:true});
+   if(!stable(staged,stagedName)||!stagedName.isFile()||stagedName.nlink!==1n||stagedName.uid!==BigInt(process.getuid())||(stagedName.mode&0o777n)!==0o600n)fail('Staged journal entry changed');
+   seen.set(name,{stat:after,staged});await checkDestination();
+  }finally{if(input)await input.close();}
+ }
+ await checkDir();let count=0;
+ for await(const entry of await fs.opendir(source)){
+  const saved=seen.get(entry.name);if(!saved)fail('Journal entries changed');
+  const current=await fs.lstat(path.join(source,entry.name),{bigint:true});if(!stable(saved.stat,current)||current.nlink!==1n)fail('Journal entry changed');count++;
+ }
+ if(count!==seen.size)fail('Journal entries changed');await checkDir();
+ count=0;for await(const entry of await fs.opendir(destination)){
+  const saved=seen.get(entry.name);if(!saved)fail('Staged journal entries changed');
+  const current=await fs.lstat(path.join(destination,entry.name),{bigint:true});
+  if(!stable(saved.staged,current)||!current.isFile()||current.nlink!==1n)fail('Staged journal entry changed');count++;
+ }
+ if(count!==seen.size)fail('Staged journal entries changed');await checkDir();
+ await checkDestination();const output=await fs.open(destination,fs.constants.O_RDONLY|fs.constants.O_DIRECTORY|fs.constants.O_NOFOLLOW);try{const s=await output.stat({bigint:true});if(s.dev!==destinationPin.dev||s.ino!==destinationPin.ino)fail('Staged journal directory changed');await output.sync();}finally{await output.close();}await checkDestination();assertFence();
 }
 /** Read exact retained qualification bytes; this inspection grants no authority to install. */
 export async function readMacRecoveryArchive(archiveRoot){

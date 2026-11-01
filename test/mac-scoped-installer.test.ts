@@ -6,7 +6,62 @@ import {spawn,execFileSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 import {test} from 'node:test';
 import {enrollRolesTrustedBatch} from '../src/local/grants.js';
+import {FileTransactionStore} from '../src/local/file-transaction-store.js';
 const moduleUrl=pathToFileURL(path.resolve('scripts/install-mac-scoped-files.mjs')).href;
+test('recovery staging preserves validated journal records and lock markers byte for byte',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files'),stage=path.join(f.identity,'.scoped-files.stage-12345678-1234-4123-8123-123456789abc'),journal=path.join(live,'file-transactions');
+ await fs.mkdir(live,{mode:0o700});await fs.mkdir(stage,{mode:0o700});
+ const id='11111111-1111-4111-8111-111111111111',store=new FileTransactionStore(journal);
+ await store.create(id,{operation:'replace',source:{workspace_id:'work',path:'file.txt',revision:1,rootIdentity:{device:'1',inode:'2'}},destination:null,expected_sha256:'a'.repeat(64),after_sha256:'b'.repeat(64)});
+ await fs.writeFile(path.join(journal,id+'.lock'),'',{mode:0o600});
+ await installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.stageRecoveryJournal(live,stage,check));
+ for(const name of [id+'.json',id+'.lock'])assert.deepEqual(await fs.readFile(path.join(stage,'file-transactions',name)),await fs.readFile(path.join(journal,name)));
+ assert.equal((await new FileTransactionStore(path.join(stage,'file-transactions')).load(id)).status,'PENDING');
+});
+test('recovery staging refuses unsafe journal entries and preserves the live evidence',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files'),journal=path.join(live,'file-transactions');
+ await fs.mkdir(live,{mode:0o700});await fs.mkdir(journal,{mode:0o700});
+ const cases=[['11111111-1111-4111-8111-111111111111.json','corrupt'],['unexpected','evidence']];
+ for(const [index,[name,value]] of cases.entries()){
+  const file=path.join(journal,name!);await fs.writeFile(file,value!,{mode:0o600});const stage=path.join(f.identity,`.scoped-files.stage-${index}`);await fs.mkdir(stage,{mode:0o700});
+  await assert.rejects(installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.stageRecoveryJournal(live,stage,check)));
+  assert.equal(await fs.readFile(file,'utf8'),value);await fs.unlink(file);
+ }
+ const outside=path.join(f.temp,'outside');await fs.writeFile(outside,'untouched');const alias=path.join(journal,'11111111-1111-4111-8111-111111111111.lock');await fs.symlink(outside,alias);
+ const stage=path.join(f.identity,'.scoped-files.stage-link');await fs.mkdir(stage,{mode:0o700});
+ await assert.rejects(installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.stageRecoveryJournal(live,stage,check)));
+ assert.equal(await fs.readFile(outside,'utf8'),'untouched');assert.equal((await fs.lstat(alias)).isSymbolicLink(),true);
+});
+test('recovery staging creates an empty journal only when history is absent',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files'),stage=path.join(f.identity,'.scoped-files.stage-empty');await fs.mkdir(stage,{mode:0o700});
+ await installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.stageRecoveryJournal(live,stage,check));
+ assert.deepEqual(await fs.readdir(path.join(stage,'file-transactions')),[]);
+});
+test('recovery staging refuses a journal appearing while an empty stage is created',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files'),stage=path.join(f.identity,'.scoped-files.stage-race');await fs.mkdir(live,{mode:0o700});await fs.mkdir(stage,{mode:0o700});
+ const mkdir=fs.mkdir.bind(fs);let injected=false;
+ (fs as any).mkdir=async (...args:any[])=>{const value=await (mkdir as any)(...args);if(args[0]===path.join(stage,'file-transactions')){injected=true;await mkdir(path.join(live,'file-transactions'),{mode:0o700});}return value;};
+ try{await assert.rejects(installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.stageRecoveryJournal(live,stage,check)));assert.equal(injected,true);}
+ finally{(fs as any).mkdir=mkdir;}
+});
+test('recovery staging detects replacement of the destination journal',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files'),stage=path.join(f.identity,'.scoped-files.stage-swap'),source=path.join(live,'file-transactions'),destination=path.join(stage,'file-transactions');
+ await fs.mkdir(live,{mode:0o700});await fs.mkdir(source,{mode:0o700});await fs.mkdir(stage,{mode:0o700});
+ const id='11111111-1111-4111-8111-111111111111';await fs.writeFile(path.join(source,id+'.lock'),'',{mode:0o600});
+ const open=fs.open.bind(fs);let injected=false;
+ (fs as any).open=async (...args:any[])=>{const handle=await (open as any)(...args);if(args[0]===path.join(destination,id+'.lock')){const close=handle.close.bind(handle);handle.close=async()=>{await close();await fs.rename(destination,destination+'-old');await fs.mkdir(destination,{mode:0o700});injected=true;};}return handle;};
+ try{await assert.rejects(installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.stageRecoveryJournal(live,stage,check)));assert.equal(injected,true);assert.equal(await fs.readFile(path.join(source,id+'.lock'),'utf8'),'');}
+ finally{(fs as any).open=open;}
+});
+test('recovery staging detects removal of a staged record before completion',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files'),stage=path.join(f.identity,'.scoped-files.stage-remove'),source=path.join(live,'file-transactions'),destination=path.join(stage,'file-transactions');
+ await fs.mkdir(live,{mode:0o700});await fs.mkdir(source,{mode:0o700});await fs.mkdir(stage,{mode:0o700});
+ const id='11111111-1111-4111-8111-111111111111',name=id+'.lock';await fs.writeFile(path.join(source,name),'',{mode:0o600});
+ const open=fs.open.bind(fs);let injected=false;
+ (fs as any).open=async (...args:any[])=>{const handle=await (open as any)(...args);if(args[0]===path.join(destination,name)){const close=handle.close.bind(handle);handle.close=async()=>{await close();await fs.unlink(path.join(destination,name));injected=true;};}return handle;};
+ try{await assert.rejects(installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.stageRecoveryJournal(live,stage,check)));assert.equal(injected,true);}
+ finally{(fs as any).open=open;}
+});
 async function fixture(t:any){const temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-scoped-installer-')));t.after(()=>fs.rm(temp,{recursive:true,force:true}));const identity=path.join(temp,'identity'),workspace=path.join(temp,'workspace');await fs.mkdir(workspace,{mode:0o700});await enrollRolesTrustedBatch([{id:'work',root:workspace,role:'workspace'}],identity);return {identity,workspace,temp};}
 test('installer inspect uses selected durable roots and does not create an installation',async t=>{const f=await fixture(t);const installer=await import(moduleUrl);const before=(await fs.readdir(f.identity)).sort();const report=await installer.inspectMacScopedFiles(f.identity);assert.equal(report.state,'SCOPED_FILES_PLAN');assert.equal(report.grants.length,1);assert.equal(report.grants[0].id,'work');assert.equal(report.grants[0].root,f.workspace);assert.deepEqual((await fs.readdir(f.identity)).sort(),before);});
 test('installer holds owner fencing throughout the supplied publication operation',async t=>{const f=await fixture(t);const installer=await import(moduleUrl);let attempted=false;await installer.withStoppedMacConnector(f.identity,async()=>{const code=await new Promise<number|null>((resolve,reject)=>{const child=spawn('/usr/bin/python3',['-c','import os,fcntl,sys\nf=os.open(sys.argv[1],os.O_RDWR|os.O_NOFOLLOW)\ntry: fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)\nexcept BlockingIOError: sys.exit(75)\nsys.exit(0)',path.join(f.identity,'server-owner.lock')],{stdio:'ignore'});child.on('error',reject);child.on('close',resolve);});assert.equal(code,75);attempted=true;});assert(attempted);});
