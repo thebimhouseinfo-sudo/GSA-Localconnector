@@ -123,6 +123,29 @@ export async function buildMacScopedBundle(installation,grant,releaseBinary){
  const codeDigest=await unsignedCodeDigest(binary,installation),releaseDigest=await unsignedCodeDigest(releaseBinary,installation);if(codeDigest!==releaseDigest)fail('Signed broker differs from staged release code');
  const hashes={};for(const name of artifacts)hashes[name]=sha(await fs.readFile(path.join(app,name)));return {id:grant.id,root:grant.root,role:grant.role,rootIdentity:grant.rootIdentity,revision:grant.revision,presign_sha256:presignDigest,code_sha256:codeDigest,artifacts:hashes};
 }
+/** Re-sign only the immutable qualified recovery bytes for this working root. */
+export async function buildMacRecoveryBundle(installation,grant,recoveryRoot,releaseBytes,qualified){
+ grant=structuredClone(grant);qualified=structuredClone(qualified);
+ if(!grant||grant.role!=='workspace'||!/^[a-zA-Z0-9][-_a-zA-Z0-9]{0,63}$/.test(grant.id)||!Number.isSafeInteger(grant.revision)||grant.revision<1||!(releaseBytes instanceof Uint8Array)||releaseBytes.byteLength>16*1024*1024||!qualified||!/^([a-f0-9]{64})$/.test(qualified.code_sha256)||sha(releaseBytes)!==qualified.release_sha256)fail('Invalid recovery release or grant');
+ const bytes=Buffer.from(releaseBytes),identity=async p=>{const s=await fs.lstat(p,{bigint:true});if(!s.isDirectory()||s.isSymbolicLink()||await fs.realpath(p)!==p)fail('Recovery root changed');return {device:String(s.dev),inode:String(s.ino)};};
+ await privateDirectory(installation);await privateDirectory(recoveryRoot);const stagePin=await identity(installation),rootPin=await identity(recoveryRoot),workPin=await identity(grant.root);
+ if(!isDeepStrictEqual(workPin,grant.rootIdentity)||workPin.device!==rootPin.device)fail('Recovery root identity changed');
+ const pins=[];const pin=async p=>{await privateDirectory(p);pins.push({path:p,identity:await identity(p)});};
+ const check=async()=>{await privateDirectory(installation);await privateDirectory(recoveryRoot);if(!isDeepStrictEqual(await identity(installation),stagePin)||!isDeepStrictEqual(await identity(recoveryRoot),rootPin)||!isDeepStrictEqual(await identity(grant.root),workPin))fail('Recovery root changed');for(const p of pins){await privateDirectory(p.path);if(!isDeepStrictEqual(await identity(p.path),p.identity))fail('Recovery bundle directory changed');}};
+ const dir=path.join(installation,grant.id),app=path.join(dir,'RecoveryBroker.app'),contents=path.join(app,'Contents'),macos=path.join(contents,'MacOS');await pin(dir);
+ for(const p of [app,contents,macos]){await check();await fs.mkdir(p,{mode:0o700});await pin(p);}
+ const binary=path.join(macos,'recovery-broker');await fs.writeFile(binary,bytes,{mode:0o500,flag:'wx'});if(sha(await fs.readFile(binary))!==qualified.release_sha256)fail('Recovery release differs');
+ const info={CFBundleExecutable:'recovery-broker',CFBundleIdentifier:'local.gsa.recovery.'+grant.id,CFBundleName:'RecoveryBroker',CFBundlePackageType:'APPL',CFBundleVersion:'1',GSARecoveryProtocol:'gsa-file-recovery-v1',GSAWorkspaceRoot:grant.root,GSARecoveryRoot:recoveryRoot,GSAWorkspaceID:grant.id,GSARevision:grant.revision,GSADevice:workPin.device,GSAInode:workPin.inode,GSARecoveryDevice:rootPin.device,GSARecoveryInode:rootPin.inode};
+ await fs.writeFile(path.join(contents,'Info.plist'),await plist(info),{mode:0o600,flag:'wx'});await check();
+ const right='com.apple.security.temporary-exception.files.absolute-path.read-write',profile={'com.apple.security.app-sandbox':true,[right]:[grant.root+'/',recoveryRoot+'/']},entitlements=path.join(dir,'recovery-entitlements.plist');
+ await fs.writeFile(entitlements,await plist(profile),{mode:0o600,flag:'wx'});await check();
+ await run('/usr/bin/codesign',['--force','--sign','-','--entitlements',entitlements,app]);await check();
+ await fs.chmod(path.join(contents,'_CodeSignature'),0o700);await pin(path.join(contents,'_CodeSignature'));await fs.chmod(path.join(contents,'_CodeSignature/CodeResources'),0o600);await run('/usr/bin/codesign',['--verify','--strict',app]);
+ const signed=await run('/usr/bin/codesign',['--display','--entitlements',':-',app]);const observed=JSON.parse((await run('/usr/bin/plutil',['-convert','json','-o','-','-'],signed.toString())).toString());
+ if(!isDeepStrictEqual(observed,profile)||await unsignedCodeDigest(binary,installation)!==qualified.code_sha256)fail('Recovery signed code or profile differs');await check();
+ const hashes={};for(const name of ['Contents/MacOS/recovery-broker','Contents/Info.plist','Contents/_CodeSignature/CodeResources'])hashes[name]=sha(await fs.readFile(path.join(app,name)));await check();
+ return {root:recoveryRoot,rootIdentity:rootPin,artifacts:hashes,code_sha256:qualified.code_sha256};
+}
 /** Compare raw BASE inputs with the exact hashes carried by the accepted report. */
 export function requireMacRecoveryBaseInputs(report,baseBuild,baseEvidence,baseBinary){
  const hashes=report?.sourceHashes;

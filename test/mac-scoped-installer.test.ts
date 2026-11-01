@@ -8,6 +8,8 @@ import {test} from 'node:test';
 import {enrollRolesTrustedBatch} from '../src/local/grants.js';
 import {loadTrustedRegistry} from '../src/local/grants.js';
 import {FileTransactionStore} from '../src/local/file-transaction-store.js';
+import {createHash} from 'node:crypto';
+import {normalizedStrippedMacFileCode} from '../src/hosts/macos-file-code.js';
 const moduleUrl=pathToFileURL(path.resolve('scripts/install-mac-scoped-files.mjs')).href;
 test('recovery staging preserves validated journal records and lock markers byte for byte',async t=>{
  const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files'),stage=path.join(f.identity,'.scoped-files.stage-12345678-1234-4123-8123-123456789abc'),journal=path.join(live,'file-transactions');
@@ -79,6 +81,35 @@ test('recovery root validation rejects selected root replacement during validati
  (fs as any).lstat=async (...args:any[])=>{const result=await (lstat as any)(...args);if(args[0]===f.workspace&&!injected){injected=true;await fs.rename(f.workspace,f.workspace+'-old');await fs.mkdir(f.workspace,{mode:0o700});}return result;};
  try{await assert.rejects(installer.validateRecoveryRoot(registry,'work',root,stage));assert.equal(injected,true);}
  finally{(fs as any).lstat=lstat;}
+});
+test('recovery bundle binds qualified binary and both selected root identities',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),registry=await loadTrustedRegistry(f.identity),entry=registry.list()[0]!,stage=path.join(f.identity,'.scoped-files.stage-test'),recovery=path.join(f.temp,'recovery');
+ await fs.mkdir(stage,{mode:0o700});await fs.mkdir(path.join(stage,'work'),{mode:0o700});await fs.mkdir(recovery,{mode:0o700});
+ const source=path.join(f.temp,'fixture.c'),binary=path.join(f.temp,'release'),stripped=path.join(f.temp,'stripped');await fs.writeFile(source,'int main(void) { return 0; }\n');
+ execFileSync('/usr/bin/xcrun',['clang',source,'-o',binary]);await fs.copyFile(binary,stripped);execFileSync('/usr/bin/codesign',['--remove-signature',stripped],{stdio:'ignore'});
+ const hash=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
+ const qualified={release_sha256:hash(await fs.readFile(binary)),code_sha256:hash(normalizedStrippedMacFileCode(await fs.readFile(stripped)))};
+ const grant={id:entry.id,role:entry.role,root:entry.canonicalRoot,rootIdentity:entry.rootIdentity,revision:entry.revision};
+ const result=await installer.buildMacRecoveryBundle(stage,grant,recovery,await fs.readFile(binary),qualified);
+ const r=await fs.stat(recovery,{bigint:true});assert.equal(result.code_sha256,qualified.code_sha256);assert.deepEqual(result.rootIdentity,{device:String(r.dev),inode:String(r.ino)});
+ assert.equal(Object.keys(result.artifacts).length,3);assert.equal(result.artifacts['Contents/MacOS/recovery-broker'],hash(await fs.readFile(path.join(stage,'work/RecoveryBroker.app/Contents/MacOS/recovery-broker'))));
+});
+test('recovery bundle refuses an altered release or reference grant before creating artifacts',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),registry=await loadTrustedRegistry(f.identity),entry=registry.list()[0]!,stage=path.join(f.identity,'.scoped-files.stage-test'),recovery=path.join(f.temp,'recovery');
+ await fs.mkdir(stage,{mode:0o700});await fs.mkdir(path.join(stage,'work'),{mode:0o700});await fs.mkdir(recovery,{mode:0o700});
+ const grant={id:entry.id,role:entry.role,root:entry.canonicalRoot,rootIdentity:entry.rootIdentity,revision:entry.revision},qualified={release_sha256:'a'.repeat(64),code_sha256:'b'.repeat(64)};
+ await assert.rejects(installer.buildMacRecoveryBundle(stage,grant,recovery,Buffer.from('changed'),qualified));
+ await assert.rejects(installer.buildMacRecoveryBundle(stage,{...grant,role:'reference'},recovery,Buffer.from('changed'),qualified));
+ assert.deepEqual(await fs.readdir(path.join(stage,'work')),[]);
+});
+test('recovery bundle refuses a workspace replacement before signing',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),registry=await loadTrustedRegistry(f.identity),entry=registry.list()[0]!,stage=path.join(f.identity,'.scoped-files.stage-test'),recovery=path.join(f.temp,'recovery');
+ await fs.mkdir(stage,{mode:0o700});await fs.mkdir(path.join(stage,'work'),{mode:0o700});await fs.mkdir(recovery,{mode:0o700});
+ const grant={id:entry.id,role:entry.role,root:entry.canonicalRoot,rootIdentity:entry.rootIdentity,revision:entry.revision},bytes=Buffer.from('synthetic'),qualified={release_sha256:createHash('sha256').update(bytes).digest('hex'),code_sha256:'b'.repeat(64)};
+ const write=fs.writeFile.bind(fs);let injected=false;
+ (fs as any).writeFile=async (...args:any[])=>{const result=await (write as any)(...args);if(String(args[0]).endsWith('/Contents/MacOS/recovery-broker')){injected=true;await fs.rename(f.workspace,f.workspace+'-old');await fs.mkdir(f.workspace,{mode:0o700});}return result;};
+ try{await assert.rejects(installer.buildMacRecoveryBundle(stage,grant,recovery,bytes,qualified));assert.equal(injected,true);await assert.rejects(fs.stat(path.join(stage,'work/RecoveryBroker.app/Contents/_CodeSignature')),{code:'ENOENT'});}
+ finally{(fs as any).writeFile=write;}
 });
 test('installer inspect uses selected durable roots and does not create an installation',async t=>{const f=await fixture(t);const installer=await import(moduleUrl);const before=(await fs.readdir(f.identity)).sort();const report=await installer.inspectMacScopedFiles(f.identity);assert.equal(report.state,'SCOPED_FILES_PLAN');assert.equal(report.grants.length,1);assert.equal(report.grants[0].id,'work');assert.equal(report.grants[0].root,f.workspace);assert.deepEqual((await fs.readdir(f.identity)).sort(),before);});
 test('installer holds owner fencing throughout the supplied publication operation',async t=>{const f=await fixture(t);const installer=await import(moduleUrl);let attempted=false;await installer.withStoppedMacConnector(f.identity,async()=>{const code=await new Promise<number|null>((resolve,reject)=>{const child=spawn('/usr/bin/python3',['-c','import os,fcntl,sys\nf=os.open(sys.argv[1],os.O_RDWR|os.O_NOFOLLOW)\ntry: fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)\nexcept BlockingIOError: sys.exit(75)\nsys.exit(0)',path.join(f.identity,'server-owner.lock')],{stdio:'ignore'});child.on('error',reject);child.on('close',resolve);});assert.equal(code,75);attempted=true;});assert(attempted);});
