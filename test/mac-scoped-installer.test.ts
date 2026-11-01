@@ -8,8 +8,9 @@ import {test} from 'node:test';
 import {enrollRolesTrustedBatch} from '../src/local/grants.js';
 import {loadTrustedRegistry} from '../src/local/grants.js';
 import {FileTransactionStore} from '../src/local/file-transaction-store.js';
-import {createHash} from 'node:crypto';
+import {createHash,createHmac} from 'node:crypto';
 import {normalizedStrippedMacFileCode} from '../src/hosts/macos-file-code.js';
+import {receiptSample} from './helpers/mac-file-evidence-fixture.js';
 const moduleUrl=pathToFileURL(path.resolve('scripts/install-mac-scoped-files.mjs')).href;
 test('recovery staging preserves validated journal records and lock markers byte for byte',async t=>{
  const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files'),stage=path.join(f.identity,'.scoped-files.stage-12345678-1234-4123-8123-123456789abc'),journal=path.join(live,'file-transactions');
@@ -110,6 +111,20 @@ test('recovery bundle refuses a workspace replacement before signing',async t=>{
  (fs as any).writeFile=async (...args:any[])=>{const result=await (write as any)(...args);if(String(args[0]).endsWith('/Contents/MacOS/recovery-broker')){injected=true;await fs.rename(f.workspace,f.workspace+'-old');await fs.mkdir(f.workspace,{mode:0o700});}return result;};
  try{await assert.rejects(installer.buildMacRecoveryBundle(stage,grant,recovery,bytes,qualified));assert.equal(injected,true);await assert.rejects(fs.stat(path.join(stage,'work/RecoveryBroker.app/Contents/_CodeSignature')),{code:'ENOENT'});}
  finally{(fs as any).writeFile=write;}
+});
+test('nonempty recovery roots require a matching authenticated existing binding',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),registry=await loadTrustedRegistry(f.identity),entry=registry.list()[0]!,root=path.join(f.temp,'recovery'),live=path.join(f.identity,'scoped-files');
+ await fs.mkdir(root,{mode:0o700});await fs.writeFile(path.join(root,'capture'),'retained');await fs.mkdir(live,{mode:0o700});
+ const stat=await fs.stat(root,{bigint:true}),rootIdentity={device:String(stat.dev),inode:String(stat.ino)},grant={id:entry.id,role:entry.role,root:entry.canonicalRoot,rootIdentity:entry.rootIdentity,revision:entry.revision};
+ const qualification=await fs.readFile(new URL('../../test/fixtures/mac27-recovery-qualification.json',import.meta.url),'utf8'),recoveryBuild=JSON.parse(qualification).builds.production,evidence=receiptSample(os.release(),process.arch),key=Buffer.alloc(32,19);
+ const proof:any={format:'gsa-scoped-files-v2',hostRelease:os.release(),arch:process.arch,build:evidence.build,evidence,recoveryQualification:qualification,recoveryBuild,grants:[{...grant,recovery:{root,rootIdentity,code_sha256:recoveryBuild.code_sha256}}]};
+ await fs.writeFile(path.join(live,'proof-key'),key,{mode:0o600});const save=async()=>{const body=JSON.stringify(proof);await fs.writeFile(path.join(live,'install.json'),JSON.stringify({body,hmac:createHmac('sha256',key).update(body).digest('hex')}),{mode:0o600});};
+ await save();await installer.requireRecoveryRootOwnership(live,grant,root,rootIdentity);
+ proof.grants[0].revision++;await save();await assert.rejects(installer.requireRecoveryRootOwnership(live,grant,root,rootIdentity));
+ proof.grants[0].revision--;proof.grants[0].recovery.rootIdentity={...rootIdentity,inode:'0'};await save();await assert.rejects(installer.requireRecoveryRootOwnership(live,grant,root,rootIdentity));
+ proof.grants[0].recovery.rootIdentity={...rootIdentity};await save();const envelope=JSON.parse(await fs.readFile(path.join(live,'install.json'),'utf8'));envelope.hmac='0'.repeat(64);await fs.writeFile(path.join(live,'install.json'),JSON.stringify(envelope),{mode:0o600});
+ await assert.rejects(installer.requireRecoveryRootOwnership(live,grant,root,rootIdentity));
+ assert.equal(await fs.readFile(path.join(root,'capture'),'utf8'),'retained');
 });
 test('installer inspect uses selected durable roots and does not create an installation',async t=>{const f=await fixture(t);const installer=await import(moduleUrl);const before=(await fs.readdir(f.identity)).sort();const report=await installer.inspectMacScopedFiles(f.identity);assert.equal(report.state,'SCOPED_FILES_PLAN');assert.equal(report.grants.length,1);assert.equal(report.grants[0].id,'work');assert.equal(report.grants[0].root,f.workspace);assert.deepEqual((await fs.readdir(f.identity)).sort(),before);});
 test('installer holds owner fencing throughout the supplied publication operation',async t=>{const f=await fixture(t);const installer=await import(moduleUrl);let attempted=false;await installer.withStoppedMacConnector(f.identity,async()=>{const code=await new Promise<number|null>((resolve,reject)=>{const child=spawn('/usr/bin/python3',['-c','import os,fcntl,sys\nf=os.open(sys.argv[1],os.O_RDWR|os.O_NOFOLLOW)\ntry: fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)\nexcept BlockingIOError: sys.exit(75)\nsys.exit(0)',path.join(f.identity,'server-owner.lock')],{stdio:'ignore'});child.on('error',reject);child.on('close',resolve);});assert.equal(code,75);attempted=true;});assert(attempted);});

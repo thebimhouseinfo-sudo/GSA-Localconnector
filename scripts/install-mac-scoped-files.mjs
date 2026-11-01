@@ -185,6 +185,35 @@ export async function validateRecoveryRoot(registry,id,root,stage){
  const rechecked=await chain(root,true);if(!isDeepStrictEqual(rechecked,recovery)||!isDeepStrictEqual(registry.list(),selected))fail('Recovery roots changed during validation');
  return recoveryIdentity;
 }
+/** Reuse of an occupied recovery root requires the previous authenticated binding. */
+export async function requireRecoveryRootOwnership(installation,grant,root,rootIdentity){
+ grant=structuredClone(grant);rootIdentity=structuredClone(rootIdentity);
+ await privateDirectory(installation);await privateDirectory(root);
+ const installationPin=await fs.lstat(installation,{bigint:true}),rootPin=await fs.lstat(root,{bigint:true}),pins=[];
+ const identity=s=>({device:String(s.dev),inode:String(s.ino)});
+ if(!isDeepStrictEqual(identity(rootPin),rootIdentity))fail('Recovery root identity differs');
+ const check=async()=>{await privateDirectory(installation);await privateDirectory(root);const a=await fs.lstat(installation,{bigint:true}),b=await fs.lstat(root,{bigint:true});if(a.dev!==installationPin.dev||a.ino!==installationPin.ino||b.dev!==rootPin.dev||b.ino!==rootPin.ino)fail('Recovery binding changed');};
+ const read=async(name,max)=>{await check();const file=path.join(installation,name);let handle;
+  try{handle=await fs.open(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);const before=await handle.stat({bigint:true});
+   if(!before.isFile()||before.uid!==BigInt(process.getuid())||(before.mode&0o777n)!==0o600n||before.nlink!==1n||before.size>BigInt(max))fail('Unsafe recovery proof');
+   const bytes=await readExactBounded(handle,Number(before.size)),after=await handle.stat({bigint:true}),named=await fs.lstat(file,{bigint:true});
+   if(before.dev!==after.dev||before.ino!==after.ino||before.size!==after.size||before.ctimeNs!==after.ctimeNs||before.mtimeNs!==after.mtimeNs||after.dev!==named.dev||after.ino!==named.ino||after.ctimeNs!==named.ctimeNs||after.mtimeNs!==named.mtimeNs||named.nlink!==1n)fail('Recovery proof changed');
+   pins.push({file,stat:after});await check();return bytes;
+  }finally{if(handle)await handle.close();}
+ };
+ const key=await read('proof-key',32);if(key.length!==32)fail('Unsafe recovery proof key');let envelope,proof;
+ try{envelope=JSON.parse((await read('install.json',1024*1024)).toString('utf8'));
+  if(typeof envelope.body!=='string'||typeof envelope.hmac!=='string'||!/^[a-f0-9]{64}$/.test(envelope.hmac)||!timingSafeEqual(createHmac('sha256',key).update(envelope.body).digest(),Buffer.from(envelope.hmac,'hex')))fail('Unauthenticated recovery proof');
+  proof=JSON.parse(envelope.body);
+ }catch(error){if(error.code==='SECURITY_BLOCKED')throw error;fail('Unsafe recovery proof');}
+ if(proof.format!=='gsa-scoped-files-v2'||proof.hostRelease!==os.release()||proof.arch!==process.arch||!proof.build||proof.build.hostRelease!==proof.hostRelease||proof.build.arch!==proof.arch||typeof proof.recoveryQualification!=='string'||Buffer.byteLength(proof.recoveryQualification,'utf8')>512*1024||!Array.isArray(proof.grants))fail('Stale recovery proof');
+ requireMacFileEvidence(proof.evidence,proof.build);const qualified=requireMacRecoveryQualification(Buffer.from(proof.recoveryQualification,'utf8'),proof.recoveryBuild);
+ if(qualified.host_release!==os.release()||qualified.arch!==process.arch)fail('Stale recovery qualification');
+ const bindings=proof.grants.filter(item=>item&&item.id===grant.id);if(bindings.length!==1)fail('Missing recovery binding');const binding=bindings[0],recovery=binding.recovery;
+ if(binding.role!=='workspace'||binding.role!==grant.role||binding.root!==grant.root||binding.revision!==grant.revision||!isDeepStrictEqual(binding.rootIdentity,grant.rootIdentity)||!recovery||recovery.root!==root||!isDeepStrictEqual(recovery.rootIdentity,rootIdentity)||recovery.code_sha256!==qualified.code_sha256)fail('Recovery binding differs');
+ for(const pin of pins){const s=await fs.lstat(pin.file,{bigint:true});if(s.dev!==pin.stat.dev||s.ino!==pin.stat.ino||s.size!==pin.stat.size||s.ctimeNs!==pin.stat.ctimeNs||s.mtimeNs!==pin.stat.mtimeNs||s.nlink!==1n)fail('Recovery proof changed');}
+ await check();return true;
+}
 /** Stage protected journal history while the caller continuously holds the owner fence. */
 export async function stageRecoveryJournal(live,stage,assertFence){
  if(typeof assertFence!=='function')fail('Owner fence required');
