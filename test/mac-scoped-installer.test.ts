@@ -6,6 +6,7 @@ import {spawn,execFileSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 import {test} from 'node:test';
 import {enrollRolesTrustedBatch} from '../src/local/grants.js';
+import {loadTrustedRegistry} from '../src/local/grants.js';
 import {FileTransactionStore} from '../src/local/file-transaction-store.js';
 const moduleUrl=pathToFileURL(path.resolve('scripts/install-mac-scoped-files.mjs')).href;
 test('recovery staging preserves validated journal records and lock markers byte for byte',async t=>{
@@ -63,6 +64,22 @@ test('recovery staging detects removal of a staged record before completion',asy
  finally{(fs as any).open=open;}
 });
 async function fixture(t:any){const temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-scoped-installer-')));t.after(()=>fs.rm(temp,{recursive:true,force:true}));const identity=path.join(temp,'identity'),workspace=path.join(temp,'workspace');await fs.mkdir(workspace,{mode:0o700});await enrollRolesTrustedBatch([{id:'work',root:workspace,role:'workspace'}],identity);return {identity,workspace,temp};}
+test('recovery root validation accepts a private same-volume root and rejects overlap',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),registry=await loadTrustedRegistry(f.identity),root=path.join(f.temp,'recovery'),stage=path.join(f.identity,'.scoped-files.stage-test');
+ await fs.mkdir(root,{mode:0o700});await fs.mkdir(stage,{mode:0o700});
+ const result=await installer.validateRecoveryRoot(registry,'work',root,stage);const stat=await fs.stat(root,{bigint:true});
+ assert.deepEqual(result,{device:String(stat.dev),inode:String(stat.ino)});
+ await assert.rejects(installer.validateRecoveryRoot(registry,'work',f.workspace,stage));
+ await assert.rejects(installer.validateRecoveryRoot(registry,'work',f.identity,stage));
+ const link=path.join(f.temp,'alias');await fs.symlink(root,link);await assert.rejects(installer.validateRecoveryRoot(registry,'work',link,stage));
+});
+test('recovery root validation rejects selected root replacement during validation',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),registry=await loadTrustedRegistry(f.identity),root=path.join(f.temp,'recovery'),stage=path.join(f.identity,'.scoped-files.stage-test');
+ await fs.mkdir(root,{mode:0o700});await fs.mkdir(stage,{mode:0o700});const lstat=fs.lstat.bind(fs);let injected=false;
+ (fs as any).lstat=async (...args:any[])=>{const result=await (lstat as any)(...args);if(args[0]===f.workspace&&!injected){injected=true;await fs.rename(f.workspace,f.workspace+'-old');await fs.mkdir(f.workspace,{mode:0o700});}return result;};
+ try{await assert.rejects(installer.validateRecoveryRoot(registry,'work',root,stage));assert.equal(injected,true);}
+ finally{(fs as any).lstat=lstat;}
+});
 test('installer inspect uses selected durable roots and does not create an installation',async t=>{const f=await fixture(t);const installer=await import(moduleUrl);const before=(await fs.readdir(f.identity)).sort();const report=await installer.inspectMacScopedFiles(f.identity);assert.equal(report.state,'SCOPED_FILES_PLAN');assert.equal(report.grants.length,1);assert.equal(report.grants[0].id,'work');assert.equal(report.grants[0].root,f.workspace);assert.deepEqual((await fs.readdir(f.identity)).sort(),before);});
 test('installer holds owner fencing throughout the supplied publication operation',async t=>{const f=await fixture(t);const installer=await import(moduleUrl);let attempted=false;await installer.withStoppedMacConnector(f.identity,async()=>{const code=await new Promise<number|null>((resolve,reject)=>{const child=spawn('/usr/bin/python3',['-c','import os,fcntl,sys\nf=os.open(sys.argv[1],os.O_RDWR|os.O_NOFOLLOW)\ntry: fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)\nexcept BlockingIOError: sys.exit(75)\nsys.exit(0)',path.join(f.identity,'server-owner.lock')],{stdio:'ignore'});child.on('error',reject);child.on('close',resolve);});assert.equal(code,75);attempted=true;});assert(attempted);});
 test('the flock owner atomically publishes one pinned staged directory and retains the old tree',async t=>{

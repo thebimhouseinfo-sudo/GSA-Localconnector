@@ -130,6 +130,38 @@ export function requireMacRecoveryBaseInputs(report,baseBuild,baseEvidence,baseB
   sha(baseBuild)!==hashes.baseBuild||sha(baseEvidence)!==hashes.baseEvidence||sha(baseBinary)!==hashes.baseBinary)
   fail('Recovery archive BASE inputs differ from accepted qualification');
 }
+/** Validate physical root separation; ownership of existing captures is checked separately. */
+export async function validateRecoveryRoot(registry,id,root,stage){
+ const selected=registry.list(),grant=selected.find(item=>item.id===id);
+ if(!grant||grant.role!=='workspace'||!grant.permissions.includes('write'))fail('Recovery root requires a working grant');
+ const chain=async(directory,privateRoot=false)=>{
+  if(!path.isAbsolute(directory)||path.normalize(directory)!==directory||directory==='/'||await fs.realpath(directory)!==directory)fail('Unsafe recovery root path');
+  const parts=[];for(let p=directory;;p=path.dirname(p)){parts.unshift(p);if(p===path.dirname(p))break;}
+  const result=[];for(const p of parts){const s=await fs.lstat(p,{bigint:true});
+   if(!s.isDirectory()||s.isSymbolicLink())fail('Unsafe recovery root ancestry');
+   if(privateRoot&&(![0n,BigInt(process.getuid())].includes(s.uid)||((s.mode&0o022n)!==0n&&!(s.uid===0n&&(s.mode&0o1000n)!==0n))))fail('Unsafe private recovery ancestry');
+   if(privateRoot&&p===directory&&(s.uid!==BigInt(process.getuid())||(s.mode&0o777n)!==0o700n))fail('Unsafe recovery directory');
+   result.push({device:String(s.dev),inode:String(s.ino)});
+  }return result;
+ };
+ const same=(a,b)=>a.device===b.device&&a.inode===b.inode;
+ const recovery=await chain(root,true),recoveryIdentity=recovery.at(-1),protectedRoots=[{path:stage,chain:await chain(stage,true)}],workRoots=[];
+ const installation=path.join(path.dirname(stage),'scoped-files');let installationExists=true;try{protectedRoots.push({path:installation,chain:await chain(installation,true)});}catch(error){if(error.code!=='ENOENT')throw error;installationExists=false;}
+ for(const item of selected){const work=await chain(item.canonicalRoot),workIdentity=work.at(-1);
+  if(!same(workIdentity,item.rootIdentity))fail('Selected root changed');
+  if(work.some(v=>same(v,recoveryIdentity))||recovery.some(v=>same(v,workIdentity)))fail('Recovery root overlaps selected root');
+  workRoots.push({path:item.canonicalRoot,chain:work});
+ }
+ for(const protectedRoot of protectedRoots){const protectedIdentity=protectedRoot.chain.at(-1);
+  if(protectedRoot.chain.some(v=>same(v,recoveryIdentity))||recovery.some(v=>same(v,protectedIdentity)))fail('Recovery root overlaps installation');
+ }
+ if(recoveryIdentity.device!==grant.rootIdentity.device)fail('Recovery root must be on the workspace volume');
+ for(const item of workRoots)if(!isDeepStrictEqual(await chain(item.path),item.chain))fail('Selected root changed during validation');
+ for(const item of protectedRoots)if(!isDeepStrictEqual(await chain(item.path,true),item.chain))fail('Installation changed during validation');
+ if(!installationExists){try{await fs.lstat(installation);fail('Installation appeared during validation');}catch(error){if(error.code!=='ENOENT')throw error;}}
+ const rechecked=await chain(root,true);if(!isDeepStrictEqual(rechecked,recovery)||!isDeepStrictEqual(registry.list(),selected))fail('Recovery roots changed during validation');
+ return recoveryIdentity;
+}
 /** Stage protected journal history while the caller continuously holds the owner fence. */
 export async function stageRecoveryJournal(live,stage,assertFence){
  if(typeof assertFence!=='function')fail('Owner fence required');
