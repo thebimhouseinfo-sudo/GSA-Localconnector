@@ -214,6 +214,40 @@ export async function requireRecoveryRootOwnership(installation,grant,root,rootI
  for(const pin of pins){const s=await fs.lstat(pin.file,{bigint:true});if(s.dev!==pin.stat.dev||s.ino!==pin.stat.ino||s.size!==pin.stat.size||s.ctimeNs!==pin.stat.ctimeNs||s.mtimeNs!==pin.stat.mtimeNs||s.nlink!==1n)fail('Recovery proof changed');}
  await check();return true;
 }
+/** Prepare only selected workspace roots, retaining any existing captures. */
+export async function prepareRecoveryRoots(registry,identityRoot,stage,mapping,assertFence){
+ if(typeof assertFence!=='function'||!mapping||typeof mapping!=='object'||Array.isArray(mapping)||Object.getPrototypeOf(mapping)!==Object.prototype)fail('Invalid recovery root mapping');
+ mapping=structuredClone(mapping);await privateDirectory(identityRoot);await privateDirectory(stage);assertFence();
+ const selected=registry.list(),work=selected.filter(g=>g.role==='workspace'&&g.permissions.includes('write'));
+ if(!work.length||Object.keys(mapping).some(id=>!work.some(g=>g.id===id))||Object.values(mapping).some(v=>typeof v!=='string'||!path.isAbsolute(v)))fail('Recovery mapping contains an invalid workspace');
+ const parent=path.join(identityRoot,'file-recovery');
+ const checkSelections=async()=>{assertFence();if(!isDeepStrictEqual(await assertMacFileInstallationSeparated(registry,identityRoot),selected))fail('Selected grants changed');assertFence();};
+ await checkSelections();
+ if(work.some(g=>!Object.hasOwn(mapping,g.id))){await checkSelections();try{await fs.mkdir(parent,{mode:0o700});}catch(error){if(error.code!=='EEXIST')throw error;}await privateDirectory(parent);await checkSelections();}
+ const stable=(a,b)=>a.dev===b.dev&&a.ino===b.ino&&a.mtimeNs===b.mtimeNs&&a.ctimeNs===b.ctimeNs;
+ const observe=async root=>{await privateDirectory(root);const before=await fs.lstat(root,{bigint:true}),iterator=await fs.opendir(root);let occupied;
+  try{occupied=!!(await iterator.read());}finally{await iterator.close();}
+  await privateDirectory(root);const after=await fs.lstat(root,{bigint:true});if(!stable(before,after))fail('Recovery root occupancy changed');return {occupied,stat:after};};
+ const result=[];
+ for(const grant of work){
+  assertFence();if(!/^[a-zA-Z0-9][-_a-zA-Z0-9]{0,63}$/.test(grant.id)||!Number.isSafeInteger(grant.revision)||grant.revision<1)fail('Invalid recovery grant');
+  const custom=Object.hasOwn(mapping,grant.id),root=custom?mapping[grant.id]:path.join(parent,`${grant.id}-r${grant.revision}`);
+  if(!custom){await privateDirectory(parent);await checkSelections();try{await fs.mkdir(root,{mode:0o700});}catch(error){if(error.code!=='EEXIST')throw error;}await checkSelections();}
+  const rootIdentity=await validateRecoveryRoot(registry,grant.id,root,stage);
+  for(const prior of result){
+   if(root===prior.root||root.startsWith(prior.root+'/')||prior.root.startsWith(root+'/'))fail('Recovery roots overlap');
+  }
+  const observation=await observe(root),occupied=observation.occupied;
+  if(occupied)await requireRecoveryRootOwnership(path.join(identityRoot,'scoped-files'),{id:grant.id,role:grant.role,root:grant.canonicalRoot,rootIdentity:grant.rootIdentity,revision:grant.revision},root,rootIdentity);
+  assertFence();result.push({id:grant.id,root,rootIdentity,observation,grant:{id:grant.id,role:grant.role,root:grant.canonicalRoot,rootIdentity:grant.rootIdentity,revision:grant.revision}});
+ }
+ for(const item of result){const current=await validateRecoveryRoot(registry,item.id,item.root,stage);if(!isDeepStrictEqual(current,item.rootIdentity))fail('Recovery root changed during preparation');
+  const observation=await observe(item.root);
+  if(observation.occupied!==item.observation.occupied||!stable(observation.stat,item.observation.stat))fail('Recovery root occupancy changed');if(observation.occupied)await requireRecoveryRootOwnership(path.join(identityRoot,'scoped-files'),item.grant,item.root,item.rootIdentity);
+  await privateDirectory(item.root);if(!stable(observation.stat,await fs.lstat(item.root,{bigint:true})))fail('Recovery root occupancy changed');
+ }
+ if(!isDeepStrictEqual(registry.list(),selected))fail('Selected grants changed');assertFence();return result.map(({id,root,rootIdentity})=>({id,root,rootIdentity}));
+}
 /** Stage protected journal history while the caller continuously holds the owner fence. */
 export async function stageRecoveryJournal(live,stage,assertFence){
  if(typeof assertFence!=='function')fail('Owner fence required');

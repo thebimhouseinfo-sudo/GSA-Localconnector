@@ -126,6 +126,42 @@ test('nonempty recovery roots require a matching authenticated existing binding'
  await assert.rejects(installer.requireRecoveryRootOwnership(live,grant,root,rootIdentity));
  assert.equal(await fs.readFile(path.join(root,'capture'),'utf8'),'retained');
 });
+test('recovery root preparation uses the current workspace revision and refuses unbound occupied roots',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),registry=await loadTrustedRegistry(f.identity),stage=path.join(f.identity,'.scoped-files.stage-test');await fs.mkdir(stage,{mode:0o700});
+ const selected=registry.list()[0]!;let prepared:any;
+ await installer.withStoppedMacConnector(f.identity,async(check:any)=>{prepared=await installer.prepareRecoveryRoots(registry,f.identity,stage,{},check);});
+ assert.equal(prepared.length,1);assert.equal(prepared[0].root,path.join(f.identity,'file-recovery',`work-r${selected.revision}`));assert.deepEqual(await fs.readdir(prepared[0].root),[]);
+ await fs.writeFile(path.join(prepared[0].root,'capture'),'retained');
+ await assert.rejects(installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.prepareRecoveryRoots(registry,f.identity,stage,{},check)));
+ assert.equal(await fs.readFile(path.join(prepared[0].root,'capture'),'utf8'),'retained');
+ await assert.rejects(installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.prepareRecoveryRoots(registry,f.identity,stage,{unknown:f.workspace},check)));
+});
+test('recovery root preparation detects captures appearing after an empty observation',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),registry=await loadTrustedRegistry(f.identity),stage=path.join(f.identity,'.scoped-files.stage-test'),root=path.join(f.temp,'recovery');await fs.mkdir(stage,{mode:0o700});await fs.mkdir(root,{mode:0o700});
+ const opendir=fs.opendir.bind(fs);let injected=false;
+ (fs as any).opendir=async (...args:any[])=>{const dir=await (opendir as any)(...args);if(args[0]===root&&!injected){const close=dir.close.bind(dir);dir.close=async()=>{await close();await fs.writeFile(path.join(root,'capture'),'new evidence');injected=true;};}return dir;};
+ try{await assert.rejects(installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.prepareRecoveryRoots(registry,f.identity,stage,{work:root},check)));assert.equal(injected,true);assert.equal(await fs.readFile(path.join(root,'capture'),'utf8'),'new evidence');}
+ finally{(fs as any).opendir=opendir;}
+});
+test('recovery root preparation detects a capture created during the final occupancy check',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),registry=await loadTrustedRegistry(f.identity),stage=path.join(f.identity,'.scoped-files.stage-test'),root=path.join(f.temp,'recovery');await fs.mkdir(stage,{mode:0o700});await fs.mkdir(root,{mode:0o700});
+ const opendir=fs.opendir.bind(fs);let closes=0,injected=false;
+ (fs as any).opendir=async (...args:any[])=>{const dir=await (opendir as any)(...args);if(args[0]===root){const close=dir.close.bind(dir);dir.close=async()=>{await close();if(++closes===2){await fs.writeFile(path.join(root,'capture'),'new evidence');injected=true;}};}return dir;};
+ try{await assert.rejects(installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.prepareRecoveryRoots(registry,f.identity,stage,{work:root},check)));assert.equal(injected,true);}
+ finally{(fs as any).opendir=opendir;}
+});
+test('recovery root preparation rejects overlapping recovery roots across workspaces',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),stage=path.join(f.identity,'.scoped-files.stage-test'),peer=path.join(f.temp,'peer'),root=path.join(f.temp,'recovery'),nested=path.join(root,'nested');
+ await fs.mkdir(stage,{mode:0o700});await fs.mkdir(peer,{mode:0o700});await fs.mkdir(root,{mode:0o700});await fs.mkdir(nested,{mode:0o700});
+ await enrollRolesTrustedBatch([{id:'peer',root:peer,role:'workspace'}],f.identity);const registry=await loadTrustedRegistry(f.identity);
+ await assert.rejects(installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.prepareRecoveryRoots(registry,f.identity,stage,{work:root,peer:nested},check)));
+});
+test('recovery root preparation rejects a stale moved workspace before creating its default root',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),registry=await loadTrustedRegistry(f.identity),stage=path.join(f.identity,'.scoped-files.stage-test'),parent=path.join(f.identity,'file-recovery');await fs.mkdir(stage,{mode:0o700});
+ await fs.rename(f.workspace,parent);await fs.mkdir(f.workspace,{mode:0o700});
+ await assert.rejects(installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.prepareRecoveryRoots(registry,f.identity,stage,{},check)));
+ assert.deepEqual(await fs.readdir(parent),[]);
+});
 test('installer inspect uses selected durable roots and does not create an installation',async t=>{const f=await fixture(t);const installer=await import(moduleUrl);const before=(await fs.readdir(f.identity)).sort();const report=await installer.inspectMacScopedFiles(f.identity);assert.equal(report.state,'SCOPED_FILES_PLAN');assert.equal(report.grants.length,1);assert.equal(report.grants[0].id,'work');assert.equal(report.grants[0].root,f.workspace);assert.deepEqual((await fs.readdir(f.identity)).sort(),before);});
 test('installer holds owner fencing throughout the supplied publication operation',async t=>{const f=await fixture(t);const installer=await import(moduleUrl);let attempted=false;await installer.withStoppedMacConnector(f.identity,async()=>{const code=await new Promise<number|null>((resolve,reject)=>{const child=spawn('/usr/bin/python3',['-c','import os,fcntl,sys\nf=os.open(sys.argv[1],os.O_RDWR|os.O_NOFOLLOW)\ntry: fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)\nexcept BlockingIOError: sys.exit(75)\nsys.exit(0)',path.join(f.identity,'server-owner.lock')],{stdio:'ignore'});child.on('error',reject);child.on('close',resolve);});assert.equal(code,75);attempted=true;});assert(attempted);});
 test('the flock owner atomically publishes one pinned staged directory and retains the old tree',async t=>{
