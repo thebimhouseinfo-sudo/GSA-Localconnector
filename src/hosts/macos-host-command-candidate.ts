@@ -1,5 +1,4 @@
 import {spawn} from "node:child_process";
-import type {ChildProcessWithoutNullStreams} from "node:child_process";
 import {resolveMacHostCommandCwd,type MacHostCommandRequest,MAC_HOST_COMMAND_DISCLOSURE} from "./macos-host-command-request.js";
 import type {WorkspaceRegistry} from "../core/workspace.js";
 
@@ -32,17 +31,18 @@ export async function runMacHostCommandCandidate(
  await resolveMacHostCommandCwd(registry,request);
  const child=spawn(request.executable,[...request.argv],{
   cwd,detached:true,shell:false,stdio:["ignore","pipe","pipe"],env:process.env
- }) as ChildProcessWithoutNullStreams;
+ });
  if(!child.pid)throw Object.assign(Error("No owned process identity"),{code:"PROCESS_BUSY"});
  const pgid=child.pid,cap=request.max_output_bytes;
  const stdout:Buffer[]=[],stderr:Buffer[]=[];
- let total=0,outTruncated=false,errTruncated=false,closed=false;
+ let total=0,stdoutBytes=0,stderrBytes=0,outTruncated=false,errTruncated=false,closed=false;
  let exitCode:number|null=null,signal:string|null=null,spawnError:Error|undefined;
  let timedOut=false,cancelled=false,termSent=false,killSent=false;
  const collect=(bytes:Buffer,target:Buffer[],stream:"stdout"|"stderr")=>{
   const remain=Math.max(0,cap-total),keep=Math.min(remain,bytes.length);
   if(keep)target.push(Buffer.from(bytes.subarray(0,keep)));
   total+=keep;
+  if(stream==="stdout")stdoutBytes+=keep;else stderrBytes+=keep;
   if(keep<bytes.length){if(stream==="stdout")outTruncated=true;else errTruncated=true;}
  };
  child.stdout.on("data",(chunk:Buffer)=>collect(chunk,stdout,"stdout"));
@@ -54,16 +54,16 @@ export async function runMacHostCommandCandidate(
   // Only send to the group created by detached spawn; never use a global kill.
   try{process.kill(-pgid,sig);}catch(e){if((e as NodeJS.ErrnoException).code!=="ESRCH")spawnError??=e as Error;}
  };
- const started=Date.now();
+ const started=Date.now();let termAt:number|undefined;
  const requestedStop=()=>abort?.aborted||Date.now()-started>=request.time_limit_ms;
  let groupStopped=false;
  try{
   while(Date.now()-started<request.time_limit_ms+5000){
    const age=Date.now()-started;
    if(requestedStop()&&!termSent){
-    cancelled=!!abort?.aborted;timedOut=!cancelled;termSent=true;ownedSignal("SIGTERM");
+    cancelled=!!abort?.aborted;timedOut=!cancelled;termSent=true;termAt=Date.now();ownedSignal("SIGTERM");
    }
-   if(termSent&&!killSent&&age>=request.time_limit_ms+2000){
+   if(termSent&&!killSent&&termAt!==undefined&&Date.now()-termAt>=2000){
     killSent=true;ownedSignal("SIGKILL");
    }
    if(closed&&!groupAlive()){groupStopped=true;break;}
@@ -73,8 +73,8 @@ export async function runMacHostCommandCandidate(
   // Never claim full-tree ownership based on group status; no fixture cleanup.
  }
  const output={
-  stdout:Buffer.concat(stdout,total).toString("utf8"),
-  stderr:Buffer.concat(stderr,total).toString("utf8")
+  stdout:Buffer.concat(stdout,stdoutBytes).toString("utf8"),
+  stderr:Buffer.concat(stderr,stderrBytes).toString("utf8")
  };
  const uncertain=!closed||!groupStopped||!!spawnError||timedOut||cancelled||outTruncated||errTruncated||signal!==null;
  return {
