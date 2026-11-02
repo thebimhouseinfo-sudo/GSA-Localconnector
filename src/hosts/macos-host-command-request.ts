@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import type {WorkspaceRegistry} from "../core/workspace.js";
 import path from "node:path";
 
 /** M3/D1 host-command admission. This validates request shape only.
@@ -30,3 +32,15 @@ export const MAC_HOST_COMMAND_DISCLOSURE=Object.freeze({
  command_confinement:"none (user account)",
  state_integrity_vs_commands:"not_protected"
 } as const);
+
+/** Resolve only a currently allowed existing directory. Do not treat this
+ * check as atomic with spawn; the executor must pin/recheck the root and cwd.
+ */
+export async function resolveMacHostCommandCwd(registry:WorkspaceRegistry,request:MacHostCommandRequest):Promise<string>{
+ validateMacHostCommandRequest(request);
+ registry.requireGrant(request.workspace_id,"execute");
+ const cwd=await registry.resolveExistingRead(request.workspace_id,request.cwd_relative);
+ const info=await fs.stat(cwd);
+ if(!info.isDirectory())throw Object.assign(Error("Command cwd is not a directory"),{code:"INVALID_PROCESS"});
+ return cwd;
+}
