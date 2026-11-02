@@ -55,6 +55,9 @@ export interface SandboxedProcessReceipt {
  readonly exit_code:number|null;readonly signal:string|null;
  readonly stdout:string;readonly stderr:string;
  readonly cancelled:boolean;readonly timed_out:boolean;
+ /** Group absence is not full process-tree termination proof. */
+ readonly process_group_stop_verified?:boolean;
+ readonly process_tree_stop_verified?:boolean;
  readonly output_limited?:boolean;
  readonly artifacts?:readonly SandboxedProcessArtifact[];
  readonly artifact_error?:string|null;
