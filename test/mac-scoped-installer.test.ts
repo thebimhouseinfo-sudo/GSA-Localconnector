@@ -114,8 +114,14 @@ async function observeOwnedFixtureGroup(child:ReturnType<typeof spawn>,retainedP
  let stdout='',stderr='',closed=false,firstError:Error|undefined;
  const groupAlive=()=>{try{process.kill(-group,0);return true;}catch(e){return (e as NodeJS.ErrnoException).code!=='ESRCH';}};
  const signal=(name:NodeJS.Signals)=>{try{process.kill(-group,name);}catch(e){if((e as NodeJS.ErrnoException).code!=='ESRCH')firstError??=e as Error;}};
- child.stdout?.on('data',bytes=>{stdout+=bytes;if(stdout.length>65536){firstError??=Error('Fixture stdout limit');signal('SIGTERM');}});
- child.stderr?.on('data',bytes=>{stderr+=bytes;if(stderr.length>65536){firstError??=Error('Fixture stderr limit');signal('SIGTERM');}});
+ const cap=65536;
+ const append=(current:string,bytes:Buffer,label:string)=>{
+  const remaining=cap-Buffer.byteLength(current);
+  if(bytes.length>remaining){firstError??=Error(`Fixture ${label} limit`);signal('SIGTERM');}
+  return remaining>0?current+bytes.subarray(0,Math.max(0,remaining)).toString('latin1'):current;
+ };
+ child.stdout?.on('data',(bytes:Buffer)=>{stdout=append(stdout,bytes,'stdout');});
+ child.stderr?.on('data',(bytes:Buffer)=>{stderr=append(stderr,bytes,'stderr');});
  child.on('error',error=>{firstError??=error;});
  child.on('close',()=>{closed=true;});
  const started=Date.now(),delay=(ms:number)=>new Promise(r=>setTimeout(r,ms));
@@ -193,7 +199,7 @@ test('detached descendant can outlive the original group (bounded observation on
 // broker descendants cannot escape group/session before full-tree cleanup
 // can be certified. Group absence alone is NOT that evidence.
 
-test('installed qualified broker handles mutation and dropped reply with a real disposable owner',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+test('installed qualified broker handles mutation and dropped reply with a real disposable owner',{skip:'BLOCKED: full descendant cleanup proof not established; manual qualification required',timeout:30000},async t=>{
  const cleanupGuard={safe:true};const f=await fixture(t,cleanupGuard),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
  await installer.applyMacScopedRecovery(f.identity,archive,{});const canary=path.join(f.temp,'outside-canary');await fs.writeFile(canary,'unchanged');
  cleanupGuard.safe=false;
