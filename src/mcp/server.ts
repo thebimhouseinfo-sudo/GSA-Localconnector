@@ -133,7 +133,16 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
   const processes=new ProcessManager(sandbox);
   const durable=new DurableProcessManager(nativeProcesses,16,options.processPersistence);
   const durableHistory=!!nativeProcesses||!!options.processPersistence;
-  const hostEnabled=!!options.hostCommands&&!!options.processPersistence;
+  const hostEnabled=!!options.hostCommands&&!!options.processPersistence&&!nativeProcesses;
+  const commandOptions=(args:Record<string,unknown>)=>{
+   const allowed=new Set(hostEnabled?["workspace_id","command","args","cwd_relative","time_limit_ms","max_output_bytes"]:["workspace_id","command","args"]);
+   if(Object.keys(args).some(key=>!allowed.has(key)))throw Error("INVALID_ARGUMENTS");
+   const cwd=hostEnabled?args.cwd_relative??".":".";
+   const timeout=hostEnabled?args.time_limit_ms??30000:30000;
+   const cap=hostEnabled?args.max_output_bytes??65536:65536;
+   if(typeof cwd!=="string"||typeof timeout!=="number"||typeof cap!=="number")throw Error("INVALID_ARGUMENTS");
+   return {cwd_relative:cwd,time_limit_ms:timeout,max_output_bytes:cap};
+  };
   // Keep revoked root pins after custom IDs disappear from the protected active registry.
   // Neither rebinding nor these pins confer authority to query an old owner's native IDs.
   const processRevocations=new Map<string,{grant:WorkspaceGrant;confirmed:boolean;continuation:boolean}>();
@@ -495,17 +504,17 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           }break;
         case "run_command":
           if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string"))throw Error("INVALID_ARGUMENTS");
-          if(!options.hostCommands)requireNativeBackend(sandbox);
+          if(!hostEnabled)requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,"execute");
-          {const request={workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:!!options.hostCommands};
-           result=options.hostCommands?await durable.run(request,options.hostCommands):options.processPersistence?await durable.run(request,sandbox!):await processes.run(request);
+          {const request={workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],...commandOptions(args),network_allowed:hostEnabled};
+           result=hostEnabled?await durable.run(request,options.hostCommands!):options.processPersistence?await durable.run(request,sandbox!):await processes.run(request);
           }break;
         case "start_process":
-          if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string")||Object.keys(args).length!==3)throw Error("INVALID_ARGUMENTS");
-          if(!nativeProcesses&&!options.hostCommands)requireNativeBackend(sandbox);
+          if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string"))throw Error("INVALID_ARGUMENTS");
+          if(!nativeProcesses&&!hostEnabled)requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,"execute");
-          {const request={workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:"." as const,time_limit_ms:30000,max_output_bytes:65536,network_allowed:!!options.hostCommands};
-           result=nativeProcesses?await durable.start(request):options.hostCommands?await durable.startCommand(request,options.hostCommands):options.processPersistence?await durable.startCommand(request,sandbox!):processes.start(request);
+          {const request={workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],...commandOptions(args),network_allowed:hostEnabled};
+           result=nativeProcesses?await durable.start(request):hostEnabled?await durable.startCommand(request,options.hostCommands!):options.processPersistence?await durable.startCommand(request,sandbox!):processes.start(request);
           }break;
         case "stop_process":
           if(typeof args.workspace_id!=="string"||typeof args.process_id!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
