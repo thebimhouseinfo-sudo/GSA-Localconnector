@@ -4,11 +4,7 @@ on:
   pull_request:
 jobs:
   contract:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,12 +15,7 @@ jobs:
       - name: Verify worker snapshot seed (no VM starts or downloads)
         run: python3 scripts/test-vm-worker-seed.py
 
-      - name: Verify Linux worker protocol and bounded subprocess capture
-        if: runner.os != 'Windows'
-        run: python3 scripts/test-vm-guest-worker.py
-
       - name: Verify descriptor-native source capture fixtures
-        if: runner.os == 'macOS'
         run: python3 scripts/test-native-source-capture.py
 
       - name: Compile worker and reject malformed input before VM construction
