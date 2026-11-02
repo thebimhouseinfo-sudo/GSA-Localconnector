@@ -137,9 +137,13 @@ export class ProcessJournalStore implements ProcessJournal {
    if(!name.endsWith(".json")||!UUID.test(name.slice(0,-5)))continue;
    const record=await this.available(name.slice(0,-5));if(!record)continue;
    if(record.owner_session===session||record.stopped){this.unresolved.delete(record.process_id);continue;}
+   // Losing the old owner fence is not proof that detached native descendants
+   // stopped. Preserve uncertain ownership and block new process admission
+   // until actual OS provenance can be obtained; never invent terminal status.
+   if(record.status.state==="UNKNOWN"&&!record.stopped){this.unresolved.add(record.process_id);continue;}
    try{
-    await this.save({...record,revision:record.revision+1,status:{...record.status,state:"UNKNOWN",exit_code:null,ended_at:new Date().toISOString(),stopped:true},stopped:true,output_complete:false},record.revision);
-    this.unresolved.delete(record.process_id);
+    await this.save({...record,revision:record.revision+1,status:{...record.status,state:"UNKNOWN",exit_code:null,ended_at:null,stopped:false},stopped:false,output_complete:false},record.revision);
+    this.unresolved.add(record.process_id);
    }catch(error){
     if((error as NodeJS.ErrnoException).code!=="PROCESS_JOURNAL_LOCKED")throw error;
     // Preserve the lock and uncertain intent; diagnostics may start, commands may not.
