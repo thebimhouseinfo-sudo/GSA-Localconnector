@@ -108,8 +108,9 @@ test('recovery installation creates a read-only BASE binding for reference roots
  assert.equal((await fs.stat(path.join(result.installation,'ref/Broker.app'))).isDirectory(),true);await assert.rejects(fs.lstat(path.join(result.installation,'ref/RecoveryBroker.app')),{code:'ENOENT'});
 });
 test('installed qualified broker handles mutation and dropped reply with a real disposable owner',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
- const cleanupGuard={safe:false};const f=await fixture(t,cleanupGuard),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive){cleanupGuard.safe=true;return;}
+ const cleanupGuard={safe:true};const f=await fixture(t,cleanupGuard),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
  await installer.applyMacScopedRecovery(f.identity,archive,{});const canary=path.join(f.temp,'outside-canary');await fs.writeFile(canary,'unchanged');
+ cleanupGuard.safe=false;
  const result=await new Promise<{code:number|null;stdout:string;stderr:string}>((resolve,reject)=>{
   const child=spawn('/usr/bin/python3',[path.resolve('scripts/macos-owner-launcher.py'),'--identity',f.identity,'--node',process.execPath,'--entry',path.resolve('test/helpers/mac-recovery-installed-fixture.mjs')],{env:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:f.temp,TMPDIR:path.dirname(f.temp),GSA_FIXTURE_IDENTITY:f.identity,GSA_FIXTURE_WORKSPACE:f.workspace,GSA_FIXTURE_SCRATCH:f.temp},detached:true,stdio:['ignore','pipe','pipe']});
   let stdout='',stderr='',settled=false,closed=false;const group=child.pid;
