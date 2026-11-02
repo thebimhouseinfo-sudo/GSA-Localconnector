@@ -89,3 +89,13 @@ test("run and start share concurrent process capacity",async()=>{
  assert.ok(done.every(x=>x.state==="SUCCEEDED"));
  assert.equal((await manager.run(req)).state,"SUCCEEDED");
 });
+
+test("M4 process-group observation never certifies an unverified tree",async()=>{
+ const fake:VerifiedNativeSandbox={platform:"macos",policy_fingerprint:"test-only",verified:true,
+  execute:async()=>({exit_code:0,signal:null,stdout:"ok",stderr:"",cancelled:false,timed_out:false,process_group_stop_verified:true,process_tree_stop_verified:false})};
+ const manager=new ProcessManager(fake);
+ const result=await manager.run(req);
+ assert.equal(result.state,"UNKNOWN");
+ assert.equal(result.receipt?.process_group_stop_verified,true);
+ assert.equal(result.receipt?.process_tree_stop_verified,false);
+});
