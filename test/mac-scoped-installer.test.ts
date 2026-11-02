@@ -170,19 +170,24 @@ test('detached descendant can outlive the original group (bounded observation on
  // completion evidence; the parent never sends signals to its new group.
  const childScript=`const {spawn}=require('node:child_process');const fs=require('node:fs');const p=spawn(process.execPath,['-e','setTimeout(()=>{require("node:fs").writeFileSync(process.argv[1],"done")},1800)',process.argv[2]],{detached:true,stdio:'ignore'});fs.writeFileSync(process.argv[1],String(p.pid));p.unref();`;
  const launcher=spawn(process.execPath,['-e',childScript,pidFile,doneFile],{detached:true,stdio:['ignore','pipe','pipe']});
- let observed=false,completed=false;
+ let observed=false,completed=false,escaped:number|undefined,absent=false;
  try{
   const result=await observeOwnedFixtureGroup(launcher,marker,{termMs:2500,killMs:3000,endMs:3500});
   assert.equal(result.code,0);observed=true;
-  const escaped=Number(await fs.readFile(pidFile,'utf8'));
+  escaped=Number(await fs.readFile(pidFile,'utf8'));
   assert.ok(Number.isSafeInteger(escaped)&&escaped>0);
-  assert.doesNotThrow(()=>process.kill(escaped,0));
+  assert.doesNotThrow(()=>process.kill(escaped!,0));
  }finally{
-  // Do not delete evidence until the known escaped child reports completion.
-  for(let i=0;i<200;i++){if(await fs.access(doneFile).then(()=>true,()=>false)){completed=true;break;}await new Promise(r=>setTimeout(r,25));}
-  if(observed&&completed)await fs.rm(marker,{recursive:true,force:true});
+  // A completion marker alone is insufficient: confirm the escaped PID is
+  // absent before cleanup. Uncertainty keeps the disposable evidence.
+  for(let i=0;i<200;i++){
+   if(await fs.access(doneFile).then(()=>true,()=>false))completed=true;
+   if(completed&&escaped){try{process.kill(escaped,0);}catch(e){if((e as NodeJS.ErrnoException).code==='ESRCH'){absent=true;break;}}}
+   await new Promise(r=>setTimeout(r,25));
+  }
+  if(observed&&completed&&absent)await fs.rm(marker,{recursive:true,force:true});
  }
- assert.equal(completed,true,'detached fixture child must complete its bounded run');
+ assert.equal(completed&&absent,true,'detached fixture child must finish and disappear');
 });
 // NOTE: the live native-owner fixture still needs independent evidence that
 // broker descendants cannot escape group/session before full-tree cleanup
