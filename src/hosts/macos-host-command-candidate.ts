@@ -29,6 +29,7 @@ export async function runMacHostCommandCandidate(
  // Recheck immediately before spawn; cwd remains a pathname-based operation.
  // A concurrent rename after this check is not excluded by the Node API.
  await resolveMacHostCommandCwd(registry,request);
+ if(abort?.aborted)throw Object.assign(Error("Cancelled before spawn"),{code:"CANCELLED"});
  const child=spawn(request.executable,[...request.argv],{
   cwd,detached:true,shell:false,stdio:["ignore","pipe","pipe"],env:process.env
  });
