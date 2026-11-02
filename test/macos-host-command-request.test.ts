@@ -25,7 +25,7 @@ test("M3 command cwd follows workspace execute role and canonical read boundary"
  await fs.symlink(outside,path.join(work,"escape"));
  const registry=new WorkspaceRegistry();
  await registry.enrollRolesTrusted([{id:"work",root:work,role:"workspace"},{id:"ref",root:ref,role:"reference"}]);
- assert.equal(await resolveMacHostCommandCwd(registry,{...base,cwd_relative:"sub"}),path.join(work,"sub"));
+ assert.equal(await resolveMacHostCommandCwd(registry,{...base,cwd_relative:"sub"}),await fs.realpath(path.join(work,"sub")));
  await assert.rejects(resolveMacHostCommandCwd(registry,{...base,workspace_id:"ref"}),{code:"PERMISSION_DENIED"});
  await assert.rejects(resolveMacHostCommandCwd(registry,{...base,cwd_relative:"escape"}),{code:"PATH_OUTSIDE_SCOPE"});
  await assert.rejects(resolveMacHostCommandCwd(registry,{...base,cwd_relative:"notdir"}),{code:"INVALID_PROCESS"});
