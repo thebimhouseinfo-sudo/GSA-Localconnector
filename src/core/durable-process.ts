@@ -124,7 +124,7 @@ export class DurableProcessManager{
     const stdout=prefix(receipt.stdout,request.max_output_bytes);
     receipt={...receipt,stdout,stderr:prefix(receipt.stderr,request.max_output_bytes-Buffer.byteLength(stdout)),output_limited:true};
    }
-   const state:ProcessState=receipt.cancelled?"CANCELLED":receipt.output_limited||receipt.signal!==null||receipt.timed_out?"UNKNOWN":receipt.exit_code===0?"SUCCEEDED":receipt.exit_code===null?"UNKNOWN":"FAILED";
+   const state:ProcessState=receipt.process_tree_stop_verified===false?"UNKNOWN":receipt.cancelled?"CANCELLED":receipt.output_limited||receipt.signal!==null||receipt.timed_out?"UNKNOWN":receipt.exit_code===0?"SUCCEEDED":receipt.exit_code===null?"UNKNOWN":"FAILED";
    const ended=new Date().toISOString();
    await save({state,exit_code:receipt.exit_code,started_at:now,ended_at:ended},receipt);
    return {process_id:id,workspace_id:request.workspace_id,state,created_at:now,updated_at:ended,receipt};
