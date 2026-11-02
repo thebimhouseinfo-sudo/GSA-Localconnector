@@ -163,27 +163,24 @@ test('owned fixture monitor enforces deadline after launcher exit',{skip:process
 });
 test('detached descendant can outlive the original group (bounded observation only)',{skip:process.platform==='win32'},async()=>{
  const marker=await fs.mkdtemp(path.join(os.tmpdir(),'gsa-escape-observation-'));
- const childScript=`const {spawn}=require('node:child_process');const fs=require('node:fs');const p=spawn(process.execPath,['-e','setTimeout(()=>{},1200)'],{detached:true,stdio:'ignore'});fs.writeFileSync(process.argv[1],String(p.pid));p.unref();`;
- const pidFile=path.join(marker,'escaped.pid');
- const launcher=spawn(process.execPath,['-e',childScript,pidFile],{detached:true,stdio:['ignore','pipe','pipe']});
- let escaped:number|undefined;
+ const pidFile=path.join(marker,'escaped.pid'),doneFile=path.join(marker,'escaped.done');
+ // Both processes are disposable. The detached child self-terminates and writes
+ // completion evidence; the parent never sends signals to its new group.
+ const childScript=`const {spawn}=require('node:child_process');const fs=require('node:fs');const p=spawn(process.execPath,['-e','setTimeout(()=>{require("node:fs").writeFileSync(process.argv[1],"done")},1200)',process.argv[2]],{detached:true,stdio:'ignore'});fs.writeFileSync(process.argv[1],String(p.pid));p.unref();`;
+ const launcher=spawn(process.execPath,['-e',childScript,pidFile,doneFile],{detached:true,stdio:['ignore','pipe','pipe']});
+ let observed=false,completed=false;
  try{
   const result=await observeOwnedFixtureGroup(launcher,marker,{termMs:2500,killMs:3000,endMs:3500});
-  assert.equal(result.code,0);
-  escaped=Number(await fs.readFile(pidFile,'utf8'));
+  assert.equal(result.code,0);observed=true;
+  const escaped=Number(await fs.readFile(pidFile,'utf8'));
   assert.ok(Number.isSafeInteger(escaped)&&escaped>0);
-  // Prove the negative: disappearance of the original PGID does not imply
-  // disappearance of a descendant that deliberately created a new session.
-  assert.doesNotThrow(()=>process.kill(escaped!,0));
+  assert.doesNotThrow(()=>process.kill(escaped,0));
  }finally{
-  // Escapee is self-terminating. Never signal an unrelated PGID or delete
-  // evidence if its bounded lifetime cannot be verified.
-  if(escaped){
-   let gone=false;
-   for(let i=0;i<100;i++){try{process.kill(escaped,0);}catch(e){if((e as NodeJS.ErrnoException).code==='ESRCH'){gone=true;break;}}await new Promise(r=>setTimeout(r,25));}
-   if(gone)await fs.rm(marker,{recursive:true,force:true});
-  }
+  // Do not delete evidence until the known escaped child reports completion.
+  for(let i=0;i<120;i++){if(await fs.access(doneFile).then(()=>true,()=>false)){completed=true;break;}await new Promise(r=>setTimeout(r,25));}
+  if(observed&&completed)await fs.rm(marker,{recursive:true,force:true});
  }
+ assert.equal(completed,true,'detached fixture child must complete its bounded run');
 });
 // NOTE: the live native-owner fixture still needs independent evidence that
 // broker descendants cannot escape group/session before full-tree cleanup
