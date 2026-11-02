@@ -1,13 +1,15 @@
 import {randomUUID} from "node:crypto";
-import type {SandboxedProcessRequest,VerifiedNativeProcessController,NativeProcessStatus,VerifiedNativeSandbox,SandboxedProcessReceipt} from "./native-io.js";
+import type {SandboxedProcessRequest,VerifiedNativeProcessController,NativeProcessStatus,VerifiedNativeSandbox,ApprovedMacHostCommandBackend,SandboxedProcessReceipt} from "./native-io.js";
 import {validateProcessRequest,type ProcessRecord,type ProcessState,type WorkspaceProcessStop,ProcessAdmission,observeProcessStop} from "./process-manager.js";
 import {requireNativeBackend} from "./native-io.js";
+import {validateMacHostCommandRequest} from "../hosts/macos-host-command-request.js";
+type CommandBackend=VerifiedNativeSandbox|ApprovedMacHostCommandBackend;
 import type {ProcessJournal,ProcessJournalRecord} from "./process-journal.js";
 export interface ProcessPersistence {store:ProcessJournal;ownerSession:string}
 export class DurableProcessError extends Error{
  constructor(public readonly code:"PROCESS_NOT_FOUND"|"PROCESS_LIMIT"|"INVALID_PROCESS_REQUEST"|"PROCESS_ALREADY_FINISHED",message:string){super(message);}
 }
-type Entry={workspace_id:string;native_id:string;public_id:string;active:boolean;expired?:boolean;record?:ProcessJournalRecord;saving?:Promise<void>;command?:VerifiedNativeSandbox;stopAttempt?:Promise<{stopped:boolean;state:ProcessState}>};
+type Entry={workspace_id:string;native_id:string;public_id:string;active:boolean;expired?:boolean;record?:ProcessJournalRecord;saving?:Promise<void>;command?:CommandBackend;stopAttempt?:Promise<{stopped:boolean;state:ProcessState}>};
 export class DurableProcessManager{
  private readonly owned=new Map<string,Entry>();
  private readonly pending=new Map<string,number>();
@@ -65,25 +67,27 @@ export class DurableProcessManager{
  async initialize():Promise<void>{await this.ready;}
  /** Persist the existing synchronous sandbox execution, preserving its full receipt.
   * This path never translates a command identity into a controller-native ID. */
- run(input:SandboxedProcessRequest,sandbox:VerifiedNativeSandbox):Promise<ProcessRecord>{
+ run(input:SandboxedProcessRequest,sandbox:CommandBackend):Promise<ProcessRecord>{
   return this.executeCommand(input,sandbox);
  }
  /** Return only after intent/RUNNING is durable. Completion keeps the same ID
   * and journal path as run(); background errors retain UNKNOWN ownership. */
- startCommand(input:SandboxedProcessRequest,sandbox:VerifiedNativeSandbox):Promise<{process_id:string;state:"RUNNING"}>{
+ startCommand(input:SandboxedProcessRequest,sandbox:CommandBackend):Promise<{process_id:string;state:"RUNNING"}>{
   return new Promise((resolve,reject)=>{
    let acknowledged=false;
    void this.executeCommand(input,sandbox,id=>{acknowledged=true;resolve({process_id:id,state:"RUNNING"});})
     .catch(error=>{if(!acknowledged)reject(error);});
   });
  }
- private executeCommand(input:SandboxedProcessRequest,sandbox:VerifiedNativeSandbox,onStarted?:(id:string)=>void):Promise<ProcessRecord>{
+ private executeCommand(input:SandboxedProcessRequest,sandbox:CommandBackend,onStarted?:(id:string)=>void):Promise<ProcessRecord>{
   const token=this.begin(input.workspace_id);
   return this.executeAdmittedCommand(input,sandbox,token,onStarted).finally(token.finish);
  }
- private async executeAdmittedCommand(input:SandboxedProcessRequest,sandbox:VerifiedNativeSandbox,token:ReturnType<DurableProcessManager["begin"]>,onStarted?:(id:string)=>void):Promise<ProcessRecord>{
-  if(!sandbox?.verified||!this.persistence)throw Error("SECURITY_BLOCKED");
-  validateProcessRequest(input);
+ private async executeAdmittedCommand(input:SandboxedProcessRequest,sandbox:CommandBackend,token:ReturnType<DurableProcessManager["begin"]>,onStarted?:(id:string)=>void):Promise<ProcessRecord>{
+  const unconfined=!!sandbox&&"execution_mode" in sandbox&&sandbox.execution_mode==="same-user-unconfined";
+  if(!this.persistence||!sandbox||!unconfined&&!("verified" in sandbox&&sandbox.verified))throw Error("SECURITY_BLOCKED");
+  if(unconfined){if(input.network_allowed!==true||input.artifact_paths?.length)throw Error("INVALID_PROCESS");validateMacHostCommandRequest(input);}
+  else validateProcessRequest(input);
   const request={...input,argv:[...input.argv]};
   await this.ready;token.check();
   if([...this.owned.values()].filter(e=>e.command&&e.active).length>=4)throw new DurableProcessError("PROCESS_LIMIT","Concurrent command limit");
