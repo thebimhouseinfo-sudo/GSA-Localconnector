@@ -19,7 +19,14 @@ for(const count of [1001,10001])test(`startup and fenced reconciliation reach th
  assert.equal((await store.list()).length,1000,'display page remains bounded');
  const previousFD=process.env.GSA_OWNER_LOCK_FD,previousSession=process.env.GSA_OWNER_SESSION;
  process.env.GSA_OWNER_LOCK_FD='3';process.env.GSA_OWNER_SESSION=owner;
- try{await store.reconcileAfterOwnerFence(owner);}finally{
+ try{
+  await store.reconcileAfterOwnerFence(owner);
+  const first=(await store.load(old.process_id))!;
+  await store.reconcileAfterOwnerFence(owner);
+  const second=(await store.load(old.process_id))!;
+  assert.equal(second.revision,first.revision,'unverified old-owner records are not repeatedly rewritten');
+  assert.equal(store.health().admission_blocked,true);
+ }finally{
   if(previousFD===undefined)delete process.env.GSA_OWNER_LOCK_FD;else process.env.GSA_OWNER_LOCK_FD=previousFD;
   if(previousSession===undefined)delete process.env.GSA_OWNER_SESSION;else process.env.GSA_OWNER_SESSION=previousSession;
  }
