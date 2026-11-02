@@ -109,7 +109,7 @@ test('recovery installation creates a read-only BASE binding for reference roots
 });
 // Observes only the detached process group created by spawn. It cannot prove
 // descendants which leave the group/session are stopped.
-async function observeOwnedFixtureGroup(child:ReturnType<typeof spawn>,retainedPath:string,limits={termMs:15000,killMs:18000,endMs:21000}):Promise<{code:number|null;stdout:string;stderr:string}>{
+async function observeOwnedFixtureGroup(child:ReturnType<typeof spawn>,retainedPath:string,limits={termMs:15000,killMs:18000,endMs:21000},onStopped=()=>{}):Promise<{code:number|null;stdout:string;stderr:string}>{
  const group=child.pid;if(!group)throw Error(`Fixture group identity missing; retained ${retainedPath}`);
  let stdout='',stderr='',closed=false,firstError:Error|undefined;
  const groupAlive=()=>{try{process.kill(-group,0);return true;}catch(e){return (e as NodeJS.ErrnoException).code!=='ESRCH';}};
@@ -125,6 +125,7 @@ async function observeOwnedFixtureGroup(child:ReturnType<typeof spawn>,retainedP
   if(age>=limits.termMs&&!sentTerm){sentTerm=true;firstError??=Error('Fixture deadline exceeded');signal('SIGTERM');}
   if(age>=limits.killMs&&!sentKill){sentKill=true;signal('SIGKILL');}
   if(closed&&!groupAlive()){
+   onStopped();
    if(firstError)throw firstError;
    return {code:child.exitCode,stdout,stderr};
   }
@@ -133,13 +134,42 @@ async function observeOwnedFixtureGroup(child:ReturnType<typeof spawn>,retainedP
  throw Error(`Fixture group stop unverified; retained ${retainedPath}`);
 }
 
+test('owned fixture monitor waits for child in group after launcher exit',{skip:process.platform==='win32'},async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'gsa-group-monitor-'));
+ // The launcher exits quickly, leaving a child in the same process group.
+ const launcher=spawn(process.execPath,['-e',`const {spawn}=require('node:child_process');spawn(process.execPath,['-e','setTimeout(()=>{},1200)'],{stdio:'ignore'}).unref();`],{detached:true,stdio:['ignore','pipe','pipe']});
+ let confirmed=false;
+ try{
+  const started=Date.now();
+  const result=await observeOwnedFixtureGroup(launcher,root,{termMs:3000,killMs:3500,endMs:4500},()=>{confirmed=true;});
+  assert.equal(result.code,0);
+  assert.equal(confirmed,true);
+  assert.ok(Date.now()-started>=500,'monitor returned before descendant lifetime');
+ }finally{
+  // Failed observation must retain evidence; this test never touches an unrelated group.
+  if(confirmed)await fs.rm(root,{recursive:true,force:true});
+ }
+});
+test('owned fixture monitor enforces deadline after launcher exit',{skip:process.platform==='win32'},async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'gsa-group-timeout-'));
+ const launcher=spawn(process.execPath,['-e',`const {spawn}=require('node:child_process');spawn(process.execPath,['-e','process.on("SIGTERM",()=>{});setInterval(()=>{},1000)'],{stdio:'ignore'}).unref();`],{detached:true,stdio:['ignore','pipe','pipe']});
+ let confirmed=false;
+ try{
+  await assert.rejects(observeOwnedFixtureGroup(launcher,root,{termMs:500,killMs:900,endMs:3000},()=>{confirmed=true;}),/deadline exceeded/);
+  assert.equal(confirmed,true,'owned group must be physically absent before cleanup');
+ }finally{
+  if(confirmed)await fs.rm(root,{recursive:true,force:true});
+ }
+});
+// NOTE: these tests exercise only in-group descendants, not setsid()/detached
+// escapees. No total process-tree stop or native/plugin PASS follows from them.
 test('installed qualified broker handles mutation and dropped reply with a real disposable owner',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
  const cleanupGuard={safe:true};const f=await fixture(t,cleanupGuard),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
  await installer.applyMacScopedRecovery(f.identity,archive,{});const canary=path.join(f.temp,'outside-canary');await fs.writeFile(canary,'unchanged');
  cleanupGuard.safe=false;
  const result=await new Promise<{code:number|null;stdout:string;stderr:string}>((resolve,reject)=>{
   const child=spawn('/usr/bin/python3',[path.resolve('scripts/macos-owner-launcher.py'),'--identity',f.identity,'--node',process.execPath,'--entry',path.resolve('test/helpers/mac-recovery-installed-fixture.mjs')],{env:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:f.temp,TMPDIR:path.dirname(f.temp),GSA_FIXTURE_IDENTITY:f.identity,GSA_FIXTURE_WORKSPACE:f.workspace,GSA_FIXTURE_SCRATCH:f.temp},detached:true,stdio:['ignore','pipe','pipe']});
-  try{const observed=await observeOwnedFixtureGroup(child,f.temp);cleanupGuard.safe=true;resolve(observed);}catch(error){reject(error);}
+  try{const observed=await observeOwnedFixtureGroup(child,f.temp,undefined,()=>{cleanupGuard.safe=true;});resolve(observed);}catch(error){reject(error);}
 
  });
  assert.equal(result.code,0,result.stderr);const actual=JSON.parse(result.stdout);assert.equal(actual.dropped,'UNKNOWN');assert.equal(actual.readback,'APPLIED');assert.equal(actual.trash,'APPLIED');
