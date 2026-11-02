@@ -24,7 +24,8 @@ for(const count of [1001,10001])test(`startup and fenced reconciliation reach th
   if(previousSession===undefined)delete process.env.GSA_OWNER_SESSION;else process.env.GSA_OWNER_SESSION=previousSession;
  }
  const observed=(await store.load(old.process_id))!;
- assert.equal(observed.stopped,true);assert.equal(observed.status.state,'UNKNOWN');assert.equal(observed.output_complete,false);assert.equal(observed.stdout,'evidence');
+ assert.equal(observed.stopped,false);assert.equal(observed.status.state,'UNKNOWN');assert.equal(observed.status.ended_at,null);assert.equal(observed.output_complete,false);assert.equal(observed.stdout,'evidence');
+ assert.equal(store.health().admission_blocked,true,'old-owner physical stop remains unverified');
  const active=(await fs.readdir(root)).filter(n=>n.endsWith('.json')).length;
  const archived=await fs.readdir(path.join(root,'archive')).catch(()=>[]);
  assert.equal(active+archived.length,count,'all terminal evidence is retained across archival');assert.ok(active<=1001,'active metadata scan is bounded apart from unresolved work');
