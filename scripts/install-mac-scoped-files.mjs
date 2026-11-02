@@ -259,11 +259,13 @@ export async function stageRecoveryJournal(live,stage,assertFence){
  await fs.mkdir(destination,{mode:0o700});
  await privateDirectory(destination);const destinationPin=await fs.lstat(destination,{bigint:true});
  const checkDestination=async()=>{await checkStage();await privateDirectory(destination);const s=await fs.lstat(destination,{bigint:true});if(s.dev!==destinationPin.dev||s.ino!==destinationPin.ino)fail('Staged journal directory changed');};
- if(!sourcePin){await checkDestination();try{await fs.lstat(source);fail('Journal appeared during staging');}catch(error){if(error.code!=='ENOENT')throw error;}assertFence();return;}
+ if(!sourcePin){const verify=async()=>{await checkDestination();try{await fs.lstat(source);fail('Journal appeared during staging');}catch(error){if(error.code!=='ENOENT')throw error;}
+   const iterator=await fs.opendir(destination);try{if(await iterator.read())fail('Staged empty journal changed');}finally{await iterator.close();}await checkDestination();const s=await fs.lstat(destination,{bigint:true});if(s.mtimeNs!==destinationPin.mtimeNs||s.ctimeNs!==destinationPin.ctimeNs)fail('Staged empty journal changed');
+   try{await fs.lstat(source);fail('Journal appeared during staging');}catch(error){if(error.code!=='ENOENT')throw error;}assertFence();};await verify();return verify;}
  const uuid='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
  const record=new RegExp('^('+uuid+')\\.json$'),marker=new RegExp('^(?:'+uuid+'\\.lock|\\.transaction-'+uuid+')$');
  const stable=(a,b)=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeNs===b.mtimeNs&&a.ctimeNs===b.ctimeNs;
- const checkDir=async()=>{assertFence();await checkDestination();await privateDirectory(live);await privateDirectory(source);const s=await fs.lstat(source,{bigint:true});if(s.dev!==sourcePin.dev||s.ino!==sourcePin.ino)fail('Journal directory changed');assertFence();};
+ const checkDir=async()=>{assertFence();await checkDestination();await privateDirectory(live);await privateDirectory(source);const s=await fs.lstat(source,{bigint:true});if(s.dev!==sourcePin.dev||s.ino!==sourcePin.ino||s.mtimeNs!==sourcePin.mtimeNs||s.ctimeNs!==sourcePin.ctimeNs)fail('Journal directory changed');assertFence();};
  const store=new FileTransactionStore(source),seen=new Map();
  await checkDir();
  for await(const entry of await fs.opendir(source)){
@@ -285,7 +287,9 @@ export async function stageRecoveryJournal(live,stage,assertFence){
    seen.set(name,{stat:after,staged});await checkDestination();
   }finally{if(input)await input.close();}
  }
- await checkDir();let count=0;
+ await checkDestination();const destinationVersion=await fs.lstat(destination,{bigint:true});
+ const checkDestinationVersion=async()=>{await checkDestination();if(!stable(destinationVersion,await fs.lstat(destination,{bigint:true})))fail('Staged journal directory contents changed');};
+ const verify=async()=>{await checkDir();await checkDestinationVersion();let count=0;
  for await(const entry of await fs.opendir(source)){
   const saved=seen.get(entry.name);if(!saved)fail('Journal entries changed');
   const current=await fs.lstat(path.join(source,entry.name),{bigint:true});if(!stable(saved.stat,current)||current.nlink!==1n)fail('Journal entry changed');count++;
@@ -296,8 +300,10 @@ export async function stageRecoveryJournal(live,stage,assertFence){
   const current=await fs.lstat(path.join(destination,entry.name),{bigint:true});
   if(!stable(saved.staged,current)||!current.isFile()||current.nlink!==1n)fail('Staged journal entry changed');count++;
  }
- if(count!==seen.size)fail('Staged journal entries changed');await checkDir();
+ if(count!==seen.size)fail('Staged journal entries changed');await checkDir();await checkDestinationVersion();};
+ await verify();
  await checkDestination();const output=await fs.open(destination,fs.constants.O_RDONLY|fs.constants.O_DIRECTORY|fs.constants.O_NOFOLLOW);try{const s=await output.stat({bigint:true});if(s.dev!==destinationPin.dev||s.ino!==destinationPin.ino)fail('Staged journal directory changed');await output.sync();}finally{await output.close();}await checkDestination();assertFence();
+ return verify;
 }
 /** Read exact retained qualification bytes; this inspection grants no authority to install. */
 export async function readMacRecoveryArchive(archiveRoot){
@@ -402,5 +408,117 @@ export async function applyMacScopedFiles(identityRoot,evidence){
   return {state:'SCOPED_FILES_INSTALLED_PARTIAL',installation,previous:oldIdentity?staged.stage:null,operations:['create_file','create_directory','copy_file'],recovery:false};
  });
 }
-async function main(){const args=process.argv.slice(2),mode=args.shift();let identityRoot=identityDirectory(),evidencePath;while(args.length){const flag=args.shift(),value=args.shift();if(!value)fail('Missing installer argument');if(flag==='--identity-root')identityRoot=value;else if(flag==='--evidence')evidencePath=value;else fail('Unknown installer argument');}process.umask(0o077);if(mode==='inspect'||mode==='--dry-run')console.log(JSON.stringify(await inspectMacScopedFiles(identityRoot)));else if(mode==='stage'){const staged=await withStoppedMacConnector(identityRoot,()=>stageMacScopedFiles(identityRoot));console.log(JSON.stringify({state:'SCOPED_FILES_STAGED_UNVERIFIED',...staged,buildMetadata:path.join(staged.stage,'build.json')}));}else if(mode==='apply'){if(!evidencePath)fail('Apply requires exact reviewed native fixture evidence');const s=await fs.lstat(evidencePath);if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1||s.uid!==process.getuid()||(s.mode&0o077)||s.size>1024*1024)fail('Unsafe fixture evidence');console.log(JSON.stringify(await applyMacScopedFiles(identityRoot,JSON.parse(await fs.readFile(evidencePath,'utf8')))));}else fail('Usage: install-mac-scoped-files.mjs inspect|--dry-run|stage|apply [--identity-root PATH] [--evidence PATH]');}
+/** Inspect and pin the previous installation without granting any authority from it. */
+async function pinPreviousInstallation(installation,assertFence){
+ let initial;try{await privateDirectory(installation);initial=await fs.lstat(installation,{bigint:true});}
+ catch(error){if(error.code!=='ENOENT')throw error;return {identity:null,verify:async()=>{assertFence();try{await fs.lstat(installation);fail('Previous installation appeared');}catch(e){if(e.code!=='ENOENT')throw e;}assertFence();}};}
+ const pinned={device:String(initial.dev),inode:String(initial.ino)};let proofDigest,observed=[];
+ const read=async(name,max)=>{const file=path.join(installation,name),handle=await fs.open(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
+  try{const before=await handle.stat({bigint:true});if(!before.isFile()||before.uid!==BigInt(process.getuid())||(before.mode&0o777n)!==0o600n||before.nlink!==1n||before.size>BigInt(max))fail('Unsafe previous installation proof');
+   const bytes=await readExactBounded(handle,Number(before.size)),after=await handle.stat({bigint:true}),named=await fs.lstat(file,{bigint:true});
+   if(before.dev!==after.dev||before.ino!==after.ino||before.size!==after.size||before.mtimeNs!==after.mtimeNs||before.ctimeNs!==after.ctimeNs||after.dev!==named.dev||after.ino!==named.ino||after.mtimeNs!==named.mtimeNs||after.ctimeNs!==named.ctimeNs||named.nlink!==1n)fail('Previous installation proof changed');observed.push({file,stat:after});return bytes;
+  }finally{await handle.close();}
+ };
+ const verify=async()=>{observed=[];assertFence();await privateDirectory(installation);let current=await fs.lstat(installation,{bigint:true});if(String(current.dev)!==pinned.device||String(current.ino)!==pinned.inode)fail('Previous installation changed');
+  const key=await read('proof-key',32);if(key.length!==32)fail('Unsafe previous installation key');let envelope,proof,envelopeBytes;
+  try{envelopeBytes=await read('install.json',1024*1024);envelope=JSON.parse(envelopeBytes.toString('utf8'));
+   if(typeof envelope.body!=='string'||typeof envelope.hmac!=='string'||!/^[a-f0-9]{64}$/.test(envelope.hmac)||!timingSafeEqual(createHmac('sha256',key).update(envelope.body).digest(),Buffer.from(envelope.hmac,'hex')))fail('Previous installation proof is not authenticated');proof=JSON.parse(envelope.body);
+  }catch(error){if(error.code==='SECURITY_BLOCKED')throw error;fail('Invalid previous installation proof');}
+  if(proof.format!=='gsa-scoped-files-v2'||proof.hostRelease!==os.release()||proof.arch!==process.arch||!proof.build||proof.build.hostRelease!==proof.hostRelease||proof.build.arch!==proof.arch||!Array.isArray(proof.grants))fail('Invalid previous installation');
+  requireMacFileEvidence(proof.evidence,proof.build);const hasRecovery=Object.hasOwn(proof,'recoveryQualification')||Object.hasOwn(proof,'recoveryBuild')||proof.grants.some(g=>g&&Object.hasOwn(g,'recovery'));let qualified;
+  if(hasRecovery){if(typeof proof.recoveryQualification!=='string'||Buffer.byteLength(proof.recoveryQualification,'utf8')>512*1024)fail('Invalid previous recovery proof');qualified=requireMacRecoveryQualification(Buffer.from(proof.recoveryQualification,'utf8'),proof.recoveryBuild);if(qualified.host_release!==os.release()||qualified.arch!==process.arch)fail('Previous recovery qualification differs');}
+  const names=new Set(),validHash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value),rootIdentity=value=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===2&&['device','inode'].every(k=>typeof value[k]==='string'&&/^\d{1,32}$/.test(value[k])),rootPath=value=>typeof value==='string'&&path.isAbsolute(value)&&path.normalize(value)===value&&value!=='/'&&!value.includes('\0');
+  const validArtifacts=(value,names)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===names.length&&names.every(name=>validHash(value[name]));
+  if(proof.grants.length<1||proof.grants.length>16)fail('Invalid previous installation binding');
+  for(const grant of proof.grants){if(!grant||typeof grant.id!=='string'||!/^[a-zA-Z0-9][-_a-zA-Z0-9]{0,63}$/.test(grant.id)||names.has(grant.id)||!['workspace','reference'].includes(grant.role)||!Number.isSafeInteger(grant.revision)||grant.revision<1||!rootPath(grant.root)||!rootIdentity(grant.rootIdentity)||grant.presign_sha256!==proof.build.release_sha256||grant.code_sha256!==proof.build.code_sha256||!validArtifacts(grant.artifacts,artifacts))fail('Invalid previous installation binding');
+   names.add(grant.id);if(Object.hasOwn(grant,'recovery')){const rec=grant.recovery;if(grant.role!=='workspace'||!qualified||!rec||typeof rec!=='object'||Array.isArray(rec)||Object.keys(rec).length!==4||!rootPath(rec.root)||!rootIdentity(rec.rootIdentity)||rec.code_sha256!==qualified.code_sha256||!validArtifacts(rec.artifacts,['Contents/MacOS/recovery-broker','Contents/Info.plist','Contents/_CodeSignature/CodeResources']))fail('Invalid previous installation binding');}
+  }
+  for(const item of observed){const s=await fs.lstat(item.file,{bigint:true}),p=item.stat;if(s.dev!==p.dev||s.ino!==p.ino||s.size!==p.size||s.mtimeNs!==p.mtimeNs||s.ctimeNs!==p.ctimeNs||s.nlink!==1n||s.uid!==BigInt(process.getuid())||(s.mode&0o777n)!==0o600n)fail('Previous installation proof changed');}
+  const digest=createHash('sha256').update(key).update(envelopeBytes).digest('hex');if(proofDigest!==undefined&&proofDigest!==digest)fail('Previous installation proof changed');proofDigest=digest;
+  await privateDirectory(installation);current=await fs.lstat(installation,{bigint:true});if(String(current.dev)!==pinned.device||String(current.ino)!==pinned.inode)fail('Previous installation changed');assertFence();
+ };
+ await verify();return {identity:pinned,verify};
+}
+/** Flush only private, owned regular files in the candidate tree; refuse aliases. */
+async function syncRecoveryStage(stage,assertFence){
+ const visit=async directory=>{assertFence();await privateDirectory(directory);const before=await fs.lstat(directory,{bigint:true});
+  for await(const entry of await fs.opendir(directory)){
+   const file=path.join(directory,entry.name),stat=await fs.lstat(file,{bigint:true});
+   if(stat.isDirectory()&&!stat.isSymbolicLink())await visit(file);
+   else{if(!stat.isFile()||stat.isSymbolicLink()||stat.uid!==BigInt(process.getuid())||(stat.mode&0o077n)!==0n||stat.nlink!==1n)fail('Unsafe candidate artifact');
+    const fd=await fs.open(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);try{const opened=await fd.stat({bigint:true});if(opened.dev!==stat.dev||opened.ino!==stat.ino||opened.nlink!==1n)fail('Candidate artifact changed');await fd.sync();const after=await fd.stat({bigint:true}),named=await fs.lstat(file,{bigint:true});if(opened.dev!==after.dev||opened.ino!==after.ino||opened.size!==after.size||opened.mtimeNs!==after.mtimeNs||opened.ctimeNs!==after.ctimeNs||after.dev!==named.dev||after.ino!==named.ino||after.size!==named.size||after.mtimeNs!==named.mtimeNs||after.ctimeNs!==named.ctimeNs||named.nlink!==1n)fail('Candidate artifact changed');}finally{await fd.close();}
+   }
+  }
+  await privateDirectory(directory);const after=await fs.lstat(directory,{bigint:true});if(before.dev!==after.dev||before.ino!==after.ino||before.mtimeNs!==after.mtimeNs||before.ctimeNs!==after.ctimeNs)fail('Candidate directory changed');
+  const fd=await fs.open(directory,fs.constants.O_RDONLY|fs.constants.O_DIRECTORY|fs.constants.O_NOFOLLOW);try{const opened=await fd.stat({bigint:true});if(opened.dev!==after.dev||opened.ino!==after.ino)fail('Candidate directory changed');await fd.sync();}finally{await fd.close();}assertFence();
+ };
+ await visit(stage);
+}
+/** Install an exact qualified recovery generation while the connector is stopped. */
+export async function applyMacScopedRecovery(identityRoot,archiveRoot,recoveryRoots={}){
+ const mapping=structuredClone(recoveryRoots);
+ return withStoppedMacConnector(identityRoot,async (assertFence,publish)=>{
+  const registry=await loadTrustedRegistry(identityRoot),selected=snapshot(registry);if(!selected.length)fail('No explicitly configured trusted roots');
+  await assertMacFileInstallationSeparated(registry,identityRoot);assertFence();
+  const installation=path.join(identityRoot,'scoped-files'),previous=await pinPreviousInstallation(installation,assertFence);
+  const archive=await readMacRecoveryArchive(archiveRoot);assertFence();
+  if(!isDeepStrictEqual(snapshot(await loadTrustedRegistry(identityRoot)),selected))fail('Selected grants changed');
+  const stage=path.join(identityRoot,'.scoped-files.stage-'+randomUUID());await fs.mkdir(stage,{mode:0o700});const initialStage=await fs.lstat(stage,{bigint:true});
+  await assertMacFileInstallationSeparated(registry,stage);const roots=await prepareRecoveryRoots(registry,identityRoot,stage,mapping,assertFence);
+  const verifyJournal=await stageRecoveryJournal(installation,stage,assertFence);
+  const release=path.join(stage,'.base-release');await fs.writeFile(release,archive.baseRelease,{mode:0o500,flag:'wx'});const releasePin=await fs.lstat(release,{bigint:true}),bindings=[];
+  for(const grant of selected){assertFence();const binding=await buildMacScopedBundle(stage,grant,release);
+   if(binding.presign_sha256!==archive.baseBuild.release_sha256||binding.code_sha256!==archive.baseBuild.code_sha256)fail('BASE bundle differs from qualification');
+   if(grant.role==='workspace'){const root=roots.find(item=>item.id===grant.id);if(!root)fail('Missing recovery root');binding.recovery=await buildMacRecoveryBundle(stage,grant,root.root,archive.recoveryRelease,archive.qualification);if(!isDeepStrictEqual(binding.recovery.rootIdentity,root.rootIdentity))fail('Recovery root changed');}
+   bindings.push(binding);
+  }
+  const released=await fs.lstat(release,{bigint:true});if(released.dev!==releasePin.dev||released.ino!==releasePin.ino||released.nlink!==1n)fail('Staged BASE release changed');await fs.unlink(release);
+  const key=randomBytes(32),body=JSON.stringify({format:'gsa-scoped-files-v2',hostRelease:os.release(),arch:process.arch,grants:bindings,build:archive.baseBuild,evidence:archive.baseEvidence,recoveryQualification:archive.report.toString('utf8'),recoveryBuild:archive.productionBuild});
+  const envelope=Buffer.from(JSON.stringify({body,hmac:createHmac('sha256',key).update(body).digest('hex')}));
+  await fs.writeFile(path.join(stage,'proof-key'),key,{mode:0o600,flag:'wx'});await fs.writeFile(path.join(stage,'install.json'),envelope,{mode:0o600,flag:'wx'});
+  const verifyCandidate=async()=>{
+   const observed=[];assertFence();await privateDirectory(stage);const s=await fs.lstat(stage,{bigint:true});if(s.dev!==initialStage.dev||s.ino!==initialStage.ino)fail('Candidate directory changed');
+   const read=async(file,max)=>{let parent=path.dirname(file);while(parent!==stage){await privateDirectory(parent);const next=path.dirname(parent);if(next===parent||!parent.startsWith(stage+'/'))fail('Unsafe candidate path');parent=next;}
+    const fd=await fs.open(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);try{const before=await fd.stat({bigint:true});if(!before.isFile()||before.uid!==BigInt(process.getuid())||(before.mode&0o077n)!==0n||before.nlink!==1n||before.size>BigInt(max))fail('Unsafe candidate artifact');
+     const bytes=await readExactBounded(fd,Number(before.size)),after=await fd.stat({bigint:true}),named=await fs.lstat(file,{bigint:true});if(before.dev!==after.dev||before.ino!==after.ino||before.size!==after.size||before.mtimeNs!==after.mtimeNs||before.ctimeNs!==after.ctimeNs||after.dev!==named.dev||after.ino!==named.ino||after.mtimeNs!==named.mtimeNs||after.ctimeNs!==named.ctimeNs||named.nlink!==1n)fail('Candidate artifact changed');observed.push({file,stat:after});return bytes;
+    }finally{await fd.close();}};
+   const candidateKey=await read(path.join(stage,'proof-key'),32);if(candidateKey.length!==key.length||!timingSafeEqual(candidateKey,key)||!isDeepStrictEqual(await read(path.join(stage,'install.json'),1024*1024),envelope))fail('Candidate proof changed');
+   for(const binding of bindings){for(const [name,hash] of Object.entries(binding.artifacts))if(sha(await read(path.join(stage,binding.id,'Broker.app',name),16*1024*1024))!==hash)fail('Candidate BASE artifact changed');
+    if(binding.recovery)for(const [name,hash] of Object.entries(binding.recovery.artifacts))if(sha(await read(path.join(stage,binding.id,'RecoveryBroker.app',name),16*1024*1024))!==hash)fail('Candidate recovery artifact changed');}
+   for(const item of observed){const current=await fs.lstat(item.file,{bigint:true}),p=item.stat;if(current.dev!==p.dev||current.ino!==p.ino||current.size!==p.size||current.mtimeNs!==p.mtimeNs||current.ctimeNs!==p.ctimeNs||current.nlink!==1n||current.uid!==BigInt(process.getuid())||(current.mode&0o077n)!==0n)fail('Candidate artifact changed');}
+   await privateDirectory(stage);const after=await fs.lstat(stage,{bigint:true});if(after.dev!==initialStage.dev||after.ino!==initialStage.ino)fail('Candidate directory changed');assertFence();
+  };
+  await syncRecoveryStage(stage,assertFence);
+  const current=await loadTrustedRegistry(identityRoot);if(!isDeepStrictEqual(snapshot(current),selected))fail('Selected grants changed');
+  await assertMacFileInstallationSeparated(current,stage);const rootMap=Object.fromEntries(roots.map(item=>[item.id,item.root]));
+  if(!isDeepStrictEqual(await prepareRecoveryRoots(current,identityRoot,stage,rootMap,assertFence),roots))fail('Recovery roots changed');
+  await previous.verify();await verifyJournal();assertFence();const s=await fs.lstat(stage,{bigint:true}),stageIdentity={device:String(s.dev),inode:String(s.ino)};
+  const refreshed=await loadTrustedRegistry(identityRoot);if(!isDeepStrictEqual(snapshot(refreshed),selected))fail('Selected grants changed');
+  if(!isDeepStrictEqual(await prepareRecoveryRoots(refreshed,identityRoot,stage,rootMap,assertFence),roots))fail('Recovery roots changed');
+  await previous.verify();await verifyJournal();await verifyCandidate();
+  if(!isDeepStrictEqual(snapshot(await loadTrustedRegistry(identityRoot)),selected))fail('Selected grants changed');assertFence();
+  await publish(path.basename(stage),stageIdentity,previous.identity);
+  return {state:'SCOPED_FILES_RECOVERY_INSTALLED_NOT_ACTIVATED',installation,previous:previous.identity?stage:null};
+ });
+}
+async function readRecoveryMapping(file){
+ if(!path.isAbsolute(file)||path.normalize(file)!==file||await fs.realpath(file)!==file)fail('Unsafe recovery mapping path');
+ const handle=await fs.open(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
+ try{const before=await handle.stat({bigint:true});if(!before.isFile()||before.uid!==BigInt(process.getuid())||(before.mode&0o077n)!==0n||before.nlink!==1n||before.size>65536n)fail('Unsafe recovery mapping');
+  const bytes=await readExactBounded(handle,Number(before.size)),after=await handle.stat({bigint:true}),named=await fs.lstat(file,{bigint:true});
+  if(before.dev!==after.dev||before.ino!==after.ino||before.size!==after.size||before.mtimeNs!==after.mtimeNs||before.ctimeNs!==after.ctimeNs||after.dev!==named.dev||after.ino!==named.ino||after.mtimeNs!==named.mtimeNs||after.ctimeNs!==named.ctimeNs||named.nlink!==1n)fail('Recovery mapping changed');
+  let mapping;try{mapping=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{fail('Invalid recovery mapping');}
+  if(!mapping||typeof mapping!=='object'||Array.isArray(mapping))fail('Invalid recovery mapping');return mapping;
+ }finally{await handle.close();}
+}
+async function main(){
+ const args=process.argv.slice(2),mode=args.shift(),flags={};
+ while(args.length){const flag=args.shift(),value=args.shift();if(!value)fail('Missing installer argument');if(!['--identity-root','--evidence','--qualification-archive','--recovery-roots'].includes(flag)||Object.hasOwn(flags,flag))fail('Unknown or duplicate installer argument');flags[flag]=value;}
+ const identityRoot=flags['--identity-root']??identityDirectory();process.umask(0o077);
+ if(mode==='inspect'||mode==='--dry-run')console.log(JSON.stringify(await inspectMacScopedFiles(identityRoot)));
+ else if(mode==='stage'){const staged=await withStoppedMacConnector(identityRoot,()=>stageMacScopedFiles(identityRoot));console.log(JSON.stringify({state:'SCOPED_FILES_STAGED_UNVERIFIED',...staged,buildMetadata:path.join(staged.stage,'build.json')}));}
+ else if(mode==='apply'){const evidencePath=flags['--evidence'];if(!evidencePath)fail('Apply requires exact reviewed native fixture evidence');const s=await fs.lstat(evidencePath);if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1||s.uid!==process.getuid()||(s.mode&0o077)||s.size>1024*1024)fail('Unsafe fixture evidence');console.log(JSON.stringify(await applyMacScopedFiles(identityRoot,JSON.parse(await fs.readFile(evidencePath,'utf8')))));}
+ else if(mode==='apply-recovery'){const archive=flags['--qualification-archive'];if(!archive)fail('Recovery apply requires a qualification archive');const mapping=flags['--recovery-roots']?await readRecoveryMapping(flags['--recovery-roots']):{};console.log(JSON.stringify(await applyMacScopedRecovery(identityRoot,archive,mapping)));}
+ else fail('Usage: install-mac-scoped-files.mjs inspect|--dry-run|stage|apply|apply-recovery [options]');
+}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{console.error(error.message);process.exitCode=1;});

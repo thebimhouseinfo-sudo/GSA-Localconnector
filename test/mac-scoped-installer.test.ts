@@ -5,13 +5,179 @@ import path from 'node:path';
 import {spawn,execFileSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 import {test} from 'node:test';
-import {enrollRolesTrustedBatch} from '../src/local/grants.js';
+import {enrollRolesTrustedBatch,revokeTrusted} from '../src/local/grants.js';
 import {loadTrustedRegistry} from '../src/local/grants.js';
 import {FileTransactionStore} from '../src/local/file-transaction-store.js';
 import {createHash,createHmac} from 'node:crypto';
 import {normalizedStrippedMacFileCode} from '../src/hosts/macos-file-code.js';
+import {loadCheckedMacRecoveryInstallation} from '../src/hosts/macos-recovery-installation.js';
 import {receiptSample} from './helpers/mac-file-evidence-fixture.js';
 const moduleUrl=pathToFileURL(path.resolve('scripts/install-mac-scoped-files.mjs')).href;
+async function writeFixtureBaseProof(identity:string,live:string){
+ const entry=(await loadTrustedRegistry(identity)).list()[0]!,evidence=receiptSample(os.release(),process.arch),key=Buffer.alloc(32,23);
+ const grant={...evidence.fixture.roots[0],id:entry.id,root:entry.canonicalRoot,rootIdentity:entry.rootIdentity,role:entry.role,revision:entry.revision};
+ const body=JSON.stringify({format:'gsa-scoped-files-v2',hostRelease:os.release(),arch:process.arch,grants:[grant],build:evidence.build,evidence});
+ await fs.writeFile(path.join(live,'proof-key'),key,{mode:0o600});await fs.writeFile(path.join(live,'install.json'),JSON.stringify({body,hmac:createHmac('sha256',key).update(body).digest('hex')}),{mode:0o600});return {key,body};
+}
+test('recovery install refuses missing qualification before changing the existing installation',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),archive=path.join(f.temp,'archive'),live=path.join(f.identity,'scoped-files');
+ await fs.mkdir(archive,{mode:0o700});await fs.mkdir(live,{mode:0o700});await fs.writeFile(path.join(live,'keep'),'existing',{mode:0o600});
+ await writeFixtureBaseProof(f.identity,live);
+ const original=await fs.lstat(live,{bigint:true});
+ await assert.rejects(installer.applyMacScopedRecovery(f.identity,archive,{}),/Unsafe recovery archive file/);
+ const current=await fs.lstat(live,{bigint:true});assert.equal(current.dev,original.dev);assert.equal(current.ino,original.ino);
+ assert.equal(await fs.readFile(path.join(live,'keep'),'utf8'),'existing');
+ assert.deepEqual((await fs.readdir(f.identity)).filter(name=>name.startsWith('.scoped-files.stage-')),[]);
+});
+test('recovery install detects prior proof key changes while reading the manifest',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),archive=path.join(f.temp,'archive'),live=path.join(f.identity,'scoped-files');
+ await fs.mkdir(archive,{mode:0o700});await fs.mkdir(live,{mode:0o700});await writeFixtureBaseProof(f.identity,live);
+ const proofKey=path.join(live,'proof-key'),manifest=path.join(live,'install.json');
+ const open=fs.open.bind(fs);let injected=false;
+ (fs as any).open=async (...args:any[])=>{if(args[0]===manifest&&!injected){await fs.writeFile(proofKey,Buffer.alloc(32,24));injected=true;}return (open as any)(...args);};
+ try{await assert.rejects(installer.applyMacScopedRecovery(f.identity,archive,{}),/Previous installation proof changed/);assert.equal(injected,true);}
+ finally{(fs as any).open=open;}
+});
+test('recovery install refuses an authenticated but structurally invalid previous grant before staging',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),archive=path.join(f.temp,'archive'),live=path.join(f.identity,'scoped-files');await fs.mkdir(archive,{mode:0o700});await fs.mkdir(live,{mode:0o700});
+ const {key,body}=await writeFixtureBaseProof(f.identity,live),proof=JSON.parse(body);proof.grants[0].rootIdentity={device:'invalid',inode:'2'};
+ const changed=JSON.stringify(proof);await fs.writeFile(path.join(live,'install.json'),JSON.stringify({body:changed,hmac:createHmac('sha256',key).update(changed).digest('hex')}),{mode:0o600});
+ await assert.rejects(installer.applyMacScopedRecovery(f.identity,archive,{}),/Invalid previous installation binding/);
+ assert.deepEqual((await fs.readdir(f.identity)).filter(name=>name.startsWith('.scoped-files.stage-')),[]);
+});
+async function retainedArchive(t:any,temp:string){
+ if(os.release()!=='27.0.0'){t.skip('Retained qualification applies only to its recorded host release');return null;}
+ const archive=path.join(temp,'archive');await fs.mkdir(archive,{mode:0o700});
+ const recovery=path.resolve('docs/reports/2026-10-28-mac27-recovery-native-archive'),base=path.resolve('docs/reports/2026-10-26-mac27-native-archive');
+ const sources:Record<string,string>={'report.json':path.join(recovery,'report.json'),'production-build.json':path.join(recovery,'production-build.json'),'production-release-recovery':path.join(recovery,'production-release-recovery'),'base-release-broker':path.join(recovery,'base-release-broker'),'base-build.json':path.join(base,'build.json'),'base-evidence.json':path.join(base,'native-evidence.json')};
+ try{for(const source of Object.values(sources))await fs.access(source);}catch{t.skip('Retained qualification archive not available locally');return null;}
+ for(const [name,source] of Object.entries(sources)){await fs.copyFile(source,path.join(archive,name));await fs.chmod(path.join(archive,name),0o600);}
+ return archive;
+}
+test('qualified recovery installer publishes only into a disposable identity root',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
+ const result=await installer.applyMacScopedRecovery(f.identity,archive,{});
+ assert.equal(result.state,'SCOPED_FILES_RECOVERY_INSTALLED_NOT_ACTIVATED');assert.equal(result.previous,null);
+ const installed=path.join(f.identity,'scoped-files');assert.equal(result.installation,installed);assert.equal((await fs.stat(path.join(installed,'work/RecoveryBroker.app/Contents/MacOS/recovery-broker'))).isFile(),true);
+ assert.deepEqual(await fs.readdir(path.join(installed,'file-transactions')),[]);
+ // Synthetic owner/IO injection: actual candidate signatures and manifest are checked,
+ // but the injected FD marker is not evidence of a live owner or plugin activation.
+ const registry=await loadTrustedRegistry(f.identity);
+ const checked=await loadCheckedMacRecoveryInstallation(registry,installed,{
+  ownerLockFD:3,authorize:async()=>{},
+  protectedRead:async(file,max)=>{const bytes=await fs.readFile(file);assert.ok(bytes.length<=max);return bytes;},
+  protectedDirectory:async(directory)=>{const s=await fs.lstat(directory);assert.ok(s.isDirectory()&&!s.isSymbolicLink()&&(s.mode&0o777)===0o700);},
+  normalizedCodeSha256:async(binary)=>{const copy=path.join(f.temp,'normalize-copy');await fs.copyFile(binary,copy,fs.constants.COPYFILE_EXCL);await fs.chmod(copy,0o700);try{execFileSync('/usr/bin/codesign',['--remove-signature',copy],{stdio:'ignore'});return createHash('sha256').update(normalizedStrippedMacFileCode(await fs.readFile(copy))).digest('hex');}finally{await fs.unlink(copy);}},
+  command:async(executable,args,input,max)=>{assert.ok(['/usr/bin/codesign','/usr/bin/plutil'].includes(executable));const output=execFileSync(executable,args,{input,stdio:['pipe','pipe','ignore']});assert.ok(output.length<=max);return output;}
+ });
+ assert.equal(typeof checked.replaceIfHash,'function');assert.equal(typeof checked.trashIfHash,'function');
+});
+test('apply-recovery CLI uses a selected disposable identity and qualification archive',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),archive=await retainedArchive(t,f.temp);if(!archive)return;
+ const result=await new Promise<{code:number|null;stdout:string;stderr:string}>((resolve,reject)=>{
+  const child=spawn(process.execPath,[path.resolve('scripts/install-mac-scoped-files.mjs'),'apply-recovery','--identity-root',f.identity,'--qualification-archive',archive],{env:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:f.temp,TMPDIR:'/private/tmp'},stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.on('data',bytes=>stdout+=bytes);child.stderr.on('data',bytes=>stderr+=bytes);child.on('error',reject);child.on('close',code=>resolve({code,stdout,stderr}));
+ });
+ assert.equal(result.code,0,result.stderr);assert.equal(JSON.parse(result.stdout).state,'SCOPED_FILES_RECOVERY_INSTALLED_NOT_ACTIVATED');assert.equal((await fs.stat(path.join(f.identity,'scoped-files/work/RecoveryBroker.app'))).isDirectory(),true);
+});
+test('qualified recovery upgrade retains prior journal and capture bytes',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
+ await installer.applyMacScopedRecovery(f.identity,archive,{});
+ const live=path.join(f.identity,'scoped-files'),root=path.join(f.identity,'file-recovery','work-r1'),journal=path.join(live,'file-transactions'),id='33333333-3333-4333-8333-333333333333';
+ await fs.writeFile(path.join(root,'capture'),'retained',{mode:0o600});const store=new FileTransactionStore(journal);
+ const pending=await store.create(id,{operation:'replace',source:{workspace_id:'work',path:'file.txt',revision:1,rootIdentity:{device:'1',inode:'2'}},destination:null,expected_sha256:'a'.repeat(64),after_sha256:'b'.repeat(64)});
+ await store.reconcile(id,pending.revision);await fs.writeFile(path.join(journal,id+'.lock'),'',{mode:0o600});const oldBytes=await fs.readFile(path.join(journal,id+'.json'));
+ const result=await installer.applyMacScopedRecovery(f.identity,archive,{});assert.equal(result.state,'SCOPED_FILES_RECOVERY_INSTALLED_NOT_ACTIVATED');assert.ok(result.previous);
+ assert.deepEqual(await fs.readFile(path.join(live,'file-transactions',id+'.json')),oldBytes);assert.deepEqual(await fs.readFile(path.join(result.previous,'file-transactions',id+'.json')),oldBytes);
+ assert.equal(await fs.readFile(path.join(root,'capture'),'utf8'),'retained');assert.equal((await new FileTransactionStore(path.join(live,'file-transactions')).load(id)).status,'UNKNOWN');
+});
+test('recovery upgrade keeps earlier captures when the workspace revision changes',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
+ await installer.applyMacScopedRecovery(f.identity,archive,{});const oldRecovery=path.join(f.identity,'file-recovery','work-r1');await fs.writeFile(path.join(oldRecovery,'capture'),'old capture',{mode:0o600});
+ const next=path.join(f.temp,'next-workspace');await fs.mkdir(next,{mode:0o700});await enrollRolesTrustedBatch([{id:'work',root:next,role:'workspace'}],f.identity);
+ const revision=(await loadTrustedRegistry(f.identity)).list().find(g=>g.id==='work')!.revision;
+ const result=await installer.applyMacScopedRecovery(f.identity,archive,{});
+ assert.ok(result.previous);assert.equal(await fs.readFile(path.join(oldRecovery,'capture'),'utf8'),'old capture');
+ const nextRecovery=path.join(f.identity,'file-recovery',`work-r${revision}`);assert.notEqual(nextRecovery,oldRecovery);assert.deepEqual(await fs.readdir(nextRecovery),[]);
+});
+test('recovery installation creates a read-only BASE binding for reference roots',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
+ const reference=path.join(f.temp,'reference');await fs.mkdir(reference,{mode:0o700});await enrollRolesTrustedBatch([{id:'ref',root:reference,role:'reference'}],f.identity);
+ const result=await installer.applyMacScopedRecovery(f.identity,archive,{}),envelope=JSON.parse(await fs.readFile(path.join(result.installation,'install.json'),'utf8')),proof=JSON.parse(envelope.body);
+ const ref=proof.grants.find((item:any)=>item.id==='ref'),work=proof.grants.find((item:any)=>item.id==='work');
+ assert.equal(ref.role,'reference');assert.equal(Object.hasOwn(ref,'recovery'),false);assert.ok(work.recovery);
+ assert.equal((await fs.stat(path.join(result.installation,'ref/Broker.app'))).isDirectory(),true);await assert.rejects(fs.lstat(path.join(result.installation,'ref/RecoveryBroker.app')),{code:'ENOENT'});
+});
+test('installed qualified broker handles mutation and dropped reply with a real disposable owner',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
+ await installer.applyMacScopedRecovery(f.identity,archive,{});const canary=path.join(f.temp,'outside-canary');await fs.writeFile(canary,'unchanged');
+ const result=await new Promise<{code:number|null;stdout:string;stderr:string}>((resolve,reject)=>{
+  const child=spawn('/usr/bin/python3',[path.resolve('scripts/macos-owner-launcher.py'),'--identity',f.identity,'--node',process.execPath,'--entry',path.resolve('test/helpers/mac-recovery-installed-fixture.mjs')],{env:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:f.temp,TMPDIR:path.dirname(f.temp),GSA_FIXTURE_IDENTITY:f.identity,GSA_FIXTURE_WORKSPACE:f.workspace,GSA_FIXTURE_SCRATCH:f.temp},stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.on('data',bytes=>stdout+=bytes);child.stderr.on('data',bytes=>stderr+=bytes);child.on('error',reject);child.on('close',code=>resolve({code,stdout,stderr}));
+ });
+ assert.equal(result.code,0,result.stderr);const actual=JSON.parse(result.stdout);assert.equal(actual.dropped,'UNKNOWN');assert.equal(actual.readback,'APPLIED');assert.equal(actual.trash,'APPLIED');
+ assert.equal(await fs.readFile(canary,'utf8'),'unchanged');
+});
+test('recovery installation refuses a grant revoked while building the candidate',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
+ const write=fs.writeFile.bind(fs);let injected=false;
+ (fs as any).writeFile=async (...args:any[])=>{const result=await (write as any)(...args);if(!injected&&String(args[0]).includes('.scoped-files.stage-')&&String(args[0]).endsWith('/install.json')){injected=true;await revokeTrusted('work',f.identity);}return result;};
+ try{await assert.rejects(installer.applyMacScopedRecovery(f.identity,archive,{}));assert.equal(injected,true);await assert.rejects(fs.lstat(path.join(f.identity,'scoped-files')),{code:'ENOENT'});}
+ finally{(fs as any).writeFile=write;}
+});
+test('recovery installation refuses a grant revoked during final journal verification',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
+ const write=fs.writeFile.bind(fs),open=fs.open.bind(fs),lstat=fs.lstat.bind(fs);let manifestWritten=false,lastRegistryRead=false,injected=false;
+ (fs as any).writeFile=async (...args:any[])=>{const result=await (write as any)(...args);if(String(args[0]).includes('.scoped-files.stage-')&&String(args[0]).endsWith('/install.json'))manifestWritten=true;return result;};
+ (fs as any).open=async (...args:any[])=>{const handle=await (open as any)(...args);if(manifestWritten&&args[0]===path.join(f.identity,'trusted-workspaces.json'))lastRegistryRead=true;return handle;};
+ (fs as any).lstat=async (...args:any[])=>{if(lastRegistryRead&&!injected&&String(args[0]).includes('.scoped-files.stage-')&&String(args[0]).endsWith('/file-transactions')){injected=true;await revokeTrusted('work',f.identity);}return (lstat as any)(...args);};
+ try{await assert.rejects(installer.applyMacScopedRecovery(f.identity,archive,{}));assert.equal(injected,true);await assert.rejects(fs.lstat(path.join(f.identity,'scoped-files')),{code:'ENOENT'});}
+ finally{(fs as any).writeFile=write;(fs as any).open=open;(fs as any).lstat=lstat;}
+});
+test('recovery installation detects a prior proof re-signed with a changed key',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
+ const live=path.join(f.identity,'scoped-files');await fs.mkdir(live,{mode:0o700});const {body}=await writeFixtureBaseProof(f.identity,live),old=await fs.lstat(live,{bigint:true}),write=fs.writeFile.bind(fs);let injected=false;
+ (fs as any).writeFile=async (...args:any[])=>{const result=await (write as any)(...args);if(!injected&&String(args[0]).includes('.scoped-files.stage-')&&String(args[0]).endsWith('/install.json')){
+  injected=true;const replacement=Buffer.alloc(32,25);await write(path.join(live,'proof-key'),replacement);await write(path.join(live,'install.json'),JSON.stringify({body,hmac:createHmac('sha256',replacement).update(body).digest('hex')}));}
+  return result;};
+ try{await assert.rejects(installer.applyMacScopedRecovery(f.identity,archive,{}),/Previous installation proof changed/);assert.equal(injected,true);const current=await fs.lstat(live,{bigint:true});assert.equal(current.ino,old.ino);assert.equal(current.dev,old.dev);}
+ finally{(fs as any).writeFile=write;}
+});
+test('recovery installation rejects an artifact changed during candidate sync',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
+ const open=fs.open.bind(fs);let injected=false;
+ (fs as any).open=async (...args:any[])=>{const handle=await (open as any)(...args);if(!injected&&String(args[0]).includes('/RecoveryBroker.app/Contents/Info.plist')){const sync=handle.sync.bind(handle);handle.sync=async()=>{await sync();await fs.appendFile(String(args[0]),'changed');injected=true;};}return handle;};
+ try{await assert.rejects(installer.applyMacScopedRecovery(f.identity,archive,{}));assert.equal(injected,true);await assert.rejects(fs.lstat(path.join(f.identity,'scoped-files')),{code:'ENOENT'});}
+ finally{(fs as any).open=open;}
+});
+test('recovery installation rejects a candidate proof changed before sync',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
+ const open=fs.open.bind(fs);let injected=false;
+ (fs as any).open=async (...args:any[])=>{if(!injected&&String(args[0]).includes('.scoped-files.stage-')&&String(args[0]).endsWith('/install.json')){injected=true;await fs.writeFile(String(args[0]),'{}');}return (open as any)(...args);};
+ try{await assert.rejects(installer.applyMacScopedRecovery(f.identity,archive,{}));assert.equal(injected,true);await assert.rejects(fs.lstat(path.join(f.identity,'scoped-files')),{code:'ENOENT'});}
+ finally{(fs as any).open=open;}
+});
+test('recovery installation detects a proof key changed during final candidate validation',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
+ const open=fs.open.bind(fs);let baseReads=0,injected=false;
+ (fs as any).open=async (...args:any[])=>{const file=String(args[0]);if(file.includes('.scoped-files.stage-')&&file.endsWith('/Broker.app/Contents/MacOS/broker')&&++baseReads===2){const stage=file.slice(0,file.indexOf('/work/Broker.app/'));await fs.writeFile(path.join(stage,'proof-key'),Buffer.alloc(32,27));injected=true;}return (open as any)(...args);};
+ try{await assert.rejects(installer.applyMacScopedRecovery(f.identity,archive,{}));assert.equal(injected,true);await assert.rejects(fs.lstat(path.join(f.identity,'scoped-files')),{code:'ENOENT'});}
+ finally{(fs as any).open=open;}
+});
+test('synthetic lost publication acknowledgment retains both installation generations',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
+ await installer.applyMacScopedRecovery(f.identity,archive,{});const live=path.join(f.identity,'scoped-files'),old=await fs.lstat(live,{bigint:true});
+ const root=path.join(f.identity,'file-recovery','work-r1');await fs.writeFile(path.join(root,'capture'),'retained',{mode:0o600});
+ let code=await fs.readFile(path.resolve('scripts/install-mac-scoped-files.mjs'),'utf8');
+ const inject='if(reply!==',here='const here=path.dirname(fileURLToPath(import.meta.url)),source=',guard='if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))';
+ for(const marker of [inject,here,guard])assert.equal(code.split(marker).length,2,`test-only boundary changed: ${marker}`);
+ code=code.replace(inject,'throw unknown();if(reply!==').replace(here,`const here=${JSON.stringify(path.resolve('scripts'))},source=`).replace(guard,'if(false)');
+ const origin=pathToFileURL(path.resolve('scripts/install-mac-scoped-files.mjs')).href;
+ code=code.replace(/from (["'])(\.[^"']+)\1/g,(_match,quote,relative)=>`from ${quote}${new URL(relative,origin).href}${quote}`);
+ const synthetic=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+ await assert.rejects(synthetic.applyMacScopedRecovery(f.identity,archive,{}),(error:any)=>error.code==='RESULT_UNKNOWN');
+ const stages=(await fs.readdir(f.identity)).filter(name=>name.startsWith('.scoped-files.stage-'));assert.equal(stages.length,1);
+ const previous=await fs.lstat(path.join(f.identity,stages[0]!),{bigint:true}),current=await fs.lstat(live,{bigint:true});
+ assert.equal(previous.dev,old.dev);assert.equal(previous.ino,old.ino);assert.notEqual(current.ino,old.ino);assert.equal(await fs.readFile(path.join(root,'capture'),'utf8'),'retained');
+});
 test('recovery staging preserves validated journal records and lock markers byte for byte',async t=>{
  const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files'),stage=path.join(f.identity,'.scoped-files.stage-12345678-1234-4123-8123-123456789abc'),journal=path.join(live,'file-transactions');
  await fs.mkdir(live,{mode:0o700});await fs.mkdir(stage,{mode:0o700});
@@ -65,6 +231,37 @@ test('recovery staging detects removal of a staged record before completion',asy
  (fs as any).open=async (...args:any[])=>{const handle=await (open as any)(...args);if(args[0]===path.join(destination,name)){const close=handle.close.bind(handle);handle.close=async()=>{await close();await fs.unlink(path.join(destination,name));injected=true;};}return handle;};
  try{await assert.rejects(installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.stageRecoveryJournal(live,stage,check)));assert.equal(injected,true);}
  finally{(fs as any).open=open;}
+});
+test('recovery journal evidence is revalidated immediately before publication',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files'),stage=path.join(f.identity,'.scoped-files.stage-recheck'),source=path.join(live,'file-transactions');
+ await fs.mkdir(live,{mode:0o700});await fs.mkdir(source,{mode:0o700});await fs.mkdir(stage,{mode:0o700});
+ const name='11111111-1111-4111-8111-111111111111.lock';await fs.writeFile(path.join(source,name),'',{mode:0o600});
+ await installer.withStoppedMacConnector(f.identity,async(check:any)=>{
+  const verify=await installer.stageRecoveryJournal(live,stage,check);await verify();
+  await fs.writeFile(path.join(source,'22222222-2222-4222-8222-222222222222.lock'),'');await assert.rejects(verify());
+ });
+ assert.equal(await fs.readFile(path.join(source,name),'utf8'),'');
+});
+test('revalidation refuses staged journal tampering after preparation',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files'),stage=path.join(f.identity,'.scoped-files.stage-recheck'),source=path.join(live,'file-transactions');
+ await fs.mkdir(live,{mode:0o700});await fs.mkdir(source,{mode:0o700});await fs.mkdir(stage,{mode:0o700});const name='11111111-1111-4111-8111-111111111111.lock';await fs.writeFile(path.join(source,name),'',{mode:0o600});
+ await installer.withStoppedMacConnector(f.identity,async(check:any)=>{const verify=await installer.stageRecoveryJournal(live,stage,check);await fs.unlink(path.join(stage,'file-transactions',name));await assert.rejects(verify());});
+});
+test('recovery journal staging detects an entry added during final destination enumeration',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files'),stage=path.join(f.identity,'.scoped-files.stage-final-race'),source=path.join(live,'file-transactions'),destination=path.join(stage,'file-transactions');
+ await fs.mkdir(live,{mode:0o700});await fs.mkdir(source,{mode:0o700});await fs.mkdir(stage,{mode:0o700});await fs.writeFile(path.join(source,'11111111-1111-4111-8111-111111111111.lock'),'',{mode:0o600});
+ const opendir=fs.opendir.bind(fs),lstat=fs.lstat.bind(fs);let injected=false,observedDestination=false;
+ (fs as any).opendir=async (...args:any[])=>{const dir=await (opendir as any)(...args);if(args[0]===destination)observedDestination=true;return dir;};
+ (fs as any).lstat=async (...args:any[])=>{const result=await (lstat as any)(...args);if(args[0]===source&&args[1]?.bigint&&observedDestination&&!injected){await fs.writeFile(path.join(destination,'22222222-2222-4222-8222-222222222222.lock'),'');injected=true;}return result;};
+ try{await assert.rejects(installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.stageRecoveryJournal(live,stage,check)));assert.equal(injected,true);}
+ finally{(fs as any).opendir=opendir;(fs as any).lstat=lstat;}
+});
+test('empty recovery journal revalidation rejects source appearing during destination read',async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files'),stage=path.join(f.identity,'.scoped-files.stage-empty-race'),destination=path.join(stage,'file-transactions');
+ await fs.mkdir(live,{mode:0o700});await fs.mkdir(stage,{mode:0o700});const opendir=fs.opendir.bind(fs);let injected=false;
+ (fs as any).opendir=async (...args:any[])=>{const dir=await (opendir as any)(...args);if(args[0]===destination&&!injected){const close=dir.close.bind(dir);dir.close=async()=>{await close();await fs.mkdir(path.join(live,'file-transactions'),{mode:0o700});injected=true;};}return dir;};
+ try{await assert.rejects(installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.stageRecoveryJournal(live,stage,check)));assert.equal(injected,true);}
+ finally{(fs as any).opendir=opendir;}
 });
 async function fixture(t:any){const temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-scoped-installer-')));t.after(()=>fs.rm(temp,{recursive:true,force:true}));const identity=path.join(temp,'identity'),workspace=path.join(temp,'workspace');await fs.mkdir(workspace,{mode:0o700});await enrollRolesTrustedBatch([{id:'work',root:workspace,role:'workspace'}],identity);return {identity,workspace,temp};}
 test('recovery root validation accepts a private same-volume root and rejects overlap',async t=>{
