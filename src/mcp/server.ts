@@ -23,7 +23,7 @@ import {CiLogStore} from "../local/ci-log-store.js";
 import {CiSnapshotStore} from "../local/ci-snapshot-store.js";
 import {CiSourceCaptureService,type VerifiedWorkspaceSourceCapture} from "../core/ci-source-capture.js";
 import {CiRunService,type VerifiedCiExecutor} from "../core/ci-run-service.js";
-import {requireNativeBackend,type NativeScopedFiles,type NativeFileOperation,type VerifiedNativeSandbox,type VerifiedNativeProcessController} from "../core/native-io.js";
+import {requireNativeBackend,type NativeScopedFiles,type NativeFileOperation,type VerifiedNativeSandbox,type ApprovedMacHostCommandBackend,type VerifiedNativeProcessController} from "../core/native-io.js";
 import {executeGit} from "../core/git-engine.js";
 import {ProcessManager,type WorkspaceProcessStop} from "../core/process-manager.js";
 import {ControlLeaseError,type ControlLeaseStore} from "../local/control-lease.js";
@@ -85,7 +85,7 @@ export function toolDefinitions() {return [...definitions,...plannedTools].map(d
   properties:{...definition.inputSchema.properties,...(controlledToolNames.has(definition.name)?{control_token:{type:"string"}}:{})},
   required:[...("required" in definition.inputSchema?definition.inputSchema.required:[]),...(controlledToolNames.has(definition.name)?["control_token"]:[])]}
  }));}
-export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null, logs:CiLogStore|null=null, nativeProcesses:VerifiedNativeProcessController|null=null, snapshots:CiSnapshotStore|null=null, sourceCapture:VerifiedWorkspaceSourceCapture|null=null, ciExecutor:VerifiedCiExecutor|null=null, controlStore:ControlLeaseStore|null=null,options:{grantDirectory?:string;fileBlockedReason?:string;directoryCopyBlockedReason?:string;fileBackendState?:()=>{files:NativeScopedFiles|null;fileBlockedReason?:string;directoryCopyBlockedReason?:string};onScopeChanged?:(kind:"bind"|"unbind")=>Promise<void>;processPersistence?:ProcessPersistence}={}) {
+export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null, logs:CiLogStore|null=null, nativeProcesses:VerifiedNativeProcessController|null=null, snapshots:CiSnapshotStore|null=null, sourceCapture:VerifiedWorkspaceSourceCapture|null=null, ciExecutor:VerifiedCiExecutor|null=null, controlStore:ControlLeaseStore|null=null,options:{grantDirectory?:string;fileBlockedReason?:string;directoryCopyBlockedReason?:string;fileBackendState?:()=>{files:NativeScopedFiles|null;fileBlockedReason?:string;directoryCopyBlockedReason?:string};onScopeChanged?:(kind:"bind"|"unbind")=>Promise<void>;processPersistence?:ProcessPersistence;hostCommands?:ApprovedMacHostCommandBackend}={}) {
   const allFileOperations:readonly NativeFileOperation[]=["create_file","update_file","edit_file","apply_patch","create_directory","delete_file","copy_file","move_file","copy_directory"];
   const fileBackendState=options.fileBackendState??(()=>({files:nativeFiles,fileBlockedReason:options.fileBlockedReason,directoryCopyBlockedReason:options.directoryCopyBlockedReason}));
   let resolvedGrantDirectory=options.grantDirectory;
@@ -356,7 +356,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           {if(typeof args.workspace_id==="string"&&!registry.get(args.workspace_id))throw Error("WORKSPACE_NOT_FOUND");
            const protectedStorage=protectedStateCapability();
            const read=["connector_status","list_workspaces","get_workspace","bind_workspaces","unbind_workspace","list_directory","fetch_file","fetch_file_bytes","get_file_info","search","glob","list_capabilities","ci_validate_workflow","ci_list_workflows","ci_list_runs","ci_status","ci_artifacts","ci_read_artifact","ci_logs"].filter(name=>protectedStorage.available||!controlledToolNames.has(name));
-           const execution=sandbox?.verified?["run_command","start_process","stop_process","list_processes","process_status","process_output"]:[];
+           const execution=(sandbox?.verified||options.hostCommands&&options.processPersistence)?["run_command","start_process","stop_process","list_processes","process_status","process_output"]:[];
            if(options.processPersistence&&protectedStorage.available)read.push("list_processes","process_status","process_output");
            const ci=ciExecutor?.verified?["ci_run","ci_rerun_failed","ci_cancel"]:[];
            if(sourceCapture?.verified)ci.push("ci_prepare_source");
@@ -493,21 +493,21 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           }break;
         case "run_command":
           if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string"))throw Error("INVALID_ARGUMENTS");
-          requireNativeBackend(sandbox);
+          if(!options.hostCommands)requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,"execute");
-          {const request={workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:false};
-           result=options.processPersistence?await durable.run(request,sandbox!):await processes.run(request);
+          {const request={workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:!!options.hostCommands};
+           result=options.hostCommands?await durable.run(request,options.hostCommands):options.processPersistence?await durable.run(request,sandbox!):await processes.run(request);
           }break;
         case "start_process":
           if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string")||Object.keys(args).length!==3)throw Error("INVALID_ARGUMENTS");
-          if(!nativeProcesses)requireNativeBackend(sandbox);
+          if(!nativeProcesses&&!options.hostCommands)requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,"execute");
-          {const request={workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:"." as const,time_limit_ms:30000,max_output_bytes:65536,network_allowed:false};
-           result=nativeProcesses?await durable.start(request):options.processPersistence?await durable.startCommand(request,sandbox!):processes.start(request);
+          {const request={workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:"." as const,time_limit_ms:30000,max_output_bytes:65536,network_allowed:!!options.hostCommands};
+           result=nativeProcesses?await durable.start(request):options.hostCommands?await durable.startCommand(request,options.hostCommands):options.processPersistence?await durable.startCommand(request,sandbox!):processes.start(request);
           }break;
         case "stop_process":
           if(typeof args.workspace_id!=="string"||typeof args.process_id!=="string"||Object.keys(args).length!==2)throw Error("INVALID_ARGUMENTS");
-          if(!nativeProcesses)requireNativeBackend(sandbox);
+          if(!nativeProcesses&&!options.hostCommands)requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,"execute");
           result=durableHistory?await durable.stop(args.workspace_id,args.process_id):await processes.stop(args.workspace_id,args.process_id);break;
         case "list_processes":
