@@ -111,17 +111,20 @@ test('recovery installation creates a read-only BASE binding for reference roots
 // descendants which leave the group/session are stopped.
 async function observeOwnedFixtureGroup(child:ReturnType<typeof spawn>,retainedPath:string,limits={termMs:15000,killMs:18000,endMs:21000},onStopped=()=>{}):Promise<{code:number|null;stdout:string;stderr:string}>{
  const group=child.pid;if(!group)throw Error(`Fixture group identity missing; retained ${retainedPath}`);
- let stdout='',stderr='',closed=false,firstError:Error|undefined;
+ let closed=false,firstError:Error|undefined;
+ const stdoutChunks:Buffer[]=[],stderrChunks:Buffer[]=[];let stdoutBytes=0,stderrBytes=0;
  const groupAlive=()=>{try{process.kill(-group,0);return true;}catch(e){return (e as NodeJS.ErrnoException).code!=='ESRCH';}};
  const signal=(name:NodeJS.Signals)=>{try{process.kill(-group,name);}catch(e){if((e as NodeJS.ErrnoException).code!=='ESRCH')firstError??=e as Error;}};
  const cap=65536;
- const append=(current:string,bytes:Buffer,label:string)=>{
-  const remaining=cap-Buffer.byteLength(current);
+ const append=(chunks:Buffer[],used:number,bytes:Buffer,label:string)=>{
+  const remaining=cap-used;
   if(bytes.length>remaining){firstError??=Error(`Fixture ${label} limit`);signal('SIGTERM');}
-  return remaining>0?current+bytes.subarray(0,Math.max(0,remaining)).toString('latin1'):current;
+  const accepted=Math.min(bytes.length,Math.max(0,remaining));
+  if(accepted)chunks.push(Buffer.from(bytes.subarray(0,accepted)));
+  return used+accepted;
  };
- child.stdout?.on('data',(bytes:Buffer)=>{stdout=append(stdout,bytes,'stdout');});
- child.stderr?.on('data',(bytes:Buffer)=>{stderr=append(stderr,bytes,'stderr');});
+ child.stdout?.on('data',(bytes:Buffer)=>{stdoutBytes=append(stdoutChunks,stdoutBytes,bytes,'stdout');});
+ child.stderr?.on('data',(bytes:Buffer)=>{stderrBytes=append(stderrChunks,stderrBytes,bytes,'stderr');});
  child.on('error',error=>{firstError??=error;});
  child.on('close',()=>{closed=true;});
  const started=Date.now(),delay=(ms:number)=>new Promise(r=>setTimeout(r,ms));
@@ -135,7 +138,7 @@ async function observeOwnedFixtureGroup(child:ReturnType<typeof spawn>,retainedP
    // descendants stopped. The caller must supply separate ownership evidence.
    onStopped();
    if(firstError)throw firstError;
-   return {code:child.exitCode,stdout,stderr};
+   return {code:child.exitCode,stdout:Buffer.concat(stdoutChunks,stdoutBytes).toString('utf8'),stderr:Buffer.concat(stderrChunks,stderrBytes).toString('utf8')};
   }
   await delay(25);
  }
