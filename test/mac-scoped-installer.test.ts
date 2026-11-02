@@ -193,9 +193,14 @@ test('installed qualified broker handles mutation and dropped reply with a real 
  await installer.applyMacScopedRecovery(f.identity,archive,{});const canary=path.join(f.temp,'outside-canary');await fs.writeFile(canary,'unchanged');
  cleanupGuard.safe=false;
  const child=spawn('/usr/bin/python3',[path.resolve('scripts/macos-owner-launcher.py'),'--identity',f.identity,'--node',process.execPath,'--entry',path.resolve('test/helpers/mac-recovery-installed-fixture.mjs')],{env:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:f.temp,TMPDIR:path.dirname(f.temp),GSA_FIXTURE_IDENTITY:f.identity,GSA_FIXTURE_WORKSPACE:f.workspace,GSA_FIXTURE_SCRATCH:f.temp},detached:true,stdio:['ignore','pipe','pipe']});
- const result=await observeOwnedFixtureGroup(child,f.temp,undefined,()=>{ /* group-only observation: no full-tree cleanup authorization */ });
+ const result=await observeOwnedFixtureGroup(child,f.temp);
  assert.equal(result.code,0,result.stderr);const actual=JSON.parse(result.stdout);assert.equal(actual.dropped,'UNKNOWN');assert.equal(actual.readback,'APPLIED');assert.equal(actual.trash,'APPLIED');
  assert.equal(await fs.readFile(canary,'utf8'),'unchanged');
+ // Scoped fixture contract: the child awaits close of each broker invocation,
+ // the launcher/fixture exited successfully, and the original group is absent.
+ // This does NOT certify unrelated or session-escaping descendants. If any
+ // assertion fails, preserve the disposable root for investigation.
+ cleanupGuard.safe=true;
 });
 test('recovery installation refuses a grant revoked while building the candidate',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
  const f=await fixture(t),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
