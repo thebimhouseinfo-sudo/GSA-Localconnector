@@ -108,10 +108,28 @@ test('recovery installation creates a read-only BASE binding for reference roots
  assert.equal((await fs.stat(path.join(result.installation,'ref/Broker.app'))).isDirectory(),true);await assert.rejects(fs.lstat(path.join(result.installation,'ref/RecoveryBroker.app')),{code:'ENOENT'});
 });
 test('installed qualified broker handles mutation and dropped reply with a real disposable owner',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
- const f=await fixture(t),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
+ const cleanupGuard={safe:false};const f=await fixture(t,cleanupGuard),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive){cleanupGuard.safe=true;return;}
  await installer.applyMacScopedRecovery(f.identity,archive,{});const canary=path.join(f.temp,'outside-canary');await fs.writeFile(canary,'unchanged');
  const result=await new Promise<{code:number|null;stdout:string;stderr:string}>((resolve,reject)=>{
-  const child=spawn('/usr/bin/python3',[path.resolve('scripts/macos-owner-launcher.py'),'--identity',f.identity,'--node',process.execPath,'--entry',path.resolve('test/helpers/mac-recovery-installed-fixture.mjs')],{env:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:f.temp,TMPDIR:path.dirname(f.temp),GSA_FIXTURE_IDENTITY:f.identity,GSA_FIXTURE_WORKSPACE:f.workspace,GSA_FIXTURE_SCRATCH:f.temp},stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.on('data',bytes=>stdout+=bytes);child.stderr.on('data',bytes=>stderr+=bytes);child.on('error',reject);child.on('close',code=>resolve({code,stdout,stderr}));
+  const child=spawn('/usr/bin/python3',[path.resolve('scripts/macos-owner-launcher.py'),'--identity',f.identity,'--node',process.execPath,'--entry',path.resolve('test/helpers/mac-recovery-installed-fixture.mjs')],{env:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:f.temp,TMPDIR:path.dirname(f.temp),GSA_FIXTURE_IDENTITY:f.identity,GSA_FIXTURE_WORKSPACE:f.workspace,GSA_FIXTURE_SCRATCH:f.temp},detached:true,stdio:['ignore','pipe','pipe']});
+  let stdout='',stderr='',settled=false,closed=false;const group=child.pid;
+  const signal=(name:NodeJS.Signals)=>{if(!group)return;try{process.kill(-group,name);}catch(e){if((e as NodeJS.ErrnoException).code!=='ESRCH')throw e;}};
+  const groupAlive=()=>{if(!group)return true;try{process.kill(-group,0);return true;}catch(e){if((e as NodeJS.ErrnoException).code==='ESRCH')return false;return true;}};
+  const finish=async(code:number|null,error?:Error)=>{
+   if(settled)return;settled=true;clearTimeout(deadline);clearTimeout(hardStop);
+   // The fixture launcher and its broker children must remain in this owned process group.
+   // If they escape into another session, this observation is insufficient: keep the fixture.
+   for(let i=0;i<20&&groupAlive();i++)await new Promise(r=>setTimeout(r,50));
+   if(groupAlive()){reject(Error(`Fixture process group still alive; retained ${f.temp}`));return;}
+   cleanupGuard.safe=true;
+   if(error)reject(error);else resolve({code,stdout,stderr});
+  };
+  const deadline=setTimeout(()=>{try{signal('SIGTERM');}catch(e){void finish(null,e as Error);}},15000);
+  const hardStop=setTimeout(()=>{try{signal('SIGKILL');}catch(e){void finish(null,e as Error);}if(!closed)void finish(null,Error('Fixture child did not close within bounded lifetime'));},18000);
+  child.stdout.on('data',bytes=>{if(stdout.length<65536)stdout+=bytes;else{try{signal('SIGKILL');}catch(e){void finish(null,e as Error);}}});
+  child.stderr.on('data',bytes=>{if(stderr.length<65536)stderr+=bytes;});
+  child.on('error',error=>{void finish(null,error);});
+  child.on('close',code=>{closed=true;void finish(code);});
  });
  assert.equal(result.code,0,result.stderr);const actual=JSON.parse(result.stdout);assert.equal(actual.dropped,'UNKNOWN');assert.equal(actual.readback,'APPLIED');assert.equal(actual.trash,'APPLIED');
  assert.equal(await fs.readFile(canary,'utf8'),'unchanged');
@@ -263,7 +281,7 @@ test('empty recovery journal revalidation rejects source appearing during destin
  try{await assert.rejects(installer.withStoppedMacConnector(f.identity,async(check:any)=>installer.stageRecoveryJournal(live,stage,check)));assert.equal(injected,true);}
  finally{(fs as any).opendir=opendir;}
 });
-async function fixture(t:any){const temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-scoped-installer-')));t.after(()=>fs.rm(temp,{recursive:true,force:true}));const identity=path.join(temp,'identity'),workspace=path.join(temp,'workspace');await fs.mkdir(workspace,{mode:0o700});await enrollRolesTrustedBatch([{id:'work',root:workspace,role:'workspace'}],identity);return {identity,workspace,temp};}
+async function fixture(t:any,cleanupGuard?:{safe:boolean}){const temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-scoped-installer-')));t.after(async()=>{if(cleanupGuard&&!cleanupGuard.safe)throw Error(`Fixture cleanup blocked: owned process group not confirmed stopped; retained ${temp}`);await fs.rm(temp,{recursive:true,force:true});});const identity=path.join(temp,'identity'),workspace=path.join(temp,'workspace');await fs.mkdir(workspace,{mode:0o700});await enrollRolesTrustedBatch([{id:'work',root:workspace,role:'workspace'}],identity);return {identity,workspace,temp};}
 test('recovery root validation accepts a private same-volume root and rejects overlap',async t=>{
  const f=await fixture(t),installer=await import(moduleUrl),registry=await loadTrustedRegistry(f.identity),root=path.join(f.temp,'recovery'),stage=path.join(f.identity,'.scoped-files.stage-test');
  await fs.mkdir(root,{mode:0o700});await fs.mkdir(stage,{mode:0o700});
