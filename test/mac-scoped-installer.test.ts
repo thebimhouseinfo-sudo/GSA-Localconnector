@@ -161,8 +161,34 @@ test('owned fixture monitor enforces deadline after launcher exit',{skip:process
   if(confirmed)await fs.rm(root,{recursive:true,force:true});
  }
 });
-// NOTE: these tests exercise only in-group descendants, not setsid()/detached
-// escapees. No total process-tree stop or native/plugin PASS follows from them.
+test('detached descendant can outlive the original group (bounded observation only)',{skip:process.platform==='win32'},async()=>{
+ const marker=await fs.mkdtemp(path.join(os.tmpdir(),'gsa-escape-observation-'));
+ const childScript=`const {spawn}=require('node:child_process');const fs=require('node:fs');const p=spawn(process.execPath,['-e','setTimeout(()=>{},1200)'],{detached:true,stdio:'ignore'});fs.writeFileSync(process.argv[1],String(p.pid));p.unref();`;
+ const pidFile=path.join(marker,'escaped.pid');
+ const launcher=spawn(process.execPath,['-e',childScript,pidFile],{detached:true,stdio:['ignore','pipe','pipe']});
+ let escaped:number|undefined;
+ try{
+  const result=await observeOwnedFixtureGroup(launcher,marker,{termMs:2500,killMs:3000,endMs:3500});
+  assert.equal(result.code,0);
+  escaped=Number(await fs.readFile(pidFile,'utf8'));
+  assert.ok(Number.isSafeInteger(escaped)&&escaped>0);
+  // Prove the negative: disappearance of the original PGID does not imply
+  // disappearance of a descendant that deliberately created a new session.
+  assert.doesNotThrow(()=>process.kill(escaped!,0));
+ }finally{
+  // Escapee is self-terminating. Never signal an unrelated PGID or delete
+  // evidence if its bounded lifetime cannot be verified.
+  if(escaped){
+   let gone=false;
+   for(let i=0;i<100;i++){try{process.kill(escaped,0);}catch(e){if((e as NodeJS.ErrnoException).code==='ESRCH'){gone=true;break;}}await new Promise(r=>setTimeout(r,25));}
+   if(gone)await fs.rm(marker,{recursive:true,force:true});
+  }
+ }
+});
+// NOTE: the live native-owner fixture still needs independent evidence that
+// broker descendants cannot escape group/session before full-tree cleanup
+// can be certified. Group absence alone is NOT that evidence.
+
 test('installed qualified broker handles mutation and dropped reply with a real disposable owner',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
  const cleanupGuard={safe:true};const f=await fixture(t,cleanupGuard),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
  await installer.applyMacScopedRecovery(f.identity,archive,{});const canary=path.join(f.temp,'outside-canary');await fs.writeFile(canary,'unchanged');
