@@ -1,4 +1,7 @@
 name: Source Contract CI
+concurrency:
+  group: mac-phase-${{ github.ref }}
+  cancel-in-progress: true
 on:
   push:
   pull_request:
