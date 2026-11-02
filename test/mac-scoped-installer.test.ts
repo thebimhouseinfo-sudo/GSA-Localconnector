@@ -136,7 +136,7 @@ async function observeOwnedFixtureGroup(child:ReturnType<typeof spawn>,retainedP
  throw Error(`Fixture group stop unverified; retained ${retainedPath}`);
 }
 
-test('owned fixture monitor waits for child in group after launcher exit',{skip:process.platform==='win32'},async()=>{
+test('owned fixture monitor waits for child in group after launcher exit',{skip:process.platform!=='darwin'},async()=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'gsa-group-monitor-'));
  // The launcher exits quickly, leaving a child in the same process group.
  const launcher=spawn(process.execPath,['-e',`const {spawn}=require('node:child_process');spawn(process.execPath,['-e','setTimeout(()=>{},1200)'],{stdio:'ignore'}).unref();`],{detached:true,stdio:['ignore','pipe','pipe']});
@@ -152,7 +152,7 @@ test('owned fixture monitor waits for child in group after launcher exit',{skip:
   if(confirmed)await fs.rm(root,{recursive:true,force:true});
  }
 });
-test('owned fixture monitor enforces deadline after launcher exit',{skip:process.platform==='win32'},async()=>{
+test('owned fixture monitor enforces deadline after launcher exit',{skip:process.platform!=='darwin'},async()=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'gsa-group-timeout-'));
  const launcher=spawn(process.execPath,['-e',`const {spawn}=require('node:child_process');spawn(process.execPath,['-e','process.on("SIGTERM",()=>{});setInterval(()=>{},1000)'],{stdio:'ignore'}).unref();`],{detached:true,stdio:['ignore','pipe','pipe']});
  let confirmed=false;
@@ -163,7 +163,7 @@ test('owned fixture monitor enforces deadline after launcher exit',{skip:process
   if(confirmed)await fs.rm(root,{recursive:true,force:true});
  }
 });
-test('detached descendant can outlive the original group (bounded observation only)',{skip:process.platform==='win32'},async()=>{
+test('detached descendant can outlive the original group (bounded observation only)',{skip:process.platform!=='darwin'},async()=>{
  const marker=await fs.mkdtemp(path.join(os.tmpdir(),'gsa-escape-observation-'));
  const pidFile=path.join(marker,'escaped.pid'),doneFile=path.join(marker,'escaped.done');
  // Both processes are disposable. The detached child self-terminates and writes
