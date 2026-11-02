@@ -109,19 +109,30 @@ test('recovery installation creates a read-only BASE binding for reference roots
 });
 // Observes only the detached process group created by spawn. It cannot prove
 // descendants which leave the group/session are stopped.
+function appendBoundedFixtureBytes(chunks:Buffer[],used:number,bytes:Buffer,cap:number):{used:number;overflow:boolean}{
+ const remaining=Math.max(0,cap-used),accepted=Math.min(bytes.length,remaining);
+ if(accepted)chunks.push(Buffer.from(bytes.subarray(0,accepted)));
+ return {used:used+accepted,overflow:bytes.length>remaining};
+}
+test('fixture output buffer retains only capped bytes after repeated overflow',()=>{
+ const chunks:Buffer[]=[];let used=0,overflows=0;
+ for(const bytes of [Buffer.alloc(65000,0x61),Buffer.alloc(2000,0x62),Buffer.alloc(500000,0x63)]){
+  const result=appendBoundedFixtureBytes(chunks,used,bytes,65536);used=result.used;if(result.overflow)overflows++;
+ }
+ assert.equal(used,65536);assert.equal(Buffer.concat(chunks).length,65536);
+ assert.equal(chunks.length,2);assert.equal(overflows,2);
+});
+
 async function observeOwnedFixtureGroup(child:ReturnType<typeof spawn>,retainedPath:string,limits={termMs:15000,killMs:18000,endMs:21000},onStopped=()=>{}):Promise<{code:number|null;stdout:string;stderr:string}>{
  const group=child.pid;if(!group)throw Error(`Fixture group identity missing; retained ${retainedPath}`);
  let closed=false,firstError:Error|undefined;
  const stdoutChunks:Buffer[]=[],stderrChunks:Buffer[]=[];let stdoutBytes=0,stderrBytes=0;
  const groupAlive=()=>{try{process.kill(-group,0);return true;}catch(e){return (e as NodeJS.ErrnoException).code!=='ESRCH';}};
  const signal=(name:NodeJS.Signals)=>{try{process.kill(-group,name);}catch(e){if((e as NodeJS.ErrnoException).code!=='ESRCH')firstError??=e as Error;}};
- const cap=65536;
  const append=(chunks:Buffer[],used:number,bytes:Buffer,label:string)=>{
-  const remaining=cap-used;
-  if(bytes.length>remaining){firstError??=Error(`Fixture ${label} limit`);signal('SIGTERM');}
-  const accepted=Math.min(bytes.length,Math.max(0,remaining));
-  if(accepted)chunks.push(Buffer.from(bytes.subarray(0,accepted)));
-  return used+accepted;
+  const next=appendBoundedFixtureBytes(chunks,used,bytes,65536);
+  if(next.overflow){firstError??=Error(`Fixture ${label} limit`);signal('SIGTERM');}
+  return next.used;
  };
  child.stdout?.on('data',(bytes:Buffer)=>{stdoutBytes=append(stdoutChunks,stdoutBytes,bytes,'stdout');});
  child.stderr?.on('data',(bytes:Buffer)=>{stderrBytes=append(stderrChunks,stderrBytes,bytes,'stderr');});
