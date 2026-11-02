@@ -107,41 +107,40 @@ test('recovery installation creates a read-only BASE binding for reference roots
  assert.equal(ref.role,'reference');assert.equal(Object.hasOwn(ref,'recovery'),false);assert.ok(work.recovery);
  assert.equal((await fs.stat(path.join(result.installation,'ref/Broker.app'))).isDirectory(),true);await assert.rejects(fs.lstat(path.join(result.installation,'ref/RecoveryBroker.app')),{code:'ENOENT'});
 });
+// Observes only the detached process group created by spawn. It cannot prove
+// descendants which leave the group/session are stopped.
+async function observeOwnedFixtureGroup(child:ReturnType<typeof spawn>,retainedPath:string,limits={termMs:15000,killMs:18000,endMs:21000}):Promise<{code:number|null;stdout:string;stderr:string}>{
+ const group=child.pid;if(!group)throw Error(`Fixture group identity missing; retained ${retainedPath}`);
+ let stdout='',stderr='',closed=false,firstError:Error|undefined;
+ const groupAlive=()=>{try{process.kill(-group,0);return true;}catch(e){return (e as NodeJS.ErrnoException).code!=='ESRCH';}};
+ const signal=(name:NodeJS.Signals)=>{try{process.kill(-group,name);}catch(e){if((e as NodeJS.ErrnoException).code!=='ESRCH')firstError??=e as Error;}};
+ child.stdout?.on('data',bytes=>{stdout+=bytes;if(stdout.length>65536){firstError??=Error('Fixture stdout limit');signal('SIGTERM');}});
+ child.stderr?.on('data',bytes=>{stderr+=bytes;if(stderr.length>65536){firstError??=Error('Fixture stderr limit');signal('SIGTERM');}});
+ child.on('error',error=>{firstError??=error;});
+ child.on('close',()=>{closed=true;});
+ const started=Date.now(),delay=(ms:number)=>new Promise(r=>setTimeout(r,ms));
+ let sentTerm=false,sentKill=false;
+ while(Date.now()-started<limits.endMs){
+  const age=Date.now()-started;
+  if(age>=limits.termMs&&!sentTerm){sentTerm=true;firstError??=Error('Fixture deadline exceeded');signal('SIGTERM');}
+  if(age>=limits.killMs&&!sentKill){sentKill=true;signal('SIGKILL');}
+  if(closed&&!groupAlive()){
+   if(firstError)throw firstError;
+   return {code:child.exitCode,stdout,stderr};
+  }
+  await delay(25);
+ }
+ throw Error(`Fixture group stop unverified; retained ${retainedPath}`);
+}
+
 test('installed qualified broker handles mutation and dropped reply with a real disposable owner',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
  const cleanupGuard={safe:true};const f=await fixture(t,cleanupGuard),installer=await import(moduleUrl),archive=await retainedArchive(t,f.temp);if(!archive)return;
  await installer.applyMacScopedRecovery(f.identity,archive,{});const canary=path.join(f.temp,'outside-canary');await fs.writeFile(canary,'unchanged');
  cleanupGuard.safe=false;
  const result=await new Promise<{code:number|null;stdout:string;stderr:string}>((resolve,reject)=>{
   const child=spawn('/usr/bin/python3',[path.resolve('scripts/macos-owner-launcher.py'),'--identity',f.identity,'--node',process.execPath,'--entry',path.resolve('test/helpers/mac-recovery-installed-fixture.mjs')],{env:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:f.temp,TMPDIR:path.dirname(f.temp),GSA_FIXTURE_IDENTITY:f.identity,GSA_FIXTURE_WORKSPACE:f.workspace,GSA_FIXTURE_SCRATCH:f.temp},detached:true,stdio:['ignore','pipe','pipe']});
-  let stdout='',stderr='',closed=false,firstError:Error|undefined;
-  const group=child.pid;
-  // Only this detached child owns the process group. A descendant which calls setsid()
-  // is NOT covered by a group probe: this test must not certify the whole tree.
-  const groupAlive=()=>{if(!group)return true;try{process.kill(-group,0);return true;}catch(e){return (e as NodeJS.ErrnoException).code!=='ESRCH';}};
-  const signal=(name:NodeJS.Signals)=>{if(!group)return;try{process.kill(-group,name);}catch(e){if((e as NodeJS.ErrnoException).code!=='ESRCH')firstError??=e as Error;}};
-  child.stdout.on('data',bytes=>{stdout+=bytes;if(stdout.length>65536){firstError??=Error('Fixture stdout limit');signal('SIGTERM');}});
-  child.stderr.on('data',bytes=>{stderr+=bytes;if(stderr.length>65536){firstError??=Error('Fixture stderr limit');signal('SIGTERM');}});
-  child.on('error',error=>{firstError??=error;});
-  child.on('close',()=>{closed=true;});
-  // Launcher close is not completion. Poll the owned group until physical absence;
-  // TERM and then KILL are bounded even if the launcher has already exited.
-  const started=Date.now(),delay=(ms:number)=>new Promise(r=>setTimeout(r,ms));
-  let sentTerm=false,sentKill=false;
-  const monitor=async()=>{
-   while(Date.now()-started<21000){
-    const age=Date.now()-started;
-    if(age>=15000&&!sentTerm){sentTerm=true;firstError??=Error('Fixture deadline exceeded');signal('SIGTERM');}
-    if(age>=18000&&!sentKill){sentKill=true;signal('SIGKILL');}
-    if(closed&&!groupAlive()){
-     cleanupGuard.safe=true;
-     if(firstError)reject(firstError);else resolve({code:child.exitCode,stdout,stderr});
-     return;
-    }
-    await delay(50);
-   }
-   reject(Error(`Fixture group stop unverified; retained ${f.temp}`));
-  };
-  void monitor();
+  try{const observed=await observeOwnedFixtureGroup(child,f.temp);cleanupGuard.safe=true;resolve(observed);}catch(error){reject(error);}
+
  });
  assert.equal(result.code,0,result.stderr);const actual=JSON.parse(result.stdout);assert.equal(actual.dropped,'UNKNOWN');assert.equal(actual.readback,'APPLIED');assert.equal(actual.trash,'APPLIED');
  assert.equal(await fs.readFile(canary,'utf8'),'unchanged');
