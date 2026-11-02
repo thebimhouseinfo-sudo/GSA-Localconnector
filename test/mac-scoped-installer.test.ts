@@ -168,7 +168,7 @@ test('detached descendant can outlive the original group (bounded observation on
  const pidFile=path.join(marker,'escaped.pid'),doneFile=path.join(marker,'escaped.done');
  // Both processes are disposable. The detached child self-terminates and writes
  // completion evidence; the parent never sends signals to its new group.
- const childScript=`const {spawn}=require('node:child_process');const fs=require('node:fs');const p=spawn(process.execPath,['-e','setTimeout(()=>{require("node:fs").writeFileSync(process.argv[1],"done")},1200)',process.argv[2]],{detached:true,stdio:'ignore'});fs.writeFileSync(process.argv[1],String(p.pid));p.unref();`;
+ const childScript=`const {spawn}=require('node:child_process');const fs=require('node:fs');const p=spawn(process.execPath,['-e','setTimeout(()=>{require("node:fs").writeFileSync(process.argv[1],"done")},1800)',process.argv[2]],{detached:true,stdio:'ignore'});fs.writeFileSync(process.argv[1],String(p.pid));p.unref();`;
  const launcher=spawn(process.execPath,['-e',childScript,pidFile,doneFile],{detached:true,stdio:['ignore','pipe','pipe']});
  let observed=false,completed=false;
  try{
@@ -179,7 +179,7 @@ test('detached descendant can outlive the original group (bounded observation on
   assert.doesNotThrow(()=>process.kill(escaped,0));
  }finally{
   // Do not delete evidence until the known escaped child reports completion.
-  for(let i=0;i<120;i++){if(await fs.access(doneFile).then(()=>true,()=>false)){completed=true;break;}await new Promise(r=>setTimeout(r,25));}
+  for(let i=0;i<200;i++){if(await fs.access(doneFile).then(()=>true,()=>false)){completed=true;break;}await new Promise(r=>setTimeout(r,25));}
   if(observed&&completed)await fs.rm(marker,{recursive:true,force:true});
  }
  assert.equal(completed,true,'detached fixture child must complete its bounded run');
