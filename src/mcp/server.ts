@@ -133,6 +133,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
   const processes=new ProcessManager(sandbox);
   const durable=new DurableProcessManager(nativeProcesses,16,options.processPersistence);
   const durableHistory=!!nativeProcesses||!!options.processPersistence;
+  const hostEnabled=!!options.hostCommands&&!!options.processPersistence;
   // Keep revoked root pins after custom IDs disappear from the protected active registry.
   // Neither rebinding nor these pins confer authority to query an old owner's native IDs.
   const processRevocations=new Map<string,{grant:WorkspaceGrant;confirmed:boolean;continuation:boolean}>();
@@ -189,8 +190,9 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           {const base=connectorStatus(),protectedStorage=protectedStateCapability();result={...base,
            protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,
            capabilities:{...base.capabilities,shellIsolation:sandbox?.verified?"verified":"blocked",localCi:ciExecutor?.verified?"available":"blocked"},
-           readyForShell:!!sandbox?.verified,executionEnvironment:sandbox?.verified?"linux-arm64-vm":null,
-           workspaceMode:sandbox?.verified?"disposable-snapshot":null,...fileCapabilities(),git:"blocked",
+           readyForShell:hostEnabled||!!sandbox?.verified,executionEnvironment:hostEnabled?"macos-same-user":sandbox?.verified?"linux-arm64-vm":null,
+           workspaceMode:hostEnabled?"host-workspace":sandbox?.verified?"disposable-snapshot":null,
+           ...(hostEnabled?{command_confinement:"none (user account)",state_integrity_vs_commands:"not_protected"}:{}),...fileCapabilities(),git:"blocked",
            workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",
            ...processHistory(),restartRecovery:options.processPersistence?.store.health?.().admission_blocked?"degraded-process-journal":"blocked"};}break;
         case "list_workspaces":
@@ -356,7 +358,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           {if(typeof args.workspace_id==="string"&&!registry.get(args.workspace_id))throw Error("WORKSPACE_NOT_FOUND");
            const protectedStorage=protectedStateCapability();
            const read=["connector_status","list_workspaces","get_workspace","bind_workspaces","unbind_workspace","list_directory","fetch_file","fetch_file_bytes","get_file_info","search","glob","list_capabilities","ci_validate_workflow","ci_list_workflows","ci_list_runs","ci_status","ci_artifacts","ci_read_artifact","ci_logs"].filter(name=>protectedStorage.available||!controlledToolNames.has(name));
-           const execution=(sandbox?.verified||options.hostCommands&&options.processPersistence)?["run_command","start_process","stop_process","list_processes","process_status","process_output"]:[];
+           const execution=(sandbox?.verified||hostEnabled)?["run_command","start_process","stop_process","list_processes","process_status","process_output"]:[];
            if(options.processPersistence&&protectedStorage.available)read.push("list_processes","process_status","process_output");
            const ci=ciExecutor?.verified?["ci_run","ci_rerun_failed","ci_cancel"]:[];
            if(sourceCapture?.verified)ci.push("ci_prepare_source");
@@ -364,7 +366,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            if(directoryAvailable())read.push("inspect_directory","get_directory_copy");
            const files=protectedStorage.available?[...fileOperations,...(fileOperations.includes("create_file")?["create_file_bytes"]:[]),...(fileOperations.includes("update_file")?["update_file_bytes"]:[]),...(batchFileWrites?["batch_file_operations"]:[])]:[];
            const enabled=new Set([...read,...files,...execution,...ci,...(controlStore&&protectedStorage.available?["acquire_control","renew_control","release_control"]:[])]);
-           result={workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,read,files,execution,ci,blocked:plannedTools.map(t=>t.name).filter(n=>!enabled.has(n)),shellIsolation:sandbox?.verified?"verified":"blocked",...fileCapabilities(),...processHistory(),git:"blocked",executionEnvironment:sandbox?.verified?"linux-arm64-vm":null,workspaceMode:sandbox?.verified?"disposable-snapshot":null,restartRecovery:options.processPersistence?.store.health?.().admission_blocked?"degraded-process-journal":"blocked"};
+           result={workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,read,files,execution,ci,blocked:plannedTools.map(t=>t.name).filter(n=>!enabled.has(n)),shellIsolation:sandbox?.verified?"verified":"blocked",...fileCapabilities(),...processHistory(),git:"blocked",executionEnvironment:hostEnabled?"macos-same-user":sandbox?.verified?"linux-arm64-vm":null,workspaceMode:hostEnabled?"host-workspace":sandbox?.verified?"disposable-snapshot":null,...(hostEnabled?{command_confinement:"none (user account)",state_integrity_vs_commands:"not_protected"}:{}),restartRecovery:options.processPersistence?.store.health?.().admission_blocked?"degraded-process-journal":"blocked"};
           }break;
         case "glob":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||typeof args.pattern!=="string"||Object.keys(args).length!==3||args.pattern.length>160||!args.pattern)throw Error("INVALID_ARGUMENTS");
