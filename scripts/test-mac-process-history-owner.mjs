@@ -31,7 +31,8 @@ async function owned(root){
  const tools=await bootstrapMcpTools(registry,identity,path.join(root,'missing-vm-installation'),owner);
  const call=async(name,arguments_={})=>decode(await tools.invoke({name,arguments:arguments_}));
  const capabilities=await call('list_capabilities');assert.equal(capabilities.ok,true);
- assert.equal(capabilities.result.restartRecovery,'ci-journal-reconciled; async-process-journal-reconciled; native-tree-recovery-not-certified');
+ assert.equal(capabilities.result.restartRecovery,'degraded-process-journal');
+ assert.equal(capabilities.result.processRecovery.admission_blocked,true,'old-owner stop lacks physical proof');
  assert.equal(capabilities.result.processHistory,'persisted-start_process; synchronous-run_command-history-pending');
  assert.equal(tools.nativeAvailable,false);assert.equal(tools.fileNativeAvailable,false);
  assert.ok(!capabilities.result.execution.includes('start_process'));
@@ -40,7 +41,7 @@ async function owned(root){
  const terminal=await call('process_status',{workspace_id:'work',process_id:meta.terminal});
  assert.equal(terminal.ok,true);assert.equal(terminal.result.state,'SUCCEEDED');
  const active=await call('process_status',{workspace_id:'work',process_id:meta.active});
- assert.equal(active.ok,true);assert.equal(active.result.state,'UNKNOWN');assert.equal(active.result.stopped,true);
+ assert.equal(active.ok,true);assert.equal(active.result.state,'UNKNOWN');assert.equal(active.result.stopped,false);
  const output=await call('process_output',{workspace_id:'work',process_id:meta.active});
  assert.equal(output.ok,true);assert.equal(output.result.stdout,'partial π');assert.equal(output.result.complete,false);
  const stale=await call('stop_process',{workspace_id:'work',process_id:meta.active,control_token:meta.staleToken});
@@ -54,7 +55,7 @@ async function owned(root){
   {env,timeout:5000,maxBuffer:8192}),error=>error.code===75&&error.stderr.includes('OWNER_BLOCKED'));
  const store=new ProcessJournalStore(path.join(identity,'process-runs'));
  const persisted=await store.load(meta.active);assert.equal(persisted.status.state,'UNKNOWN');
- assert.equal(persisted.output_complete,false);assert.equal(persisted.stopped,true);
+ assert.equal(persisted.output_complete,false);assert.equal(persisted.stopped,false);
  console.log(JSON.stringify({state:'OWNER_HISTORY_CHECK_PASS',nativeWorkloads:0,oldControlDenied:true,concurrentOwnerDenied:true}));
 }
 async function main(){
