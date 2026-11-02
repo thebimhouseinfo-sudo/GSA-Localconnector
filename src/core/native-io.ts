@@ -59,6 +59,18 @@ export interface SandboxedProcessReceipt {
  readonly artifacts?:readonly SandboxedProcessArtifact[];
  readonly artifact_error?:string|null;
 }
+/** Human-approved M3/D1 host commands. This is deliberately NOT a
+ * VerifiedNativeSandbox and does not claim any OS confinement or protection
+ * of the connector's own state from commands run as the same user. */
+export interface ApprovedMacHostCommandBackend {
+ readonly platform:"macos";
+ readonly execution_mode:"same-user-unconfined";
+ readonly command_confinement:"none (user account)";
+ readonly state_integrity_vs_commands:"not_protected";
+ execute(request:SandboxedProcessRequest):Promise<SandboxedProcessReceipt>;
+ /** True acknowledges cancellation request only, NOT physical tree stop. */
+ cancel(process_id:string,workspace_id:string):Promise<boolean>;
+}
 export interface VerifiedNativeSandbox {
  readonly platform:"windows"|"macos";readonly policy_fingerprint:string;
  readonly verified:true;
