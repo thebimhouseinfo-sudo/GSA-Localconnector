@@ -28,6 +28,8 @@ export class MacSameUserHostCommands implements ApprovedMacHostCommandBackend {
     exit_code:observed.exit_code,signal:observed.signal,
     stdout:observed.stdout,stderr:observed.stderr,
     timed_out:observed.timed_out,cancelled:observed.cancelled,
+    process_group_stop_verified:observed.process_group_stop_verified,
+    process_tree_stop_verified:false,
     output_limited:observed.stdout_truncated||observed.stderr_truncated
    };
   }finally{
