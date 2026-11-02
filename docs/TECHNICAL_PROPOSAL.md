@@ -3,9 +3,11 @@
 Status: ACTIVE DELTA — P02 simplification, first stopped-owner slice reviewed
 Critic CR: PASS for the first stopped-owner recovery/installer slice only (2026-11-01, PRE_CODE_TECHNICAL, independent Critic); prior revision 2 PASS is historical. Coordination is GUIDED_ONLY; this is not native or product acceptance.
 
-The 2026-10-31 Human decisions in [MAC-FINISH-PLAN](reviews/2026-10-30-MAC-FINISH-PLAN.md) and amended CRITERIA §7 supersede conflicting historical statements below. The recorded Critic pass applies to revision 2, not automatically to these later decisions.
+The 2026-10-31 Human decisions in [MAC-FINISH-PLAN](reviews/2026-10-30-MAC-FINISH-PLAN.md) and amended CRITERIA §7 supersede conflicting historical statements below. The independent 2026-11-01 Critic PASS covers only the first stopped-owner recovery/installer slice described in the active P02 revision; earlier revision-2 passes are historical and do not approve later designs. See [current handoff](MAC-QWEN-HANDOFF.md) for the uncommitted implementation and outstanding review finding.
 
 **Descriptive only.** No source, stub or test files are created by this proposal. It covers every milestone and Task of [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), written bottom-up from the Tasks (P-IDs from [MILESTONES.md](MILESTONES.md)). It adds no scope: it describes how the already reviewed sequence maps onto existing code. "VERIFIED" = path/behavior seen in this repository; "PROPOSED" = new design; "UNVERIFIED" = depends on a host fact not yet proven. No accepted DEC files exist under `docs/discussions/`, so none is linked.
+
+**Reading rule:** Sections describing prior reviews, packs, responses and native observations are retained as history. They do not impose their old sequencing, blanket sandbox claims, review gates or extra tests where inconsistent with the active P02 revision, current PLAN-M2–M5, Human D1–D3 or CRITERIA. No historical PASS automatically authorizes a later design or establishes native acceptance.
 
 ## P02 simplification — ACTIVE 2026-11-01
 

@@ -2,6 +2,8 @@
 
 Date: 2026-10-30 · Reviewer: Claude (read-only check; no product source changed) · Branch `main`
 
+**Historical review and decisions:** The analysis below records the state before D1–D3. D1=B was subsequently adopted in CRITERIA §7 (`202297c`), so earlier statements requiring command confinement are superseded. The 27-file checkpoint and old test counts are historical. For the current sequence and unfinished working tree use [Mac handoff](../MAC-QWEN-HANDOFF.md), the active implementation plan and the active P02 proposal; do not treat this review as current milestone acceptance.
+
 ## Verified state (fresh)
 
 - `npm run build` OK; `npm test` 585 total / 582 pass / 0 fail / 3 skipped (this is the working tree, 27 files uncommitted).

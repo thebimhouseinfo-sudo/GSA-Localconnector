@@ -1,5 +1,7 @@
 # Proposed product milestones
 
+**Current checkpoint, 2026-11-02:** M2 is in progress; M2–M5 are not complete. Continue from [MAC-QWEN-HANDOFF.md](MAC-QWEN-HANDOFF.md) and the active [P02 proposal](TECHNICAL_PROPOSAL.md#p02-simplification--active-2026-11-01). The dated checkpoints below are historical observations, not instructions to repeat completed slices or proof of current installed-plugin acceptance. M3 commands use the approved unconfined same-user exception in CRITERIA §7; file-tool boundaries remain required. M6 remains deferred until M5 acceptance.
+
 Source progress,2026-10-19: role registry, protected persistence and explicit API binding slices have focused source evidence and review. Actual Mac file operations and host execution remain pending; no milestone ID, completion marker or native acceptance is advanced by this progress note. Older next-step references to the role foundation below are historical.
 
 Current scope correction,2026-10-18: personal-use local file/Git tools and existing project scripts on the actual host. Project-specific cross-OS tests may run in GitHub CI when needed; no all-OS test lab, VM prerequisite or professional configuration framework is required. Historical VM evidence does not add exit requirements. Keep the existing Linux worker optional without dedicated re-testing; remove connector support if real-project use fails. Existing milestone IDs remain; no completion is inferred and settled workspace/reference boundaries remain unchanged.

@@ -2,6 +2,8 @@
 
 Status: ACTIVE
 
+**Current handoff (2026-11-02):** Start with [MAC-QWEN-HANDOFF.md](MAC-QWEN-HANDOFF.md) for the working-tree checkpoint, remaining review finding and exact next actions. M2 is in progress; M2–M5 are not accepted. The active P02 simplification and first stopped-owner slice in [TECHNICAL_PROPOSAL.md](TECHNICAL_PROPOSAL.md#p02-simplification--active-2026-11-01) govern over conflicting historical proposals. Do not restart discovery or infer milestone completion from historical evidence.
+
 Derived from the approved [CRITERIA.md](CRITERIA.md) (Status: APPROVED, kept unchanged by the user). It reorganizes the already reviewed sequence in [MILESTONES.md](MILESTONES.md) and the detailed [implementation plan](plans/GSA-LOCALCONNECTOR-IMPLEMENTATION-PLAN.md) into GOALs; it adds no new product scope, milestone or task. Facts: [PROJECT_PROFILE.md](PROJECT_PROFILE.md), [ARCHITECTURE.md](ARCHITECTURE.md), current state: [STATUS.md](STATUS.md). CRITERIA has no per-requirement IDs, so references use `CRITERIA §N` (its numbered sections 1–10 and the 2026-10-18 scope confirmation, `§0`).
 
 **GOALMAP is inside this Plan.** Milestone IDs are kept as the reviewed identities; State is only a pointer to evidence in STATUS.md, never a completion claim. Gate state is owned by `harness/gate.mjs`; nothing here advances it.
