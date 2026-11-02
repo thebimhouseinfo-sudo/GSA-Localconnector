@@ -113,24 +113,35 @@ test('installed qualified broker handles mutation and dropped reply with a real 
  cleanupGuard.safe=false;
  const result=await new Promise<{code:number|null;stdout:string;stderr:string}>((resolve,reject)=>{
   const child=spawn('/usr/bin/python3',[path.resolve('scripts/macos-owner-launcher.py'),'--identity',f.identity,'--node',process.execPath,'--entry',path.resolve('test/helpers/mac-recovery-installed-fixture.mjs')],{env:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',HOME:f.temp,TMPDIR:path.dirname(f.temp),GSA_FIXTURE_IDENTITY:f.identity,GSA_FIXTURE_WORKSPACE:f.workspace,GSA_FIXTURE_SCRATCH:f.temp},detached:true,stdio:['ignore','pipe','pipe']});
-  let stdout='',stderr='',settled=false,closed=false;const group=child.pid;
-  const signal=(name:NodeJS.Signals)=>{if(!group)return;try{process.kill(-group,name);}catch(e){if((e as NodeJS.ErrnoException).code!=='ESRCH')throw e;}};
-  const groupAlive=()=>{if(!group)return true;try{process.kill(-group,0);return true;}catch(e){if((e as NodeJS.ErrnoException).code==='ESRCH')return false;return true;}};
-  const finish=async(code:number|null,error?:Error)=>{
-   if(settled)return;settled=true;clearTimeout(deadline);clearTimeout(hardStop);
-   // The fixture launcher and its broker children must remain in this owned process group.
-   // If they escape into another session, this observation is insufficient: keep the fixture.
-   for(let i=0;i<20&&groupAlive();i++)await new Promise(r=>setTimeout(r,50));
-   if(groupAlive()){reject(Error(`Fixture process group still alive; retained ${f.temp}`));return;}
-   cleanupGuard.safe=true;
-   if(error)reject(error);else resolve({code,stdout,stderr});
+  let stdout='',stderr='',closed=false,firstError:Error|undefined;
+  const group=child.pid;
+  // Only this detached child owns the process group. A descendant which calls setsid()
+  // is NOT covered by a group probe: this test must not certify the whole tree.
+  const groupAlive=()=>{if(!group)return true;try{process.kill(-group,0);return true;}catch(e){return (e as NodeJS.ErrnoException).code!=='ESRCH';}};
+  const signal=(name:NodeJS.Signals)=>{if(!group)return;try{process.kill(-group,name);}catch(e){if((e as NodeJS.ErrnoException).code!=='ESRCH')firstError??=e as Error;}};
+  child.stdout.on('data',bytes=>{stdout+=bytes;if(stdout.length>65536){firstError??=Error('Fixture stdout limit');signal('SIGTERM');}});
+  child.stderr.on('data',bytes=>{stderr+=bytes;if(stderr.length>65536){firstError??=Error('Fixture stderr limit');signal('SIGTERM');}});
+  child.on('error',error=>{firstError??=error;});
+  child.on('close',()=>{closed=true;});
+  // Launcher close is not completion. Poll the owned group until physical absence;
+  // TERM and then KILL are bounded even if the launcher has already exited.
+  const started=Date.now(),delay=(ms:number)=>new Promise(r=>setTimeout(r,ms));
+  let sentTerm=false,sentKill=false;
+  const monitor=async()=>{
+   while(Date.now()-started<21000){
+    const age=Date.now()-started;
+    if(age>=15000&&!sentTerm){sentTerm=true;firstError??=Error('Fixture deadline exceeded');signal('SIGTERM');}
+    if(age>=18000&&!sentKill){sentKill=true;signal('SIGKILL');}
+    if(closed&&!groupAlive()){
+     cleanupGuard.safe=true;
+     if(firstError)reject(firstError);else resolve({code:child.exitCode,stdout,stderr});
+     return;
+    }
+    await delay(50);
+   }
+   reject(Error(`Fixture group stop unverified; retained ${f.temp}`));
   };
-  const deadline=setTimeout(()=>{try{signal('SIGTERM');}catch(e){void finish(null,e as Error);}},15000);
-  const hardStop=setTimeout(()=>{try{signal('SIGKILL');}catch(e){void finish(null,e as Error);}if(!closed)void finish(null,Error('Fixture child did not close within bounded lifetime'));},18000);
-  child.stdout.on('data',bytes=>{if(stdout.length<65536)stdout+=bytes;else{try{signal('SIGKILL');}catch(e){void finish(null,e as Error);}}});
-  child.stderr.on('data',bytes=>{if(stderr.length<65536)stderr+=bytes;});
-  child.on('error',error=>{void finish(null,error);});
-  child.on('close',code=>{closed=true;void finish(code);});
+  void monitor();
  });
  assert.equal(result.code,0,result.stderr);const actual=JSON.parse(result.stdout);assert.equal(actual.dropped,'UNKNOWN');assert.equal(actual.readback,'APPLIED');assert.equal(actual.trash,'APPLIED');
  assert.equal(await fs.readFile(canary,'utf8'),'unchanged');
