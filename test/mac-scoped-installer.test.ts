@@ -424,7 +424,9 @@ test('nonempty recovery roots require a matching authenticated existing binding'
  const f=await fixture(t),installer=await import(moduleUrl),registry=await loadTrustedRegistry(f.identity),entry=registry.list()[0]!,root=path.join(f.temp,'recovery'),live=path.join(f.identity,'scoped-files');
  await fs.mkdir(root,{mode:0o700});await fs.writeFile(path.join(root,'capture'),'retained');await fs.mkdir(live,{mode:0o700});
  const stat=await fs.stat(root,{bigint:true}),rootIdentity={device:String(stat.dev),inode:String(stat.ino)},grant={id:entry.id,role:entry.role,root:entry.canonicalRoot,rootIdentity:entry.rootIdentity,revision:entry.revision};
- const qualification=await fs.readFile(new URL('../../test/fixtures/mac27-recovery-qualification.json',import.meta.url),'utf8'),recoveryBuild=JSON.parse(qualification).builds.production,evidence=receiptSample(os.release(),process.arch),key=Buffer.alloc(32,19);
+ const qualification=await fs.readFile(new URL('../../test/fixtures/mac27-recovery-qualification.json',import.meta.url),'utf8'),recoveryBuild=JSON.parse(qualification).builds.production;
+ if(recoveryBuild.hostRelease!==os.release()||recoveryBuild.arch!==process.arch){t.skip('Mac27 recovery qualification is host-bound; cannot replay on this runner');return;}
+ const evidence=receiptSample(os.release(),process.arch),key=Buffer.alloc(32,19);
  const proof:any={format:'gsa-scoped-files-v2',hostRelease:os.release(),arch:process.arch,build:evidence.build,evidence,recoveryQualification:qualification,recoveryBuild,grants:[{...grant,recovery:{root,rootIdentity,code_sha256:recoveryBuild.code_sha256}}]};
  await fs.writeFile(path.join(live,'proof-key'),key,{mode:0o600});const save=async()=>{const body=JSON.stringify(proof);await fs.writeFile(path.join(live,'install.json'),JSON.stringify({body,hmac:createHmac('sha256',key).update(body).digest('hex')}),{mode:0o600});};
  await save();await installer.requireRecoveryRootOwnership(live,grant,root,rootIdentity);
