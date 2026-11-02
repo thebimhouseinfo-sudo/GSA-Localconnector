@@ -118,5 +118,5 @@ test('a leftover journal lock preserves uncertain work and degrades recovery wit
  assert.equal(capability.processRecovery.unresolved_records,1);assert.equal(capability.processRecovery.admission_blocked,true);assert.match(capability.restartRecovery,/degraded/i);
  // Only the test removes its own synthetic lock; production must never break it.
  await fs.unlink(lock);await store.reconcileAfterOwnerFence(owner);
- assert.equal(store.health().admission_blocked,false);assert.equal((await store.load(running.process_id))!.status.state,'UNKNOWN');
+ assert.equal(store.health().admission_blocked,true,'unlocking journal does not prove former process stopped');const uncertain=(await store.load(running.process_id))!;assert.equal(uncertain.status.state,'UNKNOWN');assert.equal(uncertain.stopped,false);
 });
