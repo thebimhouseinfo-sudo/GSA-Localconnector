@@ -35,3 +35,13 @@ Current pending acceptance:
 - C-G3: full candidate manifest/signature/desktop startup-shutdown acceptance entrypoint remains BLOCKED; fail-closed.
 - Native installed selected plugin: NOT_RUN (outside hosted CI, requires G3 and separate authorization).
 No exact combined C0+C-A+C-B+packaging same-SHA PASS exists. Do not install, merge or deploy on this evidence.
+
+## Hosted-only acceptance scope clarification (Human 2026-11-05)
+
+- **macOS VM / GitHub-hosted runner tests:** required now. Use actual `macos-latest` ARM64 native runner. No acceptance may claim PASS from QUEUED or CANCELLED jobs.
+- **Physical user Mac tests:** **pending user require**. Not a CI-phase blocker; do not install/start a real user Mac or claim such tests were done.
+- **PR/push exact SHA:** Track C workflow now checkout `github.event.pull_request.head.sha || github.sha` and verifies `SOURCE_SHA`, records original `GITHUB_SHA`. Branch-wise concurrency distinguishes PR and push so neither cross-cancels solely by event type.
+- **Latest observed historical failure:** PR run 42046143138 (source c6fa97f7bad65bc3cdd00d1c26304714fecc3da1) TypeScript build failure at `src/mcp/runtime-bootstrap.ts:85`: `NativeScopedFiles` missing `renameDirectoryExclusive`, `diffNonGitText` required by `MacScopedNativeFiles`. Source ownership with integrator; do not hide via CI `continue-on-error`.
+- **Hosted run updates:** `42059630490` started C0 compiled source tests (later CANCELLED by newer branch pushes, not PASS). At the time of this read, exact SHA `8fe5ad963f67609d6668392e9146c8db80cbba02` had runs `42059926025` (push PENDING) and `42059936358` (PR PENDING). Complete C0/C-A/C-B/C-G3 statuses **UNVERIFIED**.
+- **CI integration code commits:** `375057fa5b28f7b79d604c971ba66c15a0e02d36` source SHA checkout and event-separated concurrency; `8b04457eb6d9fe2f67fd98f854fc600f3e51adc5` G3 SHA env; `8fe5ad963f67609d6668392e9146c8db80cbba02` G3 SHA source check.
+No release/merge/deploy authorized.
