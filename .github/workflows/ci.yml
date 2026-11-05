@@ -28,7 +28,8 @@ jobs:
       - name: Run non-VM source tests
         shell: bash
         run: |
-          mapfile -t tests < <(find dist/test -maxdepth 1 -type f -name '*.test.js' ! -name 'macos-vm-*' | sort)
+          tests=()
+          while IFS= read -r file; do tests+=("$file"); done < <(find dist/test -maxdepth 1 -type f -name '*.test.js' ! -name 'macos-vm-*' | sort)
           test "${#tests[@]}" -gt 0
           node --test "${tests[@]}"
       - name: Test native source-capture fixture (no VM)
