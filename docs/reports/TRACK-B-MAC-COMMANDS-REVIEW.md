@@ -36,3 +36,11 @@ NOT YET INDEPENDENT PASS. No merge/deploy, no release acceptance. Continue self-
 - **B-R18 / LOCAL ACCEPTANCE DEFERRED:** Testing on the user's real Mac is **pending user require**. GitHub-hosted Darwin tests remain the required current phase. No installed-plugin or physical-Mac PASS claimed.
 
 Self-review outcome: **BLOCKED BY CROSS-TRACK INTEGRATION/CI; Track B native correctness remains UNVERIFIED on the exact latest SHA**. Source code not modified in this follow-up because the evidenced failure belongs to non-owned files. No unrelated edits, no attempt to bypass ownership or soften CI assertions.
+
+## Final Track B handoff / closure (Human direction 2026-11-05)
+
+- **CLOSED — BLOCKED_BY_DEPENDENCY, NOT DONE/PASS.** Work is handed to Track A + Integration and CI owners rather than continuing Track B changes.
+- Blocking evidence: run 42046143138, C0 `TS2739` at integrator-owned `src/mcp/runtime-bootstrap.ts`; C-B compiled test missing in G3 job after failed build. Independent Darwin B1/B2/B3 acceptance is still UNVERIFIED.
+- Next owner action: reconcile Track A file capabilities and shared MCP bootstrap, then Track C reruns exact-SHA C0/C-B; G2 owner completes integration and secures independent reviewer verdict. Do not treat closure as automatic permission to merge or deploy.
+- Tests on the user's real Mac: **pending user require** (deferred, not needed for hosted CI stage).
+- Historical findings B-R01 through B-R18 and prior partial source implementation remain intact. No outstanding Track B operation is automatically replayed.
