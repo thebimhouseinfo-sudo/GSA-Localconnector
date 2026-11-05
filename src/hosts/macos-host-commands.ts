@@ -64,7 +64,11 @@ export class MacNativeCommands implements VerifiedNativeSandbox,VerifiedNativePr
   return Buffer.concat(chunks).toString("utf8");
  }
  private async launch(request:SandboxedProcessRequest):Promise<Run>{
-  if(this.runs.size>=128)throw Error("PROCESS_HISTORY_CAPACITY");
+  if(this.runs.size>=128){
+   const completed=[...this.runs.values()].find(run=>run.closed&&run.stopProof);
+   if(completed)this.runs.delete(completed.id);
+   else throw Error("PROCESS_HISTORY_CAPACITY");
+  }
   const cwd=await this.cwd(request),id=request.process_id??randomUUID();
   if(this.runs.has(id))throw Error("PROCESS_ID_ALREADY_USED");
   const env:NodeJS.ProcessEnv={PATH:process.env.PATH??"/usr/bin:/bin",LANG:process.env.LANG??"C",TMPDIR:process.env.TMPDIR??"/tmp"};
@@ -83,7 +87,7 @@ export class MacNativeCommands implements VerifiedNativeSandbox,VerifiedNativePr
    run.closed=true;run.ended_at=new Date().toISOString();run.exit_code=code;run.signal=signal;
    if(run.timer)clearTimeout(run.timer);
    run.stopProof=this.groupAbsent(run);
-   run.state=!run.stopProof?"UNKNOWN":run.timed_out?"FAILED":run.cancelled?"CANCELLED":code===0?"SUCCEEDED":code===null?"UNKNOWN":"FAILED";
+   run.state=!run.stopProof||run.output_limited?"UNKNOWN":run.timed_out?"FAILED":run.cancelled?"CANCELLED":code===0?"SUCCEEDED":code===null?"UNKNOWN":"FAILED";
    resolve();
   });
   run.timer=setTimeout(()=>{run.timed_out=true;void this.terminate(run);},request.time_limit_ms);
