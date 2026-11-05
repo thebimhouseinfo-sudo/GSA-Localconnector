@@ -28,3 +28,11 @@ NOT YET INDEPENDENT PASS. No merge/deploy, no release acceptance. Continue self-
 
 - B-R14 — **REPAIRED / AWAITING HOST PROOF**: `execute()` previously awaited `run.settled` without a caller observation deadline if child close did not arrive after timeout. Now observation is bounded and null exit code prevents Git false success when physical stop is unproven. Source commit `77e13830fd88f7cb6f95212c30b5dd6396ee2221`.
 - B-R15 — **NO NEW EVIDENCED FAILURE**: latest C0 CI jobs queued. Do not treat older job success/failure as exact-current-SHA verdict. CI C0/G3 workflow is Track C owned and unchanged by Track B.
+
+## Current CI blocking findings — 2026-11-05
+
+- **B-R16 / CROSS-TRACK BLOCKER:** At SHA `c6fa97f7bad65bc3cdd00d1c26304714fecc3da1`, GitHub-hosted macOS run 42046143138 failed C0 TypeScript compile in integrator-owned `src/mcp/runtime-bootstrap.ts(85,6)` (TS2739: `NativeScopedFiles` does not supply `MacScopedNativeFiles.renameDirectoryExclusive` and `diffNonGitText`). **Disposition: INTEGRATION REQUEST**, not a Track B-owned source edit.
+- **B-R17 / CI DEPENDENCY BLOCKER:** C-B G3 job fails before running native B tests because `dist/test/mac-host-commands.test.js` does not exist in that job. Track C owns CI build/test delivery; preserve explicit failure for missing tests and fix build-stage dependency rather than disabling the gate.
+- **B-R18 / LOCAL ACCEPTANCE DEFERRED:** Testing on the user's real Mac is **pending user require**. GitHub-hosted Darwin tests remain the required current phase. No installed-plugin or physical-Mac PASS claimed.
+
+Self-review outcome: **BLOCKED BY CROSS-TRACK INTEGRATION/CI; Track B native correctness remains UNVERIFIED on the exact latest SHA**. Source code not modified in this follow-up because the evidenced failure belongs to non-owned files. No unrelated edits, no attempt to bypass ownership or soften CI assertions.
