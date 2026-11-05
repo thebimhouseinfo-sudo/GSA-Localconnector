@@ -49,7 +49,7 @@ jobs:
         run: echo 'C0 PASS establishes source/build tests only; never native connector acceptance.'
   g3-preinstall:
     needs: c0-source
-    if: ${{ always() }}
+    if: ${{ needs.c0-source.result == 'success' }}
     runs-on: macos-latest
     timeout-minutes: 20
     steps:
