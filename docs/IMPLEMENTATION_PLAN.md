@@ -2,13 +2,13 @@
 
 ## GOAL
 
-Enable online GSA to operate the user's existing macOS workspace directly through `gsa-lc-mac` with full scoped file operations, reference-only read/copy, native shell/Git/build/test/process/logs, real evidence and truthful recovery. **No product VM.** GitHub-hosted macOS build/tests must PASS for the exact installation candidate *before* considering any change to the user's Mac. Retire old VM integration completely after native replacement proof. Mac M5 before Windows M6.
+Enable online GSA to operate the user's existing macOS workspace directly through `gsa-lc-mac` with full scoped file operations, reference-only read/copy, native shell/Git/build/test/process/logs, real evidence and truthful recovery. **No product VM.** GitHub-hosted macOS build/tests must PASS for the exact installation candidate *before* considering any change to the user's Mac. Retire old VM integration completely after native replacement proof. Mac M5 is the finish line of this planning scope; Windows is a separate future phase, with no Windows task in the current Mac Job.
 
 **Status:** PRE-CODE DOCUMENT REVISION. Approved source of requirements: [CRITERIA](CRITERIA.md) §0–§10 including the 2026-10-31 unconfined-user-account command exception and 2026-11-05 VM retirement decision in [DECISIONS](DECISIONS.md). Task assignment: [MILESTONES](MILESTONES.md). Exact implementation design and CI matrix: [TECHNICAL PROPOSAL](TECHNICAL_PROPOSAL.md). Superseded technical proposal archived at `docs/archive/TECHNICAL-PROPOSAL-LEGACY-PRE-20261105.md`. Older linear/optional-VM instructions do not apply.
 
 ### Baseline facts and gaps
 
-- M0/M1 have bounded design/native broker evidence; M2 in progress, M3/M4/M5 NOT accepted, M6 deferred. No source-only or historical fixture PASS establishes current installed-plugin Mac acceptance.
+- M0/M1 have bounded design/native broker evidence; M2 in progress, M3/M4/M5 NOT accepted, Windows not planned in this Job. No source-only or historical fixture PASS establishes current installed-plugin Mac acceptance.
 - Existing `runtime-bootstrap.ts` invokes VM runtime/CI; `server.ts` and `catalog.ts` retain VM descriptions and Git denial; command cwd is currently limited to `"." `. Native Mac runner is a missing product capability, not a current PASS.
 - Existing native file brokers, owner/grants/journals, process journal and desktop components are reusable candidates. Previously reported retained-FD relocation and fixture physical-stop limitations remain open and may block affected operations.
 - First PR #4 source-only GitHub macOS CI PASS for old SHA `28f96118588acf9e78c230c0870e514e8af42fa6` is narrower than mandatory future native command/file suite. CI results must bind to each **new** exact commit.
@@ -60,7 +60,7 @@ Merge reviewed work deterministically with continuous exact-revision macOS check
 | G4 — user's real Mac | **G3 PASS + separately reviewed/authorized installer action** | Install matching artifact only through a controlled action; test plugin with disposable roots | actual native selected-plugin files, scripts, Git, process/log/stop and canary observations |
 | G5 — recovery + retirement | G4 native replacement proof; M4 source may prep earlier | Verify real Mac crash/restart/UNKNOWN/revocation; separately remove VM-only code and hosted C-VM regression | recovery proof + no shipped VM import; original user media untouched |
 | G6 — M5 | G4+G5, completed D | Observe installed background/Dock/setup and concurrent independent projects | full Mac Criteria met, no required capability UNKNOWN |
-| G7 — M6 Windows | M5 accepted | Only now plan/build Windows | separate Windows evidence, not reused Mac test |
+| Next phase (outside this Plan) — Windows | Mac M5 accepted | Create a separate Windows Plan, Milestones, Technical Proposal and reviewed Job when authorized | No Windows implementation or acceptance obligation inside this Mac Job |
 
 A/B/C/D/E can research/design in parallel, but the gates **G0→G6 remain sequential for integrated acceptance**. M4 source tests may start after B run semantics freeze in parallel to integration; restart/reboot proof requires G4. E2 VM deletion is independent/reversible after native replacement and has its own SHA-pinned CI; on failure revert only E2 PR, never automatically reactivate VM. No automatic production installation or connector state migration based on CI status.
 
@@ -84,7 +84,7 @@ Prove each required capability without misrepresenting source, hosted Mac, histo
 
 Deliver implementation-ready, task-sized artifacts without performing product implementation during document review.
 
-Reviewer independently checks: all approved Criteria §0–§10, M0–M6 coverage and task dependencies; exact file/function/caller mapping and expected outputs in [Technical Proposal](TECHNICAL_PROPOSAL.md); branch ownership, shared MCP integration, File/Process UNKNOWN/no-replay, unconfined command declarations, hosted pre-install vs local acceptance, staged VM retirement/rollback and protected uncommitted Mac work. Every finding must have evidence, owner and closure. Update durable GSA planning Job/Review only through authorized CAS/readback and exact source SHA; previous 2026-10-22 READY Job Reviewer PASS does not approve this V3.
+Reviewer independently checks: all approved Criteria §0–§10, Mac M0–M5 coverage and task dependencies; Windows excluded from this planning Job; exact file/function/caller mapping and expected outputs in [Technical Proposal](TECHNICAL_PROPOSAL.md); branch ownership, shared MCP integration, File/Process UNKNOWN/no-replay, unconfined command declarations, hosted pre-install vs local acceptance, staged VM retirement/rollback and protected uncommitted Mac work. Every finding must have evidence, owner and closure. Update durable GSA planning Job/Review only through authorized CAS/readback and exact source SHA; previous 2026-10-22 READY Job Reviewer PASS does not approve this V3.
 
 **Current state:** V3 documents are prepared for Reviewer; no product source changed and no Mac installation performed. Only a verified Reviewer PASS on exact V3 (and, if requested, later CR) counts as review closure. Human approval is still required before coding.
 
@@ -93,11 +93,11 @@ Reviewer independently checks: all approved Criteria §0–§10, M0–M6 coverag
 
 ### GOAL
 
-Translate the reviewed product requirements into an unambiguous set of parallel *future* coding assignments, including M6 deferral, without activating a task or rewriting a READY historical Job prematurely.
+Translate the reviewed product requirements into an unambiguous set of parallel *future* coding assignments, explicitly excluding Windows implementation, without activating a task or rewriting a READY historical Job prematurely.
 
 **Two-level dependencies.** At the *source authoring* level, file/backend (A), native command (B), CI (C), desktop preparation (D) and VM inventory (E1) run concurrently after the shared T0 contract, each on a separate feature branch with exclusive file ownership. At the *capability acceptance* level, files must be integrated before command dispatcher wiring, full hosted macOS native tests must pass before any real-Mac installation, and real Mac verification precedes VM removal and M5 sign-off. Do not let a linear presentation order become an implicit dependency edge.
 
-**GSA planning reconciliation:** historical `J-2600` revision 3 has the old M2→M3 linear topology. The replacement planning Job `J-FA79` is a planning artifact, not an implementation job; its task graph MUST be normalized to the DAG in Milestones (including a deferred M6 node). Old Reviewer PASS never authorizes it. GSA Project Memory Criteria must match the approved current `docs/CRITERIA.md` byte-for-byte; the 2026-10-31 unconfined shell exception cannot be lost by re-binding to the stale Criteria version. Use GSA-controlled job revision/verification and independent Reviewer readback before future coding assignment. Any unavailable Job update leaves this source plan usable for review, but marks the durable planning handoff **BLOCKED**, not READY.
+**GSA planning reconciliation:** historical `J-2600` revision 3 has the old M2→M3 linear topology. The replacement planning Job `J-FA79` is a planning artifact, not an implementation job; its task graph MUST be normalized to the DAG in Milestones (ending at Mac M5, with NO M6 node). Old Reviewer PASS never authorizes it. GSA Project Memory Criteria must match the approved current `docs/CRITERIA.md` byte-for-byte; the 2026-10-31 unconfined shell exception cannot be lost by re-binding to the stale Criteria version. Use GSA-controlled job revision/verification and independent Reviewer readback before future coding assignment. Any unavailable Job update leaves this source plan usable for review, but marks the durable planning handoff **BLOCKED**, not READY.
 
 **Task assignment readiness contract:** each future task explicitly supplies (1) exact starting Git SHA and active development branch, (2) owner/allowlisted paths and common files that MUST NOT be changed, (3) prerequisites based on IDs rather than milestone-complete shortcuts, (4) contract to reuse and prohibited second system, (5) positive, negative and failure-mode tests, (6) expected GitHub macOS runner evidence on exact SHA, (7) review disposition and known local-host gaps. Source-coding Tasks may not auto-start from this document.
 
@@ -113,7 +113,7 @@ Translate the reviewed product requirements into an unambiguous set of parallel 
 | §5–§6 logs/status/output and long-running cancel | B2–B3, C-B, R1 | bounded stdout/stderr, exit, source version identity and exact owned physical stop |
 | §7 file boundary and accepted command exception | A, B, C, G4 | file API root/reference denials and honest unconfined command declaration |
 | §8 reconnect/crash/reboot truthfulness | R1–R2, G4, M5 | no duplicate effects, UNKNOWN where physical stop or prior effect unproven |
-| §9 Windows parity | M6-01/M6-02 | starts only after M5 Mac sign-off; independent Windows host proof |
+| §9 Windows parity | Future separate Windows phase (not a Mac task) | Only after Mac M5 acceptance and its own reviewed Plan/Technical Proposal/Job |
 | §10 full user journey | D1/D2, G4, M5 | background/Dock/tunnel, independent projects and full plugin functionality |
 
 **Definition of plan-review complete:** exact V3 Plan/Milestones/Proposal agree on these owner/dependency/test facts, Reviewer record has zero unresolved findings and is pinned to matching repository blobs, the active GSA Project Job references current approved Criteria and reflects the non-linear topology, and all historical conflicting proposals are marked archival. No merge, deploy, local installation or product coding is implied by review completion.
