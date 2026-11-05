@@ -18,3 +18,10 @@ Prefer no changes to `src/core/native-io.ts`. If artifacts/source/toolchain must
 
 ## Track B acceptance limit
 Adapter is source-implemented, but G2 wiring and native CI/host evidence are not included in Track B's current proof. Integration owner must not mark B4/G2 PASS based on source existence alone.
+
+## GitHub-hosted macOS CI reconciliation — 2026-11-05 (22:53 ICT continuation)
+
+- Exact observed branch HEAD: `c6fa97f7bad65bc3cdd00d1c26304714fecc3da1`. GitHub run [42046143138](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/42046143138) **completed FAILURE**, not pending. `c0-source` job 127341400609 passed checkout, host identity and `npm ci --ignore-scripts`, but `npm run build` failed with TypeScript `TS2739` at `src/mcp/runtime-bootstrap.ts(85,6)`: base `NativeScopedFiles` lacks `renameDirectoryExclusive` and `diffNonGitText` from `MacScopedNativeFiles`. This is a shared integration/Track A interface mismatch; Track B must not edit shared MCP or Track A files. Integration owner should coordinate the fix with Track A and re-run exact-SHA C0.
+- `g3-preinstall` job 127342537678 also failed. `C-A` says `dist/test/mac-scoped-files.test.js` missing, `C-B` says `dist/test/mac-host-commands.test.js` missing, and `C-G3` says a real pinned tunnel-client artifact is unavailable. Because C0 compilation failed and the separate G3 job did not prepare compiled tests, missing compiled test outputs are **BLOCKED / NOT EXECUTED**, not proof of a failing Track B native test. Track C must arrange proper exact-revision compile/build and test delivery within its workflow ownership; absence must remain a failing gate.
+- Track B standalone Darwin-native test result at current HEAD: **UNVERIFIED**. No test on user's physical Mac performed, as requested: **pending user require**. This is intentionally not an acceptance gate for Track B's GitHub-hosted CI stage; G4/M5 real-device acceptance remains separate.
+- Safety and ownership: no changes to `src/mcp/*`, Track A/C/D/E source, local checkout, user device, VM media, `main`, or installer.
