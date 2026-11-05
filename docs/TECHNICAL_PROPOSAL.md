@@ -2,7 +2,7 @@
 
 ## GOAL
 
-Deliver the *existing* approved local-connector capabilities to online GSA on native macOS, not through the old Linux guest. Keep the existing workspace/reference file-API boundary; commands execute as the logged-in user with **no OS confinement**, exactly as CRITERIA §7 (2026-10-31) permits. Reuse the existing native file brokers, owner/grant controls, durable file/process records and MCP interface. Run exact-revision GitHub-hosted macOS tests **before** any installation on the user's Mac. No new VM, CI/DAG system, local reasoning agent, or permission gate. Windows only after Mac M5 acceptance.
+Deliver the *existing* approved local-connector capabilities to online GSA on native macOS, not through the old Linux guest. Keep the existing workspace/reference file-API boundary; commands execute as the logged-in user with **no OS confinement**, exactly as CRITERIA §7 (2026-10-31) permits. Reuse the existing native file brokers, owner/grant controls, durable file/process records and MCP interface. Run exact-revision GitHub-hosted macOS tests **before** any installation on the user's Mac. No new VM, CI/DAG system, local reasoning agent, or permission gate. This technical proposal covers Mac only and stops at M5; Windows requires a separate future proposal after M5 acceptance.
 
 **Authority:** `docs/CRITERIA.md` APPROVED; 2026-10-31 §7 exception; 2026-11-05 human decision `docs/DECISIONS.md`; Plan and Task DAG at `docs/IMPLEMENTATION_PLAN.md` and `docs/MILESTONES.md`. Earlier technical discussions are archived at `docs/archive/TECHNICAL-PROPOSAL-LEGACY-PRE-20261105.md` and are NOT coding authority. This complete connected proposal replaces all older technical prescriptions. No product code has been modified; no prior Critic PASS is transferred to this revision.
 
@@ -94,7 +94,7 @@ Zero VM runtime dependency in shipped connector, without destroying user VM medi
 
 **E2 — REMOVE only after native replacement and MAC-G4 proof:** isolated reversible `chore/remove-vm-runtime` PR based on the accepted native Mac source, removing guest-only source/CLI/Catalog/CI hooks/VM-only tests and installation. Preserve read-only history safely or migrate it without mutating prior results; no remaining runtime VM imports or package dependencies. Run C-VM regression on exact deletion SHA; never merge VM deletion while native Mac regression red. On regression, revert **the deletion PR only**, keep native Mac plugin and user data unchanged; no automatic fallback to old VM, no auto-install. Any local installer upgrade/rollback is a separately reviewed human-approved action with matching signed artifact and preserved previous generation. Only accept M5 when replacement+retirement both verified.
 
-## PHASE I — Serial integration, M4/M5 acceptance and Windows deferment
+## PHASE I — Serial integration and Mac M4/M5 acceptance
 
 ### GOAL
 
@@ -108,7 +108,7 @@ Resolve parallel outputs deterministically and prove results before real-device 
 
 **M4:** owner fencing, crash/service restart/reboot/wake and truthful UNKNOWN/no duplicate effects, unrelated apps intact. M4 source preparation can overlap earlier tasks, but native reconciliation acceptance needs G4. **VM-E2 follows only a proven direct-host replacement** and is independently reversible; M5 waits for both complete recovery and clean VM retirement.
 
-**M5:** installed app lifecycle, independent concurrent projects, complete Criteria §1–§8/§10, genuine plugin and Mac host results, exact version and no unverified required tool. Only after accepted M5 may Windows M6 feature work start.
+**M5:** installed app lifecycle, independent concurrent projects, complete Criteria §1–§8/§10, genuine plugin and Mac host results, exact version and no unverified required tool. Windows planning is a separate future phase and is not authorized by this Mac proposal.
 
 ## PRE-CODE REVIEW TABLE
 
@@ -124,22 +124,12 @@ Resolve parallel outputs deterministically and prove results before real-device 
 | Independent Reviewer/CR | must be performed on V3 exact source docs/Job revision | NOT YET RECORDED |
 
 
-## PHASE W — Windows M6 deferred after accepted Mac M5
-
-### GOAL
-
-Deliver the same approved connector API behavior on the user's Windows machine after native Mac M5 is fully accepted, using Windows-native file/ACL/process and plugin lifecycle mechanisms. No product VM, no new CI engine and no simultaneous two-host test matrix.
-
-**M6-01 architecture (DEFERRED, NOT CODE AUTHORITY YET):** READ/REUSE existing cross-platform `src/core/{contracts,workspace,process-manager,git-engine}.ts`, `src/mcp/{catalog,server,runtime-bootstrap}.ts` and `src/hosts/windows-appcontainer-candidate.ts` only after inspecting their actual use and Windows protection feasibility. Propose minimum Windows-specific host adapter and file boundary based on verified OS APIs; no assumption that Swift/macOS confinement code transfers. Separate Windows toolchain and signing/installer design must receive its own reviewed source maps and native-host evidence before code.
-
-**M6-02 acceptance (DEFERRED):** repeat working/reference roles, native script/Git/log/stop and truthful recovery on Windows real-host selected plugin. Mac acceptance does not prove Windows. Explicit dependency: M5 Mac accepted; zero Windows source feature implementation during current Mac parallel tracks.
-
 ## Planning delivery inventory and review acceptance
 
 | Artifact / owner | Status / evidence | Gate |
 |---|---|---|
 | `docs/IMPLEMENTATION_PLAN.md` | V3 current; goal mapping, parallel phases and task review | exact blob Reviewer |
-| `docs/MILESTONES.md` | V3; task DAG IDs `...000001`–`...000017` and M6 deferred | exact blob Reviewer |
+| `docs/MILESTONES.md` | V3; Mac-only task DAG IDs `...000001`–`...000016`; Windows outside scope | exact blob Reviewer |
 | `docs/TECHNICAL_PROPOSAL.md` | V3 current technical source/interface/caller specification, no implementation | exact blob PRE_CODE review |
 | `docs/archive/TECHNICAL-PROPOSAL-LEGACY-PRE-20261105.md` | historical snapshot only, not source implementation authority | preserve, never use to override current VM freeze |
 | `.github/workflows/ci.yml` | currently only C0-style source/native-safe baseline; C-A/C-B/C-G3 not yet implemented | mandatory native fixtures must be added during authorized source work, checked exact SHA before local install |
