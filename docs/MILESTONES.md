@@ -13,7 +13,7 @@ Implement all approved `docs/CRITERIA.md` capabilities on **native macOS** throu
 - **I**: serial integration/acceptance gate, with exact-SHA GitHub-hosted macOS CI.
 - One integration agent owns `src/mcp/{server,catalog,runtime-bootstrap,write-dispatch,batch-dispatch}.ts` and serially applies cross-track changes.
 - Parallel branches start at one verified baseline; no product code changes until Plan, Milestones and Technical Proposal review is complete and Human approves implementation.
-- Existing `codex/mac-completion` local dirty/unpushed content must be inspected/retained before branches integrate; no reset, force-push or undisclosed replacement.
+- Existing `codex/mac-completion` local dirty/unpushed content must be preserved. Observe/reconcile it **before touching that local checkout, syncing or installing there**, not before independent coding on GitHub branches; no reset, force-push or undisclosed replacement.
 - Every task outputs exact branch/base/HEAD, owner and changed files, test command/result/skips and evidence; task PASS is not automatic milestone acceptance.
 
 ## M0/M1 — Shared baseline and interface decisions
@@ -24,11 +24,11 @@ Preserve current Mac work, lock minimal API contracts, freeze VM and make multi-
 
 | Task ID | Work | Dependencies | Mode | Deliverable / exit |
 |---|---|---|---|---|
-| P0-01 | Inspect source/branch/dirty Mac work, active plugin, exact approved Criteria | none | **S first** | current baseline/source-vs-host evidence inventory; no user data loss |
+| P0-01 | Inspect GitHub branch/source tree, published Mac handoff and broken-plugin status; classify local checkout UNKNOWN | none | **S first** | verified remote baseline, no local write and explicit deferred custody check |
 | P0-02 | Reconcile `NativeScopedFiles`/file journal, `SandboxedProcessRequest`/native command adapter, Controller/Lease and shared MCP owners | P0-01 | **S** | small interface/caller map frozen for branch authors |
 | P0-03 / E1 | Freeze VM; map runtime imports, guest code, media, legacy CI/test and removable edges | P0-01 | **P with P0-02** | deletion map and preserved-media boundaries |
 | P0-04 | Reconcile GSA Job M2→M3 linear history with split source task DAG; review current exact revision | P0-01, new V3 docs | **S for G0** | durable Job/Reviewer exact SHA and no competing source of truth |
-| G0 | Confirm frozen interface, branch ownership and no overlapping edits | P0-01/02/04 | **I** | implementation may be offered for Human approval; no source work yet |
+| G0 | Confirm remote source baseline, frozen native interface, VM inventory, branch/file ownership and approved GSA Job | P0-01/02/03/04 | **I** | source-development readiness PASS independent of existing plugin health; coding still requires Human approval |
 
 ## M2 — Mac multi-root file operations
 
@@ -140,7 +140,7 @@ The diagrams are explanatory; the authoritative machine-readable dependency list
 
 | Task | GSA Job node | True prerequisites | Parallel assignment / coding owner | Review and readiness |
 |---|---|---|---|---|
-| G0 | `...000001` | P0 baseline, current reviewed Criteria | Integrator, **sequential first** | froze interfaces, shared MCP owner and dirty-tree custody |
+| G0 | `...000001` | verified GitHub baseline, P0 interfaces and current reviewed Criteria | Integrator, **sequential first** | frozen interfaces and shared MCP owner; local dirty-tree custody is deferred until a write/install touches that checkout |
 | A1 | `...000002` | G0 | A — Mac signed file delivery | physical owned fixture cleanup before rerun, journal survives |
 | A2 | `...000003` | G0 + A1 *interface* (not completed A1 feature) | A — file operations subbranch (disjoint files) | CAS, move A↔B, non-Git diff and partial UNKNOWN |
 | A3 | `...000004` | G0 | A — directory subbranch | same-root atomic no-overwrite, reference copy-out |
