@@ -20,3 +20,9 @@ GitHub Actions job `macos-preinstall` is configured in `.github/workflows/ci.yml
 
 ## Required independent evidence for acceptance
 A finished GitHub-hosted macOS run at exact integrated SHA must show `npm ci --ignore-scripts`, `npm run build`, mandated non-VM suite, exact Track B fixture assertions (no skipped mandatory tests), run logs and captured host identity. For G2 require integration test with real MCP call, process journal readback, startup/restart owner reconciliation, UNKNOWN/no replay, network/secret negative, and per-workspace independent logs. Do not substitute this source inspection for physical owned-process-stop proof.
+
+## Continuation — 2026-11-05 macOS runner feedback
+
+- GitHub Actions run [42041118773](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/42041118773), job 127291868453, commit `c5490cb15920b55827f08928438ab331bfb50981`: C0 compile SUCCESS; native-safe node test phase FAILED in the Darwin subcwd assertion. Actual cwd was `/private/var/folders/...`, while the test expected `/var/folders/...`. These are the same canonical macOS location. This was a test assertion mismatch, not evidence of a CWD security escape. The test was repaired in commit `2369d24630d02acb7280df15ac3b15671fb56f25` by comparing canonical paths.
+- Follow-up source repairs: cancellation now only acknowledges confirmed child close AND absent owned process group; synchronous receipt reports a null exit when physical group-stop proof is missing, preventing false Git success. Added explicit non-Git shell, minimal environment, timeout and cancellation fixtures.
+- New HEAD GitHub Actions results were still QUEUED at inspection. The above older failing run is NOT proof that the repaired SHA passes. Exact-revision Darwin C0/C-B execution, journal/restart and installed plugin tests are still UNVERIFIED.
