@@ -1,5 +1,14 @@
 # Proposed product milestones
 
+## 2026-11-05 delivery sequence override — VM freeze and hosted macOS pre-install CI
+
+This is a human-directed correction to the execution order, **not** a newly accepted milestone or a revision of Criteria. Freeze existing VM code and make it ineligible for new feature/repair/test work. The Linux guest worker is a retirement candidate, not a fallback for Mac native execution. Plan a staged, reversible **complete removal of VM integration** with preserved historical evidence and untouched user-owned original VM media.
+
+For each M2/M3/M4/M5 code candidate, first run GitHub Actions on a **GitHub-hosted macOS runner** for build, source tests and safe relevant native-macOS fixtures, with exact SHA/evidence. This remote macOS CI is a pre-install filter, never Mac-local installed-plugin acceptance and never a requirement to create a VM. If CI fails, do not install on the real Mac. After successful CI and reviewed install plan, verify the installed connector on the user's actual Mac with disposable roots. No unattended installation or private credentials in Actions.
+
+Add a cleanup work package **VM-RETIRE** to the plan: (a) map references/registrations, (b) replace all shipped VM-runtime dependencies with direct-host Mac pathways, (c) delete VM-only implementation/assets/tests/workflow steps in a separate PR, (d) prove regression CI green and no remaining production entrypoints, (e) retain historical docs/media untouched. This does not change M0–M6 identity, and M5 cannot be accepted while VM is still a required shipped execution backend.
+
+
 **Current checkpoint, 2026-11-02:** M2 is in progress; M2–M5 are not complete. Continue from [MAC-QWEN-HANDOFF.md](MAC-QWEN-HANDOFF.md) and the active [P02 proposal](TECHNICAL_PROPOSAL.md#p02-simplification--active-2026-11-01). The dated checkpoints below are historical observations, not instructions to repeat completed slices or proof of current installed-plugin acceptance. M3 commands use the approved unconfined same-user exception in CRITERIA §7; file-tool boundaries remain required. M6 remains deferred until M5 acceptance.
 
 Source progress,2026-10-19: role registry, protected persistence and explicit API binding slices have focused source evidence and review. Actual Mac file operations and host execution remain pending; no milestone ID, completion marker or native acceptance is advanced by this progress note. Older next-step references to the role foundation below are historical.
