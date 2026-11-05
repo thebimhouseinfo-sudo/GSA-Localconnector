@@ -1,36 +1,64 @@
-name: macOS Source and Native-Safe CI
+name: macOS Native Source and Pre-install Gates
 on:
   push:
   pull_request:
+permissions:
+  contents: read
 jobs:
-  macos-preinstall:
+  c0-source:
     runs-on: macos-latest
-    timeout-minutes: 25
-    permissions:
-      contents: read
+    timeout-minutes: 30
     steps:
-      - name: Check out exact revision
-        uses: actions/checkout@v4
-      - name: Record macOS CI host
-        run: |
-          echo "commit=$GITHUB_SHA"
-          sw_vers
-          uname -m
-          xcodebuild -version
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-      - name: Install dependencies without lifecycle scripts
-        run: npm ci --ignore-scripts
-      - name: Build source
-        run: npm run build
-      - name: Run non-VM source tests
+      - name: C0 host and exact source identity
         shell: bash
         run: |
-          tests=()
-          while IFS= read -r file; do tests+=("$file"); done < <(find dist/test -maxdepth 1 -type f -name '*.test.js' ! -name 'macos-vm-*' | sort)
-          test "${#tests[@]}" -gt 0
-          node --test "${tests[@]}"
-      - name: Test native source-capture fixture (no VM)
+          set -euo pipefail
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          echo "checkout=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          sw_vers
+          uname -s
+          uname -m
+          xcodebuild -version
+          swiftc -version
+          node --version
+          npm --version
+          shasum -a 256 package-lock.json
+      - name: C0 dependencies (no lifecycle scripts)
+        run: npm ci --ignore-scripts
+      - name: C0 compile
+        run: npm run build
+      - name: C0 exhaustive non-VM node suites (skips forbidden)
+        run: node scripts/ci-mac-source-tests.mjs
+      - name: C0 existing native-safe source capture
         run: python3 scripts/test-native-source-capture.py
+      - name: C0 source result notice
+        run: echo 'C0 PASS establishes source/build tests only; never native connector acceptance.'
+  g3-preinstall:
+    needs: c0-source
+    if: ${{ always() }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exact candidate identity and C0 dependency
+        env:
+          C0_RESULT: ${{ needs.c0-source.result }}
+        run: |
+          echo "GITHUB_SHA=$GITHUB_SHA C0_RESULT=$C0_RESULT"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$C0_RESULT" = success
+      - name: C-A required full native file acceptance
+        if: ${{ always() }}
+        run: node scripts/ci-mac-require-gate.mjs C-A scripts/ci-mac-a-acceptance.mjs
+      - name: C-B required full native command acceptance
+        if: ${{ always() }}
+        run: node scripts/ci-mac-require-gate.mjs C-B scripts/ci-mac-b-acceptance.mjs
+      - name: C-G3 packaging and desktop smoke gate
+        if: ${{ always() }}
+        run: node scripts/ci-mac-require-gate.mjs C-G3 scripts/ci-mac-g3-acceptance.mjs
