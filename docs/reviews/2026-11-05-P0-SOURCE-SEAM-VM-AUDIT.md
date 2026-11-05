@@ -2,7 +2,7 @@
 
 ## GOAL
 
-Complete all **GitHub-verifiable** P0 source checks and produce an executable contract freeze without modifying product code, local Mac settings, installed plugin, user-owned media or unrelated processes. P0/G0 PASS additionally requires exact current physical Mac checkout/grant/selected-plugin evidence, reconciliation of the durable GSA Job and independent planning Reviewer PASS.
+Complete the GitHub-verifiable P0 source, interface, VM inventory and durable GSA planning review needed to **begin independent coding on GitHub branches** after separate Human execution authorization. P0/G0 source readiness **does not require an operational current Mac plugin, bound workspace or inspected physical Mac checkout**: those are product defects / later Mac-host integration evidence. Preserve unknown local dirty/unpushed files and do not touch the existing Mac checkout until separately reconciled. No product code, local Mac settings, installed plugin, media or unrelated process is modified by this audit.
 
 **Bound source target:** `thebimhouseinfo-sudo/GSA-Localconnector`, branch `plan/mac-native-ci-vm-retirement-20261105`, commit `8e79bcec510e75306af4c232f0c161526d150739` at initial read. Tree is full (`truncated:false`, 434 entries); docs-only changes after this audit need their own source HEAD re-pin. Product Criteria blob `3386b803ef655d4398d438c6c6b0d8a3343afb24` agrees byte-for-byte with GSA Memory Criteria. Human-approved 2026-11-05 VM freeze is recorded at `docs/DECISIONS.md` blob `8f48fded38012bf6943e17799fcddb5665f73392`. GitHub-hosted macOS CI was green on the source-docs revision `8e79bce...`, but it only runs Node build, non-VM unit suites and source-capture; it **does not** certify native command/file/selected installed-plugin behavior.
 
@@ -15,9 +15,9 @@ Complete all **GitHub-verifiable** P0 source checks and produce an executable co
 | Source Criteria | Current approved §7: arbitrary Mac shell runs as logged-in user, `cwd` inside bound working root; commands are not OS-confined; status reports `command_confinement:none (user account)`, `state_integrity_vs_commands:not_protected` |
 | Local Mac dirty checkpoint | `docs/MAC-QWEN-HANDOFF.md` blob `1586ba73154739ba2c9d05e1700d33a8a7b3a377` warns `main` was at `c41188e` at handoff; local commits not pushed and unrelated untracked `docs/proposals/` exist. **Not independently inspectable from GitHub**; do not assume checkout clean, fetch/pull/reset or cherry-pick |
 | Connected Mac host | `gsa_lc_mac.connector_status` returned `platform:macos`, `arch:arm64`, `workspaceStartupIssue:WORKSPACE_ROOT_CHANGED`, `workspaceSelectionRequired:true`, `readyForShell:false`, `fileBackendAvailable:false`, `git:blocked`, `native-tree-recovery-not-certified`. `list_workspaces` returned `[]`. No active grants; Mac-local checkout and selected installed-plugin code revision remain **UNKNOWN** |
-| Mac custody action | **NO LOCAL MUTATION**. Later, when the user re-enrolls an actual authorized workspace, perform read-only `git status --short`, `git rev-parse HEAD`, `git branch --show-current`, `git log -n 5` and installed app identity/hash; retain and reconcile unpushed/dirty files before any product code work. A connected plugin reporting a platform is not enough to certify installed behavior |
+| Mac custody action | **NO LOCAL MUTATION**. Before any later action reads/writes, merges into, syncs, checks out or installs over **the user's existing local checkout**, obtain a separately authorized read-only inspection by a functioning access path (or explicit user-supplied local Git evidence): `git status --short`, `git rev-parse HEAD`, `git branch --show-current`, `git log -n 5` and installer identity/hash. Preserve unpublished work. This restriction does **not** apply to new isolated GitHub work branches or hosted macOS runners. Current installed-plugin failure is an implementation target |
 
-**P0-01 verdict:** remote source inventory PASS; local dirty/installed-plugin ownership proof BLOCKED by no bound Mac workspace, not silently passed.
+**P0-01 verdict:** PASS for the *required remote pre-code baseline*; Mac-local checkout state is explicitly UNKNOWN and becomes a protection gate only before later local checkout modification, plugin installation or unreviewed merge. `WORKSPACE_ROOT_CHANGED` is a product defect, not a P0/G0 prerequisite.
 
 ## P0-02 — Frozen actual contract and single-writer registry
 
@@ -35,7 +35,7 @@ Complete all **GitHub-verifiable** P0 source checks and produce an executable co
 
 **Interface freeze rules:** working roots grant file mutation/script launch, reference roots read/search/copy-out only; `cwd` never a reference. File APIs enforce broker scope; arbitrary child commands execute as user with no OS confinement, no implicit connector secrets. Prefer an optional `cwd_relative` catalog arg with `'.'` default; never change existing MCP tool names except reviewed additions. Integrator resolves all shared source changes from disjoint branches. Exact source SHA must be pinned at dispatch, not assumed stable now.
 
-**P0-02 verdict:** source-visible contracts and exclusive writer map DOCUMENTED; final binding against user Mac checkout and G0 reviewer approval remain PENDING.
+**P0-02 verdict:** PASS for source-visible contracts and single-writer ownership required to dispatch independent GitHub coding branches. Native adapter/host correctness must be implemented and tested later; local Mac checkout is not needed at P0.
 
 ## P0-03 — VM dependency/retirement inventory (no VM runtime change)
 
@@ -49,7 +49,7 @@ Complete all **GitHub-verifiable** P0 source checks and produce an executable co
 
 **E2 acceptance (not an P0 mutation):** no production VM imports; no VM install/build requirement; C0+C-A+C-B+C-G3+C-VM tests pass on exact separate deletion PR SHA; historical read-only reports remain; rollback reverts E2 PR only. Live Mac plugin upgrade/rollback always separate human-reviewed action and never deletes user-owned VM media.
 
-**P0-03 verdict:** source-tree candidate inventory and retirement rules DOCUMENTED; final import graph must be rechecked against the actual post-integration source and local user data remains UNKNOWN.
+**P0-03 verdict:** PASS for pre-code VM candidate inventory/freeze/retirement plan. Actual post-integration import-graph elimination and user-owned asset preservation are later E2 acceptance tasks, not P0 completion prerequisites.
 
 ## P0-04 — GSA Planning Job reconciliation and review
 
@@ -67,8 +67,8 @@ Complete all **GitHub-verifiable** P0 source checks and produce an executable co
 - [x] Native Mac file/command/Git/process/MCP seam and single-writer registry documented
 - [x] Source VM freeze/retirement candidates classified without deleting anything
 - [x] Current connected Mac plugin queried read-only; no workspace/dirty state falsely inferred
-- [ ] Exact physical Mac dirty checkout, unpushed commits, local installer/plugin identities and state canary safely observed (blocked: `WORKSPACE_ROOT_CHANGED`, no enrolled workspace)
+- [x] Physical Mac checkout, unpublished commits and installed-plugin identity explicitly marked UNKNOWN; no local files modified; operation-specific custody check deferred until a later local checkout/sync/install action. Broken plugin not a P0 blocker
 - [x] Current Job revision 3 bound to complete 16-node DAG, independent Reviewer PASS with zero findings persisted/read back, old `J-2600` marked SUPERSEDED, new `J-FA79` READY
-- [ ] G0 review confirms common interface plus local custody as needed for safe product-code merge
+- [x] G0 pre-code source readiness confirms GitHub baseline, interface owner map, VM freeze, approved Criteria and reviewed Mac-only Job. Separate Human approval still required to begin code; Mac checkout custody required only before touching the local Mac checkout or installing a release
 
-**Current verdict: P0-02/P0-03/P0-04 SOURCE/PLAN PASS; P0-01 GitHub remote source PASS but physical Mac custody BLOCKED. Thus G0 OVERALL BLOCKED on actual Mac checkout/grants, not on planning findings.** No product source edits, no Mac install, no VM mutation, no main merge or deployment. It is unsafe to claim full P0/G0 PASS while local dirty work remains uninspected.
+**Corrected verdict (2026-11-05): P0-01/02/03/04 COMPLETE for pre-code source/plan scope; G0 SOURCE-READINESS PASS.** The current Mac connector's unavailable grants, shell/Git and file backend remain **open product implementation defects** assigned to A/B/host integration, not admission conditions for those tracks. Current local checkout/installed artifact are still **UNKNOWN** and must be inspected before local writes, syncing, release installation or claiming real-Mac acceptance. The original GSA planning Reviewer PASS at J-FA79 revision 3 applies to its pinned planning revision; subsequent documentation clarification requires an exact-revision rereview before claiming a *new* formal Reviewer PASS on revised source docs. No product code changes, local Mac install, VM mutation, main merge or deployment.
