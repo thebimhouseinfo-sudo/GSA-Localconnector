@@ -80,4 +80,6 @@ jobs:
         run: node scripts/ci-mac-require-gate.mjs C-B scripts/ci-mac-b-acceptance.mjs
       - name: C-G3 packaging and desktop smoke gate
         if: ${{ always() }}
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node scripts/ci-mac-require-gate.mjs C-G3 scripts/ci-mac-g3-acceptance.mjs
