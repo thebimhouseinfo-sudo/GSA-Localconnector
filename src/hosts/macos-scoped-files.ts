@@ -29,16 +29,16 @@ export function diffCapturedMacText(before:Uint8Array,after:Uint8Array):MacNonGi
  const decoder=new TextDecoder("utf-8",{fatal:true});
  let oldText:string,newText:string;
  try{oldText=decoder.decode(before);newText=decoder.decode(after);}catch{throw Error("NON_TEXT_DIFF_UNSUPPORTED");}
- if(oldText.includes("\\0")||newText.includes("\\0"))throw Error("NON_TEXT_DIFF_UNSUPPORTED");
+ if(oldText.includes("\0")||newText.includes("\0"))throw Error("NON_TEXT_DIFF_UNSUPPORTED");
  const oldHash=sha(before),newHash=sha(after);
  if(oldHash===newHash)return Object.freeze({before_sha256:oldHash,after_sha256:newHash,changed:false,patch:""});
- const previous=oldText.split("\\n"),next=newText.split("\\n");
+ const previous=oldText.split("\n"),next=newText.split("\n");
  let prefix=0;
  while(prefix<previous.length&&prefix<next.length&&previous[prefix]===next[prefix])prefix++;
  let oldEnd=previous.length,newEnd=next.length;
  while(oldEnd>prefix&&newEnd>prefix&&previous[oldEnd-1]===next[newEnd-1]){oldEnd--;newEnd--;}
  const removed=previous.slice(prefix,oldEnd),added=next.slice(prefix,newEnd);
- const patch=`@@ -${prefix+1},${removed.length} +${prefix+1},${added.length} @@\\n`+removed.map(line=>"-"+line+"\\n").join("")+added.map(line=>"+"+line+"\\n").join("");
+ const patch=`@@ -${prefix+1},${removed.length} +${prefix+1},${added.length} @@\n`+removed.map(line=>"-"+line+"\n").join("")+added.map(line=>"+"+line+"\n").join("");
  return Object.freeze({before_sha256:oldHash,after_sha256:newHash,changed:true,patch});
 }
 const sha=(data:Uint8Array|string)=>createHash("sha256").update(data).digest("hex");
