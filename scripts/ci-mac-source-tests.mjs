@@ -12,7 +12,22 @@ const required=all.filter(f=>!excluded.includes(f)).map(f=>path.join(dir,f));
 if(!required.length)throw Error('BLOCKED: no non-VM tests compiled');
 console.log(JSON.stringify({gate:'C0',discovered:all.length,excludedVM:excluded,required:required.length}));
 const result=spawnSync(process.execPath,['--test','--test-reporter=tap',...required],{encoding:'utf8',maxBuffer:24*1024*1024});
-process.stdout.write(result.stdout||'');process.stderr.write(result.stderr||'');
+// Keep CI logs compact and put failing test names/diagnostics first; the old
+// full 600+ suite TAP output was too noisy to identify actionable regressions.
+const stdout=result.stdout||'',stderr=result.stderr||'';
+if(result.status!==0||result.error){
+  const lines=stdout.split('\n');
+  const failing=[];
+  for(let i=0;i<lines.length;i++){
+    if(/^\\s*not ok\\s+\\d+/.test(lines[i])){
+      failing.push(lines.slice(Math.max(0,i-1),Math.min(lines.length,i+32)).join('\n'));
+      if(failing.length>=8)break;
+    }
+  }
+  process.stderr.write('C0 FAILED TEST DIAGNOSTICS:\\n'+(failing.length?failing.join('\\n---\\n'):'No TAP failing-test markers found; process may have exited early')+'\\n');
+  process.stderr.write(stderr.slice(-8192));
+}else console.log('C0 compiled TAP suite completed; summary follows');
+
 const count=k=>Number((result.stdout||'').match(new RegExp('^# '+k+' (\\d+)$','m'))?.[1]??NaN);
 const tests=count('tests'),pass=count('pass'),fail=count('fail'),skip=count('skipped'),todo=count('todo');
 if(result.error||result.status!==0||![tests,pass,fail,skip,todo].every(Number.isFinite)||!tests||fail||todo||pass+skip!==tests){
