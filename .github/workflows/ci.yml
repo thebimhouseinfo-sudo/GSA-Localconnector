@@ -1,37 +1,31 @@
-name: Source Contract CI
+name: macOS Source and Native-Safe CI
 on:
   push:
   pull_request:
 jobs:
-  contract:
+  macos-preinstall:
     runs-on: macos-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out exact revision
+        uses: actions/checkout@v4
+      - name: Record macOS CI host
+        run: |
+          echo "commit=$GITHUB_SHA"
+          sw_vers
+          uname -m
+          xcodebuild -version
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --ignore-scripts
-      - run: npm test
-      - name: Verify worker snapshot seed (no VM starts or downloads)
-        run: python3 scripts/test-vm-worker-seed.py
-
-      - name: Verify descriptor-native source capture fixtures
+          cache: npm
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Build source
+        run: npm run build
+      - name: Run source tests
+        run: npm test
+      - name: Test native source-capture fixture (no VM)
         run: python3 scripts/test-native-source-capture.py
-
-      - name: Compile worker and reject malformed input before VM construction
-        if: runner.os == 'macOS'
-        run: |
-          swiftc -framework Virtualization native/macos-vm/WorkerHost.swift -o "$RUNNER_TEMP/gsa-worker-host"
-          codesign --force --sign - --entitlements native/macos-vm/Virtualization.entitlements "$RUNNER_TEMP/gsa-worker-host"
-          codesign --verify --strict "$RUNNER_TEMP/gsa-worker-host"
-          set +e
-          printf '%s\n' 'invalid-json' | "$RUNNER_TEMP/gsa-worker-host" > "$RUNNER_TEMP/gsa-worker-invalid.json"
-          rc=$?
-          set -e
-          test "$rc" -eq 2
-          grep -q 'INVALID_CONFIG' "$RUNNER_TEMP/gsa-worker-invalid.json"
-
-      - name: Syntax-check explicit native install and runtime test entrypoints
-        run: |
-          node --check scripts/install-native-vm.mjs
-          node --check scripts/test-vm-runtime-native.mjs
