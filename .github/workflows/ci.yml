@@ -3,7 +3,7 @@ on:
   push:
   pull_request:
 concurrency:
-  group: macos-native-${{ github.head_ref || github.ref_name }}
+  group: macos-native-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 permissions:
   contents: read
@@ -13,17 +13,22 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
       - name: C0 host and exact source identity
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         shell: bash
         run: |
           set -euo pipefail
           echo "GITHUB_SHA=$GITHUB_SHA"
+          echo "SOURCE_SHA=$SOURCE_SHA"
           echo "checkout=$(git rev-parse HEAD)"
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           sw_vers
           uname -s
           uname -m
@@ -49,12 +54,15 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Exact candidate identity and C0 dependency
         env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           C0_RESULT: ${{ needs.c0-source.result }}
         run: |
           echo "GITHUB_SHA=$GITHUB_SHA C0_RESULT=$C0_RESULT"
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           test "$C0_RESULT" = success
       - uses: actions/setup-node@v4
         with:
