@@ -22,12 +22,12 @@ Create one precise source/contract baseline to permit parallel feature work with
 
 | Task | Owner | Work | Exit |
 |---|---|---|---|
-| P0-01 | Planner/integrator | Read exact repository/branch, uncommitted Mac changes, existing installed plugin and acceptance gaps; preserve all dirty files | Exact git HEAD/status and unverified host facts recorded; no reset/loss |
+| P0-01 | Planner/integrator | Verify GitHub source branch/HEAD, current GitHub tree and published handoff; record the Mac-local checkout and current broken-plugin state as UNKNOWN | Remote source baseline and explicit local custody restrictions; do not inspect/modify unavailable local files |
 | P0-02 | Integrator | Pin grant/controller/owner revision contracts, native file/process interfaces and single MCP shared-file ownership; no second installer/journal/agent | Reviewed interface/caller map; no overlapping writer |
 | P0-03 | VM inventory agent | Freeze all VM work; classify dependency graph as VM-only/shared/historical/user media | Immutable retirement inventory and deletion prerequisites |
 | P0-04 | Planner | Align current GSA Project Job/Task topology with this approved Criteria + V3 plan; previous READY linear M2→M3 is historical | New exact-revision review evidence and project Job reconciliation before dispatch |
 
-**No product code before full Plan/Milestones/Technical Proposal review PASS and subsequent Human authorization.** G0 interface freeze is the only sequential preparation for independent development tracks; do not make M3 *source development* wait for M2 completion.
+**No product code before full Plan/Milestones/Technical Proposal review PASS and subsequent Human authorization.** Planning Job revision 3 Reviewer PASS is recorded. G0 can certify remote source/interface readiness even when current plugin cannot bind a workspace. G0 does not require successful Mac-local connector operation, local Git checkout observation or installation. Those are separately protected operations at integration/local-host gates. Do not make M3 *source development* wait for M2 completion.
 
 ## PHASE 1 — Parallel workstreams AFTER G0
 
@@ -53,7 +53,7 @@ Merge reviewed work deterministically with continuous exact-revision macOS check
 
 | Gate | Dependencies | Action | Required result |
 |---|---|---|---|
-| G0 | P0-01/02/04 + reviewed planning | Confirm interface, branch, owner contracts | one immutable integration baseline |
+| G0 | P0-01/02/03/04 + reviewed planning | Freeze GitHub source baseline, single-writer interface/branch ownership and VM inventory; record local checkout as UNKNOWN without making a working plugin a precondition | READY for separately authorized **GitHub-branch source development**; NOT an installed-Mac approval |
 | G1 — M2 | reviewed A1/A2/A3 + C file-fixtures | Integrate Track A *serially*, run hosted macOS C0+C-A | M2 file contracts pass on exact commit; blocked functionality labeled |
 | G2 — M3 | G1 grant surface + reviewed B + C command-fixtures | Integrate native Mac runner into shared MCP *serially*; prohibit VM fallback | hosted C0+C-A+C-B pass and capability reports truthful |
 | G3 — pre-install | G2, applicable D source prep, package identity | Full hosted `macos-latest` suite C-G3 at exact installation candidate and artifact | all mandatory tests PASS, no unexplained skips, no secrets, no destructive fixture |
@@ -97,11 +97,11 @@ Translate the reviewed product requirements into an unambiguous set of parallel 
 
 **Two-level dependencies.** At the *source authoring* level, file/backend (A), native command (B), CI (C), desktop preparation (D) and VM inventory (E1) run concurrently after the shared T0 contract, each on a separate feature branch with exclusive file ownership. At the *capability acceptance* level, files must be integrated before command dispatcher wiring, full hosted macOS native tests must pass before any real-Mac installation, and real Mac verification precedes VM removal and M5 sign-off. Do not let a linear presentation order become an implicit dependency edge.
 
-**GSA planning reconciliation:** historical `J-2600` revision 3 has the old M2→M3 linear topology. The replacement planning Job `J-FA79` is a planning artifact, not an implementation job; its task graph MUST be normalized to the DAG in Milestones (ending at Mac M5, with NO M6 node). Old Reviewer PASS never authorizes it. GSA Project Memory Criteria must match the approved current `docs/CRITERIA.md` byte-for-byte; the 2026-10-31 unconfined shell exception cannot be lost by re-binding to the stale Criteria version. Use GSA-controlled job revision/verification and independent Reviewer readback before future coding assignment. Any unavailable Job update leaves this source plan usable for review, but marks the durable planning handoff **BLOCKED**, not READY.
+**GSA planning reconciliation (completed):** historical `J-2600` is **SUPERSEDED**. Replacement Mac-only Job `J-FA79` revision 3 has 16 task DAG nodes ending at M5, current approved Criteria SHA `3386b803ef655d4398d438c6c6b0d8a3343afb24`, a durably persisted independent planning Reviewer **PASS / zero findings**, and lifecycle **READY**. No Windows node. This governs planning readiness, not permission to execute code or proof that the current installed plugin works. Local checkout custody is a later operation-specific prerequisite, not a source-code authorization gate.
 
 **Task assignment readiness contract:** each future task explicitly supplies (1) exact starting Git SHA and active development branch, (2) owner/allowlisted paths and common files that MUST NOT be changed, (3) prerequisites based on IDs rather than milestone-complete shortcuts, (4) contract to reuse and prohibited second system, (5) positive, negative and failure-mode tests, (6) expected GitHub macOS runner evidence on exact SHA, (7) review disposition and known local-host gaps. Source-coding Tasks may not auto-start from this document.
 
-**Known hold points before coding:** (i) reconcile unpublished/dirty Mac checkout, (ii) review actual `cwd_relative` validator and `runtime-bootstrap.ts` guest wiring, (iii) finish the prior installer test's owned-child stop cleanup before native fixture reuse, (iv) prove CI's required suites are wired rather than merely named, and (v) prevent stale VM-capability names from being mistaken for real Mac host readiness.
+**Scope-specific hold points:** (i) before writing, checking out, syncing, installing into or overwriting the **user's existing Mac checkout**, observe and reconcile unpublished/dirty Mac files using a separately approved means; this does **not** block work on independent GitHub branches; (ii) B must fix the actual `cwd_relative` validators and `runtime-bootstrap.ts` VM wiring during authorized development, not before G0; (iii) A must fix the owned-child cleanup before repeating its native installer fixture; (iv) C must implement mandatory native test suites before G1/G2/G3 acceptance, not before code begins; (v) installed-plugin recovery is a development/acceptance target, never a G0 prerequisite. Existing `WORKSPACE_ROOT_CHANGED`, absent grants and blocked shell/file/Git are evidence of unfinished functionality, not a request to make the old plugin work first.
 
 ### Task-to-milestone traceability
 
