@@ -8,8 +8,8 @@
 - Observed executed steps: checkout, macOS host print, Node setup, npm install, build, non-VM source tests, native source capture: SUCCESS. This is a pre-change C0-like SOURCE PASS only, not native C-A/C-B or G3 acceptance.
 
 ## Track C candidate
-- New commit SHA: NOT_YET_VERIFIED in this report; use GitHub run's `head_sha` and checkout log before binding acceptance.
-- New Actions run/job URLs: NOT_RUN at report preparation; inspect after source commit and fill as separate evidence revision.
+- First Track C commit SHA: `3c6f588170ac28410d5a886bc1953aee9cd348bc` (readback verified); this evidence amendment produces a newer SHA that must be checked independently.
+- Observed Actions runs for first Track C commit (both QUEUED when checked, no executed job/step proof yet): push https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/42040452644 ; PR https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/42040463076 . Results must be independently checked once jobs execute.
 - C0: NOT_RUN for new candidate.
 - C-A: BLOCKED pending integrated native file implementation and mandatory acceptance entrypoint.
 - C-B: BLOCKED pending integrated native command implementation and mandatory acceptance entrypoint.
