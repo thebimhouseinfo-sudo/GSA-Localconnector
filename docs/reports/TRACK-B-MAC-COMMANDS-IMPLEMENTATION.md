@@ -26,3 +26,15 @@ B1 native command and non-Git script: implemented in adapter, not wired to MCP u
 
 ## Goal recheck
 B1 PARTIAL pending exact-SHA hosted test; B2 PARTIAL pending physical-stop/neighbor negative host proof; B3 PARTIAL pending durable journal and Git execution integration proof. No CLAIM of DONE or release readiness.
+
+## Track B closure decision — 2026-11-05
+
+**Lifecycle: CLOSED — BLOCKED_BY_DEPENDENCY (NOT DONE, NOT PASS).** Human instructed closing the Track B work at this handoff boundary because completion depends on Track A and shared Integration/CI owners. No further Track B source edits or repeated CI attempts are authorized by this closure. Existing partial B1/B2/B3 implementation, regressions and reports remain preserved on the named development branch. This closure is administrative, not proof of acceptance.
+
+**Dependencies for later reopening/integration:**
+1. Track A and Integration owner reconcile native file interface mismatch (`NativeScopedFiles` versus `MacScopedNativeFiles` in `src/mcp/runtime-bootstrap.ts`, TS2739 observed in GitHub run 42046143138).
+2. Track C/Integration restore exact-revision GitHub-hosted macOS C0 and C-B test execution, with required compiled test files and real native-process/cancellation results; blocked/missing suites must not be accepted as PASS.
+3. G2 Integration owner wires Track B into shared MCP command/Git/status surfaces, preserves process journal and no-replay UNKNOWN behavior; subsequent independent review and exact-SHA CI proof remain required.
+4. Actual physical Mac / installed plugin tests: **pending user require**. Not required for the current GitHub-hosted testing stage, and no claim of real-device validation.
+
+**Handoff status:** All Track B implementation and reporting artifacts are left in place; findings and evidence are in `TRACK-B-MAC-COMMANDS-TEST-EVIDENCE.md` and `TRACK-B-MAC-COMMANDS-REVIEW.md`; integration requirements are in `TRACK-B-MAC-COMMANDS-INTEGRATION-REQUEST.md`. Main, other Tracks, MCP shared source and the user's Mac were not modified as part of this closure.
