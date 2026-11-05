@@ -34,3 +34,9 @@ A-R01 owner fixture physical stop; A-R02 cross-root file move/log/diff; A-R03 at
 5. **C-A/G1 native validation:** new `native/macos-files/test-broker.py` scenarios cover successful atomic rename, destination collision, symlink denial and traversal denial. New Darwin candidate compile test and existing A1 fixture are separate levels of evidence. A1 real-owner fixture is still SKIP/BLOCKED until all owned descendant physical-stop evidence and current qualification inputs are available. CI queued is not PASS.
 
 **Status:** Integration requests remain OPEN; source A1/A2/A3 are PARTIAL. No G1 acceptance, merge/deploy or modification to protected shared MCP files.
+
+## Test-handoff scope update — current Human decision (2026-11-05)
+
+For **C-A/INT-A/G1**, request exact-source **GitHub-hosted macOS runner** build, tests and safe signed disposable native broker/owner fixtures. User's physical Mac installation, plugin rebind and local checkout verification: **PENDING USER REQUIRE** (deferred until a new user request; not a gate for current hosted CI source testing). Treat a hosted runner test failure as a test/source finding, not as lack of a real Mac. Do not bypass owned-process safety or relabel a deliberately skipped mandatory hosted fixture as PASS.
+
+**Interface compatibility repair:** `loadMacScopedFiles` retains the existing `Promise<NativeScopedFiles>` contract after commit `9eaaaa23cc97d2147961beaaa06552e3f1ac7b75`; Mac-specific extension `MacScopedNativeFiles` remains a candidate to integrate later. No change to `src/mcp/runtime-bootstrap.ts`. INT-A still owns shared MCP exposure and A2 cross-root MOVE must be finished before claiming Track A DONE.
