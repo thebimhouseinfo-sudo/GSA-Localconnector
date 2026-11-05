@@ -119,9 +119,19 @@ export class MacNativeCommands implements VerifiedNativeSandbox,VerifiedNativePr
   return {state:run.state,exit_code:run.exit_code,started_at:run.started_at,ended_at:run.ended_at,stopped:run.stopProof};
  }
  async execute(request:SandboxedProcessRequest):Promise<SandboxedProcessReceipt>{
-  const run=await this.launch(request);await run.settled;
-  return {exit_code:run.stopProof?run.exit_code:null,signal:run.signal,stdout:this.buffer(run.stdout),stderr:this.buffer(run.stderr),
-   cancelled:run.cancelled&&run.stopProof,timed_out:run.timed_out,output_limited:run.output_limited};
+  const run=await this.launch(request);
+  // Bound the caller's observation even if a stubborn descendant or missing
+  // close event leaves physical termination UNKNOWN. Never replay the command.
+  let observationTimer:ReturnType<typeof setTimeout>|undefined;
+  try{
+   await Promise.race([run.settled,new Promise<void>(resolve=>{
+    observationTimer=setTimeout(resolve,request.time_limit_ms+6000);
+   })]);
+  }finally{if(observationTimer)clearTimeout(observationTimer);}
+  return {exit_code:run.closed&&run.stopProof?run.exit_code:null,signal:run.closed?run.signal:null,
+   stdout:this.buffer(run.stdout),stderr:this.buffer(run.stderr),
+   cancelled:run.closed&&run.cancelled&&run.stopProof,timed_out:run.timed_out,
+   output_limited:run.output_limited};
  }
  async cancel(process_id:string,workspace_id:string):Promise<boolean>{
   const run=this.get(process_id);
