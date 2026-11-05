@@ -42,3 +42,9 @@ Pre-code proposal recorded. Exact source change, test outcomes, review, remainin
 | A3 | PARTIAL: copy-source manifest preflight; candidate descriptor-based atomic rename with exclusive/no-follow/beneath flags and native tests | exact-SHA signed native execution and selected plugin not verified |
 
 **Tests:** recent C0 older revision compiled, but its exhaustive suite failed in another Track. Exact Track A revision GitHub Actions still queued; no new source/unit/native PASS. The user's connected Mac has `WORKSPACE_ROOT_CHANGED` and file backend unavailable. Capability advertisement remains unchanged; no secondary journal, no automatic mutation replay, no main merge/deploy. Findings A-R01 through A-R05 remain open pending native verification, cross-root move and integration.
+
+## Test environment scope — current Human decision (2026-11-05)
+
+**Required now:** GitHub-hosted macOS runner (CI VM/hosted runner), with exact-revision build, unit and safe disposable native tests. **Physical Mac:** `PENDING USER REQUIRE` — defer testing/installation of the user's real Mac until specifically requested; not a current Track A completion gate. This does not relax native test coverage on the GitHub runner or justify enabling an unverified capability. Previous statements tying source work to an operational user Mac plugin no longer apply as an immediate test prerequisite.
+
+**CI repair:** The source-only loader extension caused C0 TS2739 at shared `runtime-bootstrap.ts:85` on runs `42045394162` and `42046143138`. Fixed in owned `src/hosts/macos-scoped-files.ts` by keeping public `loadMacScopedFiles(): Promise<NativeScopedFiles>` at commit `9eaaaa23cc97d2147961beaaa06552e3f1ac7b75`. Hosted exact-SHA retest is required; this commit is not itself a PASS. Cross-root recoverable MOVE is still a source gap, not a physical-machine test dependency.
