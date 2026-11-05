@@ -24,3 +24,8 @@ No unresolved actionable **E1 documentation** finding in the pinned baseline. De
 
 ## Verdict
 **PASS for bounded E1 documentary inventory/proposal** on source baseline `1cb77c2...`, zero open documentation findings. **NOT** G4 proof, **NOT** full post-integration import-closure proof, **NOT** E2 authorization. E2 remains blocked. No merge, deploy, or Mac/local VM mutation.
+
+## Follow-up review: HTTP entry correction (2026-11-05)
+The initial map left HTTP → bootstrap verification for E2. Direct inspection of `src/mcp/http.ts:7,119,123` and `src/mcp/http-cli.ts:1` confirms that macOS HTTP startup also calls `bootstrapMcpTools`. The map has been repaired in E1 (blob `45e96ffc9c67c116761d5030e4a9ef72f8def738`; commit `6cd16e60aa93534239f59d6e800a1422b5ec5913`). This was a **MINOR documentation coverage finding, RESOLVED**. Both HTTP and stdio are now in the E2 cleanup gate. Source remains unchanged, and no VM test or real-Mac operation was executed. There is no claim of complete AST-wide import closure: that is explicitly deferred to the post-integration E2 gate.
+
+Final scope verdict: **E1 documentation PASS, zero remaining known actionable E1 documentation findings**, while G4 native proof and exact-source zero-VM dependency gates remain **NOT MET / E2 BLOCKED**.
