@@ -41,6 +41,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
     private var statusPath: String?
     private var timer: Timer?
     private var launchFailed = false
+    private var quitRequested = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -104,8 +105,8 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(statusLine)
         menu.addItem(.separator())
-        let quit = menu.addItem(withTitle: "Thoát", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
-        quit.target = NSApp
+        let quit = menu.addItem(withTitle: "Thoát", action: #selector(requestQuit(_:)), keyEquivalent: "")
+        quit.target = self
         item.menu = menu
         statusItem = item
         setStatus(statusLine.title)
@@ -132,6 +133,15 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
     }
 
     private func refreshStatus() {
+        if quitRequested {
+            if supervisor?.isRunning == true {
+                setStatus("Đang yêu cầu dừng connector an toàn…")
+                return
+            }
+            quitRequested = false
+            NSApp.terminate(nil)
+            return
+        }
         guard !launchFailed else { return }
         guard let statusPath, let status = try? privateJSON(statusPath), let state = status["state"] as? String else {
             setStatus("Chưa đọc được trạng thái connector.")
@@ -153,6 +163,16 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
                 setStatus("Tunnel tự kết thúc (mã " + String(code) + ").")
             } else { setStatus("Connector gặp lỗi khởi động.") }
         }
+    }
+
+    @objc private func requestQuit(_ sender: Any?) {
+        guard !quitRequested else { return }
+        guard let process = supervisor, process.isRunning else { NSApp.terminate(nil); return }
+        // Only signal our retained supervisor. It decides whether its owned tunnel
+        // can stop; ACTIVE/UNKNOWN work must never be force-killed by the GUI.
+        quitRequested = true
+        setStatus("Đang yêu cầu dừng connector an toàn…")
+        process.terminate()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
