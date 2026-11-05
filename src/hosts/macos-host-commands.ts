@@ -120,7 +120,7 @@ export class MacNativeCommands implements VerifiedNativeSandbox,VerifiedNativePr
  }
  async execute(request:SandboxedProcessRequest):Promise<SandboxedProcessReceipt>{
   const run=await this.launch(request);await run.settled;
-  return {exit_code:run.exit_code,signal:run.signal,stdout:this.buffer(run.stdout),stderr:this.buffer(run.stderr),
+  return {exit_code:run.stopProof?run.exit_code:null,signal:run.signal,stdout:this.buffer(run.stdout),stderr:this.buffer(run.stderr),
    cancelled:run.cancelled&&run.stopProof,timed_out:run.timed_out,output_limited:run.output_limited};
  }
  async cancel(process_id:string,workspace_id:string):Promise<boolean>{
