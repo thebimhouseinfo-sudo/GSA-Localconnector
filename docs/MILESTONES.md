@@ -109,3 +109,67 @@ After Mac M5 is genuinely accepted, implement same API and user journey on Windo
 Reviewer examines this DAG, Criteria coverage, all task-to-code ownership, no Task dependency cycle, exact source host/caller mapping in Technical V3, pre-install CI test existence/mandatory logic, honest unconfined execution, VM deletion rollback, dirty-tree preservation, and role-isolated GSA planning Job revision. Historical PR/CI results do not make a milestone complete.
 
 **Current state:** documentation prepared for Reviewer; M2 IN PROGRESS; M3/M4/M5 NOT ACCEPTED; M6 DEFERRED; VM frozen for future retirement, **not yet deleted**; no product source changes or user Mac installation in this planning review.
+
+## Canonical dependency graph and five parallel assignments
+
+**GSA task IDs are descriptive cross-references to the V3 planning Job, not authorization to execute.** This DAG overrides sequential list order from historic Project Plan jobs. Each arrow below is a true prerequisite; unrelated nodes may run concurrently. Any generated `topology.stage` or `next` field is only a display order and MUST NOT add dependency edges absent from `depends_on`/`planning_topology`.
+
+```mermaid
+flowchart TD
+    G0["G0: baseline + shared contracts"]
+    A1["A1: native files/recovery"]
+    A2["A2: file move/log/diff"]
+    A3["A3: directory operations"]
+    B1["B1: native host runner"]
+    B2["B2: Git/process journal"]
+    C["C: hosted macOS CI"]
+    D["D: desktop preparation"]
+    E1["E1: VM inventory"]
+    IA["INT-A: file integration G1"]
+    IB["INT-B: command integration G2"]
+    G3["G3: exact-SHA pre-install CI"]
+    G4["G4: authorized real Mac test"]
+    R["R: M4 recovery proof"]
+    E2["E2: VM deletion PR"]
+    M5["M5: native Mac acceptance"]
+    M6["M6: Windows, deferred"]
+    G0 --> A1 & A2 & A3 & B1 & C & D & E1
+    B1 --> B2
+    A1 & A2 & A3 & C --> IA
+    IA & B2 & C --> IB
+    IB & D --> G3
+    G3 --> G4
+    G4 --> R & E2
+    E1 --> E2
+    R & E2 & D --> M5
+    M5 --> M6
+```
+
+The diagrams are explanatory; the authoritative machine-readable dependency list is below.
+
+| Task | GSA Job node | True prerequisites | Parallel assignment / coding owner | Review and readiness |
+|---|---|---|---|---|
+| G0 | `...000001` | P0 baseline, current reviewed Criteria | Integrator, **sequential first** | froze interfaces, shared MCP owner and dirty-tree custody |
+| A1 | `...000002` | G0 | A — Mac signed file delivery | physical owned fixture cleanup before rerun, journal survives |
+| A2 | `...000003` | G0 + A1 *interface* (not completed A1 feature) | A — file operations subbranch (disjoint files) | CAS, move A↔B, non-Git diff and partial UNKNOWN |
+| A3 | `...000004` | G0 | A — directory subbranch | same-root atomic no-overwrite, reference copy-out |
+| B1 | `...000005` | G0 | B — native commands | real Darwin, no VM fallback or OS confinement claim |
+| B2 | `...000006` | B1 interface | B — process/Git subbranch | validated subcwd, logs, clean stop and neighbor untouched |
+| C | `...000007` | G0 | C — GitHub-hosted Mac CI | mandatory non-VM suites and missing-tests-fail contract |
+| D | `...000008` | G0 | D — desktop lifecycle | no actual login/system mutation during source prep |
+| E1 | `...000009` | G0 (can inventory early after P0-01) | E — VM mapping | classify imports; do not delete existing user media |
+| INT-A | `...000010` | A1+A2+A3+C | Integration owner only | G1 hosted C-A PASS |
+| INT-B | `...000011` | INT-A+B2+C | Integration owner only | G2 hosted C-B PASS, Git enabled only with actual backend |
+| G3 | `...000012` | INT-B+D | Integration owner and C | exact install candidate macOS CI C0/C-A/C-B/package PASS |
+| G4 | `...000013` | G3 + separate installer authorization | Human attended Mac-local acceptance | installed selected plugin, disposable roots, no neighbor damage |
+| R / M4 | `...000014` | B2 contract; *physical evidence* after G4 | Recovery owner; source may prepare in parallel | restart/reboot/wake/UNKNOWN/no replay |
+| E2 | `...000015` | E1 + G4 native replacement proof | E — isolated VM deletion PR | zero runtime VM imports, C-VM hosted PASS, reversible rollback |
+| M5 | `...000016` | G4+R+E2+D | Integration and acceptance owner | full Mac user journey and independent projects |
+| M6 | `...000017` | **M5 accepted** | Windows owner, not assignable in Mac phase | Windows-only native parity and independently observed proof |
+
+**Dispatch waves:** Wave 0 = G0 review and ownership freeze; Wave 1 = simultaneous A/B/C/D/E1 source research and coding *after later Human implementation authorization*; Wave 2 = serial reviewed INT-A → INT-B with exact-SHA hosted CI; Wave 3 = G3 → G4 → M4/E2 → M5; Wave 4 = Windows M6 only after Mac acceptance. `R` source preparation may overlap Wave 1/2 once B2 interface is stable; only actual-host R acceptance waits G4.
+
+**Parallelism is bounded by file ownership.** A1/A2/A3 are distinct delivery units, not three uncoordinated writers to `macos-file-recovery.ts` or shared installer. B1/B2 are sequential around the process interface. All MCP `server/catalog/runtime-bootstrap/write-dispatch/batch-dispatch` code remains exclusive to the integrator. GSA task IDs ending `000001`–`000017` are registry identifiers; they are not a mandate to recreate a separate local orchestrator.
+
+**Hosted macOS test distinction:** Existing PR #4 CI PASS ran a limited source/native-safe baseline, not G1/G2/G3. G1 must require the A suite, G2 the B suite, G3 the full A+B+packaging suite. Missing mandatory fixture or skipped mandatory case is blocked/fail, never a source-success substitute for the installed Mac proof. M5 is never completed from hosted CI alone.
+
