@@ -53,6 +53,14 @@ jobs:
           echo "GITHUB_SHA=$GITHUB_SHA C0_RESULT=$C0_RESULT"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$C0_RESULT" = success
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Prepare G3 candidate without installation
+        run: |
+          npm ci --ignore-scripts
+          npm run build
       - name: C-A required full native file acceptance
         if: ${{ always() }}
         run: node scripts/ci-mac-require-gate.mjs C-A scripts/ci-mac-a-acceptance.mjs
