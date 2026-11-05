@@ -24,3 +24,6 @@ Required gates never use an absent executable, a skipped test, a stub or a sourc
 | G4 | Not run | actual selected plugin on real Mac only after G3 and separate user authorization |
 
 A `PASS` from a subset of source tests never substitutes for required host proof. The G3 GitHub job remains deliberately non-green while mandatory upstream/real release prerequisites are missing.
+
+### Execution boundary approved 2026-11-05
+GitHub-hosted macOS ARM64 CI testing is in scope now. Physical Mac user device testing: **pending user require**. This deferred physical-device check does not excuse any failing hosted C0/C-A/C-B/G3 gate and is never to be described as PASS.
