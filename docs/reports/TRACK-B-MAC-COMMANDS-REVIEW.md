@@ -23,3 +23,8 @@ NOT YET INDEPENDENT PASS. No merge/deploy, no release acceptance. Continue self-
 - B-R11 — **FIXED in source, pending retest**: `cancel()` formerly returned true after group absence but without child-close confirmation. Current adapter waits boundedly for both and returns false otherwise; missing physical-stop proof remains UNKNOWN.
 - B-R12 — **FIXED in source, pending retest**: a missing group-stop proof could leave `exit_code:0` on a synchronous receipt and be misread by Git. Receipt now nulls exit code without proof; the existing `executeGit` maps null exit to GIT_UNKNOWN and never replays.
 - B-R13 — **ADDED oracles, awaiting runner**: non-Git shell script, child environment sentinel and direct cancel group-stop proofs added. Review remains SELF-REVIEW ONLY, no independent Reviewer PASS.
+
+## CI follow-up (2026-11-05)
+
+- B-R14 — **REPAIRED / AWAITING HOST PROOF**: `execute()` previously awaited `run.settled` without a caller observation deadline if child close did not arrive after timeout. Now observation is bounded and null exit code prevents Git false success when physical stop is unproven. Source commit `77e13830fd88f7cb6f95212c30b5dd6396ee2221`.
+- B-R15 — **NO NEW EVIDENCED FAILURE**: latest C0 CI jobs queued. Do not treat older job success/failure as exact-current-SHA verdict. CI C0/G3 workflow is Track C owned and unchanged by Track B.
