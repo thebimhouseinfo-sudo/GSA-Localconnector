@@ -45,3 +45,23 @@ No exact combined C0+C-A+C-B+packaging same-SHA PASS exists. Do not install, mer
 - **Hosted run updates:** `42059630490` started C0 compiled source tests (later CANCELLED by newer branch pushes, not PASS). At the time of this read, exact SHA `8fe5ad963f67609d6668392e9146c8db80cbba02` had runs `42059926025` (push PENDING) and `42059936358` (PR PENDING). Complete C0/C-A/C-B/C-G3 statuses **UNVERIFIED**.
 - **CI integration code commits:** `375057fa5b28f7b79d604c971ba66c15a0e02d36` source SHA checkout and event-separated concurrency; `8b04457eb6d9fe2f67fd98f854fc600f3e51adc5` G3 SHA env; `8fe5ad963f67609d6668392e9146c8db80cbba02` G3 SHA source check.
 No release/merge/deploy authorized.
+
+## Final Track C closure report — BLOCKED / CLOSED (2026-11-05)
+
+**Closure meaning:** Track C agent assignment is closed with blockers documented and handed to named integration owners. This is **not** product DONE, native G1/G2/G3 acceptance PASS, release approval, or branch closure/merge.
+
+**Verified branch at start of closure:** `plan/mac-native-ci-vm-retirement-20261105`, HEAD `56efb0eb8c114149ab4b9310bb50d4ceafe9e9da`. Parallel writers may advance HEAD; final report commit must be verified separately.
+
+**BLOCKER A — missing native interruption and owned-helper proof.** Repository tree lacks `scripts/ci-mac-a-interruption-proof.mjs`, explicitly required by `scripts/ci-mac-a-acceptance.mjs`. Existing signed broker and scoped-file test runners cannot prove an integrated native transaction interruption, physical owned-helper stop, preserved unrelated canary, UNKNOWN journal readback and no mutation replay. **Owner:** Track A / INT-A integrator. **Unblock:** integrate actual implementation and non-skippable hosted macOS fixture, commit/pin its source SHA, execute C-A with zero failure/required SKIP; never stub proof or weaken gate.
+
+**BLOCKER G3 — missing genuine packaged tunnel artifact and runtime smoke.** Repository tree lacks `bin/tunnel-client`. `scripts/ci-mac-g3-acceptance.mjs` deliberately rejects missing binary; staging package/manifest/UI code signature tests cannot attest a complete distributable or harmless packaged native connector startup/shutdown. **Owner:** Track D / G3 serial integrator. **Unblock:** supply exact pinned, provenance-verified real tunnel artifact through authorized packaging, run complete stage verification and bounded hosted startup/shutdown. No fake binary, no real-user-host install.
+
+**Integration build finding (separate from Track C ownership):** Historical executed PR workflow [42046143138](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/42046143138) failed TypeScript `TS2739` in `src/mcp/runtime-bootstrap.ts:85` (`NativeScopedFiles` lacks `renameDirectoryExclusive`, `diffNonGitText` required by `MacScopedNativeFiles`). **Owner:** serial MCP integrator / Track A. **Unblock:** reconcile real interface/caller against current HEAD; then re-run `npm run build`. The historical result does not prove that this error persists on a later SHA.
+
+**Hosted CI verification status:** Source workflow is wired for `macos-latest` ARM64 and Node22, true branch-source SHA on push/PR, C0 + fail-closed C-A/C-B/C-G3. At closure inspection, [push run 42060685009](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/42060685009) was PENDING on HEAD `56efb0eb8c114149ab4b9310bb50d4ceafe9e9da`; earlier [PR run 42060333818](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/42060333818) was PENDING at earlier SHA. No complete exact-SHA hosted C0+C-A+C-B+C-G3 PASS. PENDING/CANCELLED is not a PASS or source-test FAIL.
+
+**Acceptance dispositions at closure:** C0 = UNVERIFIED on latest exact SHA; C-A = BLOCKED (missing required fixture); C-B = UNVERIFIED on latest exact SHA; C-G3 = BLOCKED (genuine tunnel artifact/runtime smoke); all required G3 combined = NOT_MET. Keep fail-closed CI policy.
+
+**User environment boundary:** GitHub-hosted macOS testing is required now; **real Mac tests: pending user require**. No tests, installs, login-agent changes or deployment on the user's physical Mac. This deferred physical-device scope is not the cause of hosted-CI blockers.
+
+**Handoff:** A/INT-A owns native interruption+owner-stop fixture and typed composition repair; D/G3 integrator owns real package artifact and harmless startup/shutdown; serial integrator reruns native hosted gate matrix on a single pinned branch SHA. Track C owner is closed **BLOCKED**, pending upstream integration and new exact-SHA evidence. Do not mark DONE; do not merge/deploy/remove VM based on this report.
