@@ -21,3 +21,12 @@ if(result.error||result.status!==0||![tests,pass,fail,skip,todo].every(Number.is
 }
 console.log(JSON.stringify({gate:'C0',state:'PASS_WITH_REPORTED_SKIPS',tests,pass,fail,skip,todo}));
 if(skip)console.log('C0 historical/conditional source test SKIPs are disclosed, NEVER promoted to native C-A/C-B/G3 acceptance. Required native fixtures must independently run with zero SKIP.');
+
+
+// Desktop lifecycle tests are native-safe .mjs, not part of dist/test compiled discovery.
+const desktop=spawnSync(process.execPath,['--test','--test-reporter=tap','test/desktop-supervisor.test.mjs'],{encoding:'utf8',timeout:120000,maxBuffer:8*1024*1024});
+process.stdout.write(desktop.stdout||'');process.stderr.write(desktop.stderr||'');
+const desktopCount=k=>Number((desktop.stdout||'').match(new RegExp('^# '+k+' (\\d+)$','m'))?.[1]??NaN);
+const dt=desktopCount('tests'),dp=desktopCount('pass'),df=desktopCount('fail'),ds=desktopCount('skipped'),dd=desktopCount('todo');
+if(desktop.error||desktop.status!==0||!Number.isSafeInteger(dt)||dt<1||dp!==dt||df!==0||ds!==0||dd!==0)throw Error('FAIL/BLOCKED C0 required Desktop lifecycle regression: '+JSON.stringify({status:desktop.status,tests:dt,pass:dp,fail:df,skipped:ds,todo:dd,error:desktop.error?.message}));
+console.log(JSON.stringify({gate:'C0-D1',state:'PASS',tests:dt}));
