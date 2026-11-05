@@ -68,3 +68,22 @@ onMac("Track B local Git reports dirty files without resetting them",()=>fixture
  assert.match(result.output,/dirty.txt/);
  assert.equal(await fs.readFile(path.join(root,"dirty.txt"),"utf8"),"preserve-me");
 }));
+
+onMac("Track B timeout is bounded and never reported as a normal success",()=>fixture(async host=>{
+ const result=await host.execute(request({argv:["-e","setInterval(()=>{},1000)"],time_limit_ms:250}));
+ assert.equal(result.timed_out,true);
+ assert.notEqual(result.exit_code,0);
+}));
+onMac("Track B controller retains bounded output cursors and rejects unowned process IDs",()=>fixture(async host=>{
+ const started=await host.start(request({argv:["-e","process.stdout.write('abcdef');process.stderr.write('XYZ')"]}));
+ const status=await host.wait(started.native_id);
+ assert.equal(status.state,"SUCCEEDED");
+ const first=await host.output(started.native_id,0,4);
+ assert.equal(first.stdout,"abcd");
+ assert.notEqual(first.next_cursor,null);
+ const second=await host.output(started.native_id,first.next_cursor!,8);
+ assert.equal(second.stdout,"ef");
+ assert.equal(second.stderr,"XYZ");
+ assert.equal(second.next_cursor,null);
+ await assert.rejects(host.stop("unowned-id"),(error:any)=>error.code==="PROCESS_NOT_FOUND");
+}));
