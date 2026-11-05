@@ -23,3 +23,9 @@ GitHub CI PASS cannot substitute real Mac Dock/login/tunnel acceptance. No histo
 - `scripts/ci-mac-source-tests.mjs` discovers only `dist/test/*.test.js`, so it does **not** invoke `test/desktop-supervisor.test.mjs`. No D1 lifecycle test execution is verified by C0.
 - `scripts/ci-mac-g3-acceptance.mjs` was absent on branch at the time of reading; workflow's required G3 gate cannot be reported as passing.
 - Only GitHub-hosted macOS **CI** is authorized here. A runner is a disposable hosted Mac, not the user's installed login-session Mac; real Dock/login/TCC/tunnel remain PENDING G4/M5.
+
+## Test scope confirmation — Human decision 2026-11-05
+- Current required execution environment: **GitHub-hosted macOS runner only** (`macos-latest`). Do not install or test on the user's physical Mac during this phase.
+- Real-Mac Dock interaction, Login Items/background after actual login, live tunnel/API credentials, sleep/wake behavior, physical-process coexistence and installed-plugin acceptance: **pending user require**.
+- **pending user require** is a deferred user-dependent acceptance item, not a hosted-CI failure and not evidence of physical Mac PASS. It must not block declaring the *hosted-only test phase* complete once all mandatory hosted checks have actually passed; it still blocks claiming real-Mac acceptance.
+- Latest inspected branch SHA before this documentation revision: `9eaaaa23cc97d2147961beaaa06552e3f1ac7b75`. GitHub Actions push run [42059630490](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/42059630490) was **IN_PROGRESS**; `c0-source` had successful checkout, tool setup and host identification, dependencies still in progress. PR run [42059643485](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/42059643485) was **PENDING**. Do not claim CI PASS until completed exact-SHA evidence exists.
