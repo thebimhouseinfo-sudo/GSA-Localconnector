@@ -43,6 +43,11 @@ jobs:
         run: npm run build
       - name: C0 exhaustive non-VM node suites (skips forbidden)
         run: node scripts/ci-mac-source-tests.mjs
+      - name: C0 required Desktop Swift AppKit compile and Info.plist validation
+        run: |
+          set -euo pipefail
+          /usr/bin/swiftc -typecheck native/macos-desktop/App.swift
+          /usr/bin/plutil -lint native/macos-desktop/Info.plist
       - name: C0 existing native-safe source capture
         run: python3 scripts/test-native-source-capture.py
       - name: C0 source result notice
