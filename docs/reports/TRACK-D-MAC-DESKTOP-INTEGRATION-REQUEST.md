@@ -10,3 +10,8 @@ Date: 2026-11-05. Destination: Mac Integration Agent / G3-G4-M5 owners.
 6. **D-INT-06:** `docs/reports/` is ignored in .gitignore; these mandatory reports are explicitly GitHub-committed through contents API.
 
 Track D did not modify shared `src/mcp/{server,catalog,runtime-bootstrap,write-dispatch,batch-dispatch}.ts`, and must not install, merge or deploy.
+
+## CI integration blocker observed
+- C0 runs compiled `dist/test/*.test.js` through `scripts/ci-mac-source-tests.mjs`, but Track D's `test/desktop-supervisor.test.mjs` is outside this discovery. Add an explicit required native-safe Track D command `node --test test/desktop-supervisor.test.mjs` in Track C's CI ownership; fail on skipped/todo tests.
+- At observation time `scripts/ci-mac-g3-acceptance.mjs` was missing. Track C must supply a required macOS desktop package/Swift fixture gate or report G3 BLOCKED; never mark PASS from C0 alone.
+- Run https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/42044118681 was queued at `f6c2cea47b369654712390dffed3fb8b939c5b56`, not a PASS. Recheck exact source SHA and executed job steps after Track C update.
