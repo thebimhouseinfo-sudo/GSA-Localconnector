@@ -123,3 +123,27 @@ Resolve parallel outputs deterministically and prove results before real-device 
 | Code + Mac installation | no product source changes or real Mac install in this review | NOT AUTHORIZED |
 | Independent Reviewer/CR | must be performed on V3 exact source docs/Job revision | NOT YET RECORDED |
 
+
+## PHASE W — Windows M6 deferred after accepted Mac M5
+
+### GOAL
+
+Deliver the same approved connector API behavior on the user's Windows machine after native Mac M5 is fully accepted, using Windows-native file/ACL/process and plugin lifecycle mechanisms. No product VM, no new CI engine and no simultaneous two-host test matrix.
+
+**M6-01 architecture (DEFERRED, NOT CODE AUTHORITY YET):** READ/REUSE existing cross-platform `src/core/{contracts,workspace,process-manager,git-engine}.ts`, `src/mcp/{catalog,server,runtime-bootstrap}.ts` and `src/hosts/windows-appcontainer-candidate.ts` only after inspecting their actual use and Windows protection feasibility. Propose minimum Windows-specific host adapter and file boundary based on verified OS APIs; no assumption that Swift/macOS confinement code transfers. Separate Windows toolchain and signing/installer design must receive its own reviewed source maps and native-host evidence before code.
+
+**M6-02 acceptance (DEFERRED):** repeat working/reference roles, native script/Git/log/stop and truthful recovery on Windows real-host selected plugin. Mac acceptance does not prove Windows. Explicit dependency: M5 Mac accepted; zero Windows source feature implementation during current Mac parallel tracks.
+
+## Planning delivery inventory and review acceptance
+
+| Artifact / owner | Status / evidence | Gate |
+|---|---|---|
+| `docs/IMPLEMENTATION_PLAN.md` | V3 current; goal mapping, parallel phases and task review | exact blob Reviewer |
+| `docs/MILESTONES.md` | V3; task DAG IDs `...000001`–`...000017` and M6 deferred | exact blob Reviewer |
+| `docs/TECHNICAL_PROPOSAL.md` | V3 current technical source/interface/caller specification, no implementation | exact blob PRE_CODE review |
+| `docs/archive/TECHNICAL-PROPOSAL-LEGACY-PRE-20261105.md` | historical snapshot only, not source implementation authority | preserve, never use to override current VM freeze |
+| `.github/workflows/ci.yml` | currently only C0-style source/native-safe baseline; C-A/C-B/C-G3 not yet implemented | mandatory native fixtures must be added during authorized source work, checked exact SHA before local install |
+| `src/mcp/runtime-bootstrap.ts`, `src/core/process-manager.ts` | existing VM runtime import / current `cwd_relative="."` guard | B/T0 integration design; do not mark native host READY |
+| Project Memory plan Job | review current Criteria and non-linear task topology | planning verification CAS/readback required; never inherit old J-2600 PASS |
+
+**Review-only completion condition:** Plan, Milestones and Technical Proposal have no unresolved requirement, task ownership, call-site, dependency or acceptance contradictions, independent Reviewer PASS is recorded against exact versions, and GSA planning Job points to the approved Criteria and same DAG. No code or local install is authorized by document readiness itself.
