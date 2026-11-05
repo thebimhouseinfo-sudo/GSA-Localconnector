@@ -87,3 +87,36 @@ onMac("Track B controller retains bounded output cursors and rejects unowned pro
  assert.equal(second.next_cursor,null);
  await assert.rejects(host.stop("unowned-id"),(error:any)=>error.code==="PROCESS_NOT_FOUND");
 }));
+
+onMac("Track B runs existing non-Git shell script from valid subdirectory",()=>fixture(async(host,root)=>{
+ const scripts=path.join(root,"scripts");await fs.mkdir(scripts);
+ await fs.writeFile(path.join(scripts,"build.sh"),"#!/bin/sh\nprintf 'built\\n'\nprintf 'warn\\n' >&2\n", {mode:0o700});
+ const result=await host.execute(request({executable:"/bin/sh",argv:["./build.sh"],cwd_relative:"scripts"}));
+ assert.equal(result.exit_code,0);assert.equal(result.stdout,"built\n");assert.equal(result.stderr,"warn\n");
+}));
+onMac("Track B does not inherit connector runtime tokens",()=>fixture(async host=>{
+ const name="GSA_TRACK_B_SECRET_SENTINEL";
+ const previous=process.env[name];
+ process.env[name]="SECRET_SHOULD_NOT_ENTER_CHILD";
+ try{
+  const result=await host.execute(request({argv:["-e",`process.stdout.write(process.env.${name}||'CLEAN')`]}));
+  assert.equal(result.stdout,"CLEAN");
+ }finally{
+  if(previous===undefined)delete process.env[name];else process.env[name]=previous;
+ }
+}));
+onMac("Track B synchronous cancellation confirms physical stop",()=>fixture(async host=>{
+ const process_id="b-test-owned";
+ const execution=host.execute(request({process_id,argv:["-e","setInterval(()=>{},1000)"],time_limit_ms:12000}));
+ // Wait for the owned child to be observable; cancellation never probes a guessed PID.
+ let running=false;
+ for(let attempt=0;attempt<50;attempt++){
+  try{running=(await host.status(process_id)).state==="RUNNING";if(running)break;}catch{}
+  await new Promise(resolve=>setTimeout(resolve,10));
+ }
+ assert.equal(running,true);
+ assert.equal(await host.cancel(process_id,"work"),true);
+ const receipt=await execution;
+ assert.equal(receipt.cancelled,true);
+ assert.equal((await host.status(process_id)).stopped,true);
+}));
