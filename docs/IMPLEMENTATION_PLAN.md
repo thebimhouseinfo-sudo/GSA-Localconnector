@@ -1,5 +1,69 @@
 # Implementation Plan — GSA-Localconnector
 
+## 2026-11-05 PRE-CODE REVIEW V2 — canonical delivery plan and parallel work authority
+
+**Review status:** planning proposal revised against approved [CRITERIA.md](CRITERIA.md), including 2026-10-31 §7; NOT a product implementation, independently approved Critic result, M2–M5 PASS, installation authorization or merge authorization. This section supersedes older sequencing, optional-VM and VM-first directions in this document and linked historical plans. The technical execution contract is in [TECHNICAL_PROPOSAL.md](TECHNICAL_PROPOSAL.md#2026-11-05-pre-code-technical-proposal-v2--parallel-native-mac-tracks) and the task DAG is in [MILESTONES.md](MILESTONES.md#2026-11-05-milestone-task-dag-v2--parallel-delivery).
+
+### Review findings and corrected decisions
+
+- **R1 (BLOCKING to code allocation):** older "M3 after completed M2" artificially serializes source development. Corrected: M2 file backend and M3 host-command implementation may proceed in parallel **after** shared interfaces and scope contract are frozen. Live integrated M3 acceptance still requires verified grants and M2 file functionality.
+- **R2 (BLOCKING to VM development):** the old optional Linux VM, guest worker, VM compile/tests and VM-bound execution path conflict with the new human direction. Freeze immediately; inventory for removal; never use VM as native-Mac evidence. Preserve historical reports and original media.
+- **R3 (BLOCKING to install):** GitHub-hosted `macos-latest` CI must pass for the **exact install candidate revision** before installation or activation on the user's Mac. It runs on GitHub's macOS host, not a project VM. CI PASS alone does not establish installed-plugin/native acceptance.
+- **R4 (HIGH):** legacy long proposal/hand-off includes obsolete requirements, stale file/commit evidence and a previously unfinished fixture cleanup issue. Preserve dirty/untracked work, identify actual live branch and state, do not copy a previous CR PASS to new code or rerun a native fixture until its owned child is bounded and physically stopped.
+- **R5 (HIGH):** file API isolation and unconfined user-account commands are distinct under approved Criteria §7. Do not claim a VM-grade sandbox or prohibit legitimate shell operation. Report `command_confinement: none (user account)` and `state_integrity_vs_commands: not_protected`; fail closed on grant/controller errors and avoid connector-secret injection.
+- **R6 (HIGH):** per-agent file ownership and integration contract were unspecified. Corrected below; branch-level parallelism is allowed, concurrent writes to the same shared file are not. Integration is serial and uses reviewable PRs.
+
+### Goal, scope and non-goals
+
+Online GSA calls selected host plugin; connector supplies API/tools for independently granted workspaces (full file, Git, command, process, build/test) and references (read/search/copy-out only), real results and truthful recovery. No local agent, new approval gates, VM or new CI/DAG framework. Finish the Mac product before Windows. Keep M0–M6 names, but split tasks and assign a critical path. The latest approved Criteria and settled D1–D3 override contradictory pre-2026-11-05 text.
+
+### Read-before-code baseline and shared contract (sequential; short)
+
+**P0-01 — baseline/dirty-tree preservation:** confirm `main` and `codex/mac-completion` or other working branch, status/diffs, current installed-plugin capability and relevant prior fixtures without resetting, deleting, fetching over or overwriting local changes. Historical acceptance and uncommitted content are not transferable evidence. Record exact SHA and ownership before feature PRs.
+
+**P0-02 — shared interfaces (must finish before parallel code):** one selected-host controller/scope identity, workspace/reference roles, normalized path and epoch checks; file transactions keep existing journal/readback/UNKNOWN; command runs reuse process journal and `VerifiedNativeSandbox`-style seam without guest-specific assumptions; one command metadata contract (`cwd`, command, host/toolchain, exit, stdout/stderr, state, output bounds, cancellation, provenance). Lock shared MCP catalog/bootstrap interface signatures and ownership. Decide API changes in a tiny interface PR before agent branches; do not force all features to wait for native acceptance.
+
+**P0-03 — VM freeze baseline:** enumerate VM-only vs shared/non-VM paths/imports, registration points, CI tests, installer assets and external user-owned media. Mark VM code as FROZEN. The cleanup PR is deferred until a functional native replacement is evidenced; document safe rollback and preserved history.
+
+### Parallel source development tracks (after P0-02; isolated branches)
+
+| Track | Task IDs | Primary owner and limited file scope | Parallel with | Output / exit |
+|---|---|---|---|---|
+| A — Mac file backend | M2-A1 recovery/install; M2-A2 file moves, diff/log; M2-A3 directory transfer | `src/hosts/macos-{scoped-files,file-recovery,directory-*}.ts`, `native/macos-files/*`, file-specific stores/tests, `scripts/install-mac-scoped-files.mjs`; one subtask author per shared file | B, C, D, E | Working/reference positive and denial paths, same-owner journals, conflict/UNKNOWN/no replay; native-safe fixture green |
+| B — native Mac commands | M3-B1 host runner; M3-B2 Git/process/results | `src/hosts/macos-host-commands.ts` (proposed), `src/core/{native-io,process-manager,durable-process,process-journal,git-*}.ts`, process tests; shared MCP wiring only in integration | A, C, D, E | Real macOS child execution with bound cwd, output/timeout/owned-stop, command result schema; no VM and no shell confinement claim |
+| C — hosted Mac CI/evidence | CI-C1 workflow and non-VM suite; CI-C2 native-safe fixture matrix | `.github/workflows/*`, CI-only scripts/test fixtures; no product runtime mutation | A, B, D, E | GitHub `macos-latest` reproducible checks on PR SHA; no secrets, no VM steps; clear PASS/FAIL/SKIP |
+| D — Mac desktop lifecycle preparation | M5-D1 audit/setup contract and non-invasive tests | `native/macos-desktop/*`, Mac desktop packaging/docs and isolated lifecycle tests; **no production install/activation** | A, B, C, E | Reviewed design/tests for login, Dock, Pause/Resume/Quit, allowlisted ignored `.env`, neighbor preservation; implementation may be staged but release waits integration |
+| E — VM retirement inventory | VM-E1 inventory/test mapping; VM-E2 deletion PR **after** replacement proof | VM-only path map/documentation first; later isolated VM removal PR; never edit A/B files without integration owner | A, B, C, D (inventory only) | Exact deletable-path list, replacement map, no original media touched, zero shipped runtime dependency after retirement |
+
+Within Track A, A1/A2/A3 may each build isolated fixtures/interfaces in parallel **only where file ownership does not overlap**; shared installer, broker, grants and MCP dispatch edits are serialized by Track A integrator. Within B, B1 native adapter precedes B2 end-to-end process/Git binding. Track C refreshes exact baseline after every merged source change; prior CI results never transfer to new SHA. Track D does not install/start on user machine.
+
+### Sequential integration and physical-host gates
+
+| Gate | Needs | Action | Condition to advance |
+|---|---|---|---|
+| G0 interface-freeze | P0-01/P0-02 | Review exact source and shared API, register branches/owners | No ambiguous concurrent ownership; accepted pre-code interface review |
+| G1 M2 source | Track A PR(s) + C tests | Serial integration, focused conflict/reference/UNKNOWN tests | macOS hosted CI PASS exact SHA; unsupported backend remains visibly blocked |
+| G2 M3 source | Track B PR(s) + G0 + working M2 grant surface | Serial bind into `src/mcp/{runtime-bootstrap,server,catalog}.ts`; run end-to-end sandbox-free command checks on hosted macOS disposable roots | exact-SHA hosted CI PASS with macOS host command/Git scripted fixture, no VM dependency, no fake native PASS |
+| G3 candidate acceptance pre-install | G1 + G2 + applicable D tests + CI-C2 | Review provenance/installer and macOS hosted native-safe suite | full required hosted suite PASS, no unexplained skipped mandatory test, artifact/build SHA recorded |
+| G4 user's Mac | G3 + explicit installation action | Verified install only onto intended Mac, disposable workspace/reference roots, plugin file + Git + command/build/run/log/stop probes, no neighboring process kill | Actual installed-plugin evidence, not GitHub CI alone |
+| G5 recovery + VM removal | G4 native replacement evidence, then M4 recovery checks and VM-E2 in independent PR | Prove restart/reconciliation/UNKNOWN/owned-stop; remove VM-only runtime + run hosted regression again | no shipped VM import/installer/entrypoint/test prerequisite; preserved evidence/media |
+| G6 M5 release | G4 + G5 + desktop D complete | Installed lifecycle, multi-project isolation and per-host full acceptance | all required Mac Criteria proven, no unresolved mandatory capability |
+| G7 M6 Windows | G6 | Plan Windows parity separately | No Windows feature work earlier |
+
+**Concurrency rule:** A/B/C/D/E may research and code in distinct branches after G0; a task does **not** need the preceding milestone fully complete to start if its interface and safety dependencies are known. However actual integration and acceptance move G0→G6 sequentially. Never cherry-pick unreviewed shared-MCP edits from competing branches; one integration owner applies and tests them.
+
+### CI, acceptance and protection
+
+Hosted runner: GitHub Actions macOS with exact PR/head SHA, Node 22, `npm ci --ignore-scripts`, TypeScript build, non-VM source tests, scoped native-safe Swift/Python fixtures where compatible, runtime smoke for real macOS commands as implementation lands, clean termination and log artifacts. Explicitly exclude VM guest/Virtualization.framework/QEMU tests; classify older VM suites as frozen, not a passing replacement. CI must flag missing mandatory native test rather than silently SKIP. No real user token/tunnel, no release install or privileged destructive tests in Actions.
+
+Real Mac after G3: separate install approval and matching pinned artifact; record host/arch/OS/toolchain, command/cwd, run IDs, clean/dirt hashes, exit/log/result, root roles, canaries and observed revocation/recovery. Protect existing user data, local unfinished work and other applications. `command_confinement` warning is mandatory. A successful macOS cloud test does not certify the local TCC/permissions, Dock/login, selected-plugin tunnel, or native installation.
+
+### Pre-code review disposition
+
+**SELF-REVIEW: PASS for consistency of scope and proposed dependency map only.** External Critic/Reviewer PASS for this V2 is **NOT RECORDED**. Agent coding should begin with G0 ownership/interface review and a fresh source/working-tree check; no product source or deployment is authorized by this document alone. All old completion claims remain bounded to their evidence and latest STATUS, not upgraded by planning text.
+
+
+
 ## 2026-11-05 — Human direction: freeze VM, test on GitHub-hosted macOS before installing locally
 
 **Effective scope:** No further Linux/macOS guest VM development, fixes, provisioning, QEMU, EFI or VM-based runtime validation. The Linux VM worker is deprecated, not an optional implementation path for M3. Prepare complete removal of VM integration after native Mac replacement and tests; retain historical evidence and do not erase any original user VM media. A GitHub Actions `macos-*` hosted runner is a remote macOS test host, **not** a request to develop/run our own VM. No new connector CI/DAG engine.
