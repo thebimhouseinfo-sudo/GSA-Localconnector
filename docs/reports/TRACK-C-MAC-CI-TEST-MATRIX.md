@@ -12,3 +12,15 @@
 | G4 installed user Mac | selected plugin, OS permissions/TCC/tunnel/restart | intentionally outside hosted CI | NOT_RUN |
 
 Required gates never use an absent executable, a skipped test, a stub or a source-only PASS as acceptance. `BLOCKED` describes a required check unable to execute; GitHub Actions therefore returns a failing gate job, not a green preinstall signal.
+
+## Continuation implementation status (2026-11-05)
+
+| Gate | Native-safe executable now wired | Still required for acceptance |
+| --- | --- | --- |
+| C0 | `ci-mac-source-tests.mjs`: all non-VM compiled tests; conditional source SKIPs recorded as SKIP rather than failures | New exact candidate SHA hosted run must complete |
+| C-A | `ci-mac-a-acceptance.mjs`: actual ad-hoc-signed Swift file broker, negative scope controls, source CAS/UNKNOWN/readback | integrated interrupted file transaction, physically stopped owned helper and no replay (`ci-mac-a-interruption-proof.mjs` missing); gate FAIL/BLOCKED |
+| C-B | `ci-mac-b-acceptance.mjs`: Darwin native host subprocess, Git/non-Git, cancel, neighbor, limits and journal-targeted suites, zero skips mandatory | exact SHA hosted test and integrator MCP/journal caller review |
+| C-G3 | `ci-mac-g3-acceptance.mjs`: disposable desktop buildStage + verifyStage, signed UI, manifest and code hash, source package tests | genuine `bin/tunnel-client` absent in repository; runtime startup/shutdown proof and exact combined gate success |
+| G4 | Not run | actual selected plugin on real Mac only after G3 and separate user authorization |
+
+A `PASS` from a subset of source tests never substitutes for required host proof. The G3 GitHub job remains deliberately non-green while mandatory upstream/real release prerequisites are missing.
