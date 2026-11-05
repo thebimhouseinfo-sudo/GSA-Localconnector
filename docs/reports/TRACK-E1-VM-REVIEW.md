@@ -1,20 +1,26 @@
-# Track E1 — Review Record
+# Track E1 — Independent Documentation Review
 
 ## GOAL
-Check the E1 inventory/dependency map/E2 proposal for factual grounding, no premature cleanup, clear blocking gates, and strict documentation-only scope.
+Review E1 inventory, dependency evidence and E2 retirement design at the pinned source snapshot without executing E2.
 
-## Review basis
-Repository `thebimhouseinfo-sudo/GSA-Localconnector`, branch `plan/mac-native-ci-vm-retirement-20261105`, observed baseline HEAD `1cb77c271328bf20dd466875bda5c6575762fb90`. Author used GitHub exact-ref reads and a nontruncated 436-entry source tree; no VM commands or tests run. Comparison target: `docs/CRITERIA.md`, `docs/DECISIONS.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/MILESTONES.md`, `docs/TECHNICAL_PROPOSAL.md`, P0 audit.
+## Exact evidence
+Source baseline: `1cb77c271328bf20dd466875bda5c6575762fb90`. Original report blob SHA: inventory `f8c8d711cf81ea93c44687a6dd762a93ac18058e`; map `a2f9dd880274504d1c25d1d0db463776c27be5fd`; proposal `509348489bae57c05324b86a7f54c4134d0f168d`. Reviewer role separately admitted by `start_direct_agent(role=reviewer)` and `get_agent_harness(role=reviewer, mode=DIRECT_AGENT)`. Reviewer only inspected; Planner owns this documentation change. These observations are not GSA Job Verification.
 
-## Independent reviewer checklist (review evidence to be finalized on readback)
-- [x] VM runtime/CI active callers identified by source imports, including MCP status and public CI services.
-- [x] Native source-capture fixture coupled to `native/macos-vm/SourceCapture.swift` called out explicitly; no delete-first sequence.
-- [x] Shared `src/core/ci-*` and `src/local/ci-*` not blanket-classified as VM-only.
-- [x] Owner separation and E2 handoff after G4/native acceptance included.
-- [x] Rollback separate PR; historical docs preserved; user-owned media and local secrets untouched.
-- [x] No source changes or VM run/test/install activity authorized.
-- [ ] Current remote commit/readback for all four E1 report blobs and docs-only diff.
-- [ ] Role-isolated review on exact persisted report revision.
+Authority: `docs/CRITERIA.md`, `docs/DECISIONS.md` (Nov 5 supersession), `docs/IMPLEMENTATION_PLAN.md`, `docs/MILESTONES.md`, `docs/TECHNICAL_PROPOSAL.md`, and P0 audit.
 
-## Disposition
-**PENDING independent persisted-revision review.** No assertion of Reviewer PASS before exact blob/readback and separate role inspection. E1 planning content is complete at baseline but durable verification requires post-write check. E2 remains BLOCKED BY G4.
+## Evidence-backed assessment
+- **PASS:** live VM imports in `src/mcp/runtime-bootstrap.ts:6,8,94,96-97`, CLI `src/mcp/cli.ts:4,14`, Linux status semantics in `src/mcp/server.ts:191-192` and `src/mcp/catalog.ts:44` are mapped.
+- **PASS:** installer direct dependencies `scripts/install-native-vm.mjs:60-76`, host/guest workers and VM tests are inventoried.
+- **PASS:** non-VM CI capture test `scripts/test-native-source-capture.py:20` still uses `native/macos-vm/SourceCapture.swift`; migration precedes deletion.
+- **PASS:** shared `src/core/ci-*`, `src/local/ci-*` and native process interfaces have explicit per-module decision, not wildcard removal.
+- **PASS:** proposal requires G4 actual installed native Mac evidence, C-G3/C-VM on exact SHA, no modification to user images/media, reversible E2 PR, preservation of historical docs.
+- **PASS:** E1 changes are document-only. No VM executed, installed, removed or repaired.
+
+## Concurrent branch control and limitations
+Comparison of baseline `1cb77c2` to former E1 HEAD `d0e9afb` showed 14 commits, including unrelated concurrent Track B/C/D source/CI edits; these are **not E1 mutations**. A review-record write initially returned 409 because remote HEAD advanced; this was investigated and fresh remote branch HEAD/file blob re-read before retry. E1 snapshot is intentionally pinned: it is *not* a post-integration full-graph certification. Targeted source references establish actual edges, but no AST-complete static/dynamic import closure has yet been run.
+
+## Findings
+No unresolved actionable **E1 documentation** finding in the pinned baseline. Deferred E2 gates (not E1 failures): (1) G4 native replacement installed-plugin proof; (2) migrate native source-capture fixture; (3) reconcile public ci_* API/stores and history; (4) rerun complete import/reference scans and exact hosted CI after integration. E2 must stop on any unverified closure, missing mandatory CI test, or stale source SHA.
+
+## Verdict
+**PASS for bounded E1 documentary inventory/proposal** on source baseline `1cb77c2...`, zero open documentation findings. **NOT** G4 proof, **NOT** full post-integration import-closure proof, **NOT** E2 authorization. E2 remains blocked. No merge, deploy, or Mac/local VM mutation.
