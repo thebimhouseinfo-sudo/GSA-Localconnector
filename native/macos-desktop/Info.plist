@@ -11,6 +11,6 @@
 <key>CFBundleIconFile</key><string>GSAConnector</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
-<key>LSUIElement</key><true/>
+<key>LSUIElement</key><false/>
 <key>NSSupportsAutomaticTermination</key><false/>
 </dict></plist>
