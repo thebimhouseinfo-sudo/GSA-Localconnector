@@ -16,3 +16,10 @@ Scope B1/B2/B3 only. Inspected existing workspace grant, process request, Git an
 
 ## Decision
 NOT YET INDEPENDENT PASS. No merge/deploy, no release acceptance. Continue self-repair from actual runner feedback and hand to independent Reviewer once exact-revision CI evidence exists.
+
+## Continuation review / repair disposition (2026-11-05)
+
+- B-R10 — **FIXED in test, pending retest**: Darwin `/var` versus `/private/var` path aliases caused a false-negative test. Canonical `realpath` comparison committed as `2369d246`. Root/symlink denial behavior unchanged.
+- B-R11 — **FIXED in source, pending retest**: `cancel()` formerly returned true after group absence but without child-close confirmation. Current adapter waits boundedly for both and returns false otherwise; missing physical-stop proof remains UNKNOWN.
+- B-R12 — **FIXED in source, pending retest**: a missing group-stop proof could leave `exit_code:0` on a synchronous receipt and be misread by Git. Receipt now nulls exit code without proof; the existing `executeGit` maps null exit to GIT_UNKNOWN and never replays.
+- B-R13 — **ADDED oracles, awaiting runner**: non-Git shell script, child environment sentinel and direct cancel group-stop proofs added. Review remains SELF-REVIEW ONLY, no independent Reviewer PASS.
