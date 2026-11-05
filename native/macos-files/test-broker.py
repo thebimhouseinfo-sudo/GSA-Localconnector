@@ -152,6 +152,24 @@ try:
     assert (root/'copied').read_bytes()==b'old'
     assert outside.read_bytes()==b'outside'
 
+    # Atomic same-root directory rename must never silently overwrite.
+    (root/'rename-source').mkdir(); (root/'rename-source'/'payload').write_bytes(b'preserved')
+    original_inode=(root/'rename-source').stat().st_ino
+    ok('rename-directory-atomic-exclusive','rename_directory','rename-source',destination='rename-target')
+    assert not (root/'rename-source').exists()
+    assert (root/'rename-target').stat().st_ino==original_inode
+    assert (root/'rename-target'/'payload').read_bytes()==b'preserved'
+    (root/'rename-conflict-source').mkdir()
+    (root/'rename-target'/'existing').write_bytes(b'keep')
+    deny('rename-directory-no-overwrite','rename_directory','rename-conflict-source',destination='rename-target')
+    assert (root/'rename-conflict-source').is_dir()
+    assert (root/'rename-target'/'existing').read_bytes()==b'keep'
+    (root/'rename-link').symlink_to(root/'rename-target',target_is_directory=True)
+    deny('rename-directory-symlink-denied','rename_directory','rename-link',destination='rename-link-target')
+    assert (root/'rename-link').is_symlink() and not (root/'rename-link-target').exists()
+    deny('rename-directory-traversal-denied','rename_directory','rename-conflict-source',destination='../outside')
+    assert outside.read_bytes()==b'outside'
+
     # Deterministic ancestor relocation between descriptor traversal and I/O.
     (root/'racing').mkdir(); (root/'racing/input').write_bytes(b'inside')
     req=dict(operation='read',workspace_id='workspace',role='workspace',root=str(root),device=str(st.st_dev),inode=str(st.st_ino),path='racing/input',revision=1,maxBytes=100,testPause=True)
