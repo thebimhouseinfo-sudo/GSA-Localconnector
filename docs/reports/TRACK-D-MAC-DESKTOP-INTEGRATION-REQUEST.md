@@ -28,3 +28,11 @@ Track D did not modify shared `src/mcp/{server,catalog,runtime-bootstrap,write-d
 3. Track A/Integration should inspect TS2739 prior failed CI at run `42046143138` (legacy source SHA `c6fa97f`). Do not override source ownership or assume still failing.
 4. Once CI wiring and D1 code findings are resolved, obtain a completed exact-HEAD hosted macOS run, independently inspect job steps/logs, then update the D1 test evidence and review statuses.
 5. Real Mac execution remains expressly **pending user require**, outside hosted-only completion.
+
+## FINAL TASK CLOSURE — BLOCKED (2026-11-05)
+Status: CLOSED_BLOCKED / not PASS.
+- D-B01 (Track D/Integrator): Pause/Resume incomplete; ownedWorkState always UNKNOWN, so safe Quit needs authoritative retained-work observation.
+- D-B02 (Track D): LSUIElement=true and accessory activation do not establish selected Dock app behavior.
+- D-B03 (Track C): CI misses direct test/desktop-supervisor.test.mjs suite and required full desktop Swift/package fixtures.
+- D-B04 (Track C/Integration): full exact-revision GitHub macOS CI not green. Run 42060878248 failed C0 + G3 (older SHA); run 42060906252 was IN_PROGRESS at inspection. Historic TS2739 is not current-HEAD proof.
+Unblock only after owners address findings and exact-SHA hosted macOS tests plus review PASS. Physical Mac tests: pending user require, not a present blocker. No merge, deploy, real Mac install.
