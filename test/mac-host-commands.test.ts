@@ -34,7 +34,11 @@ onMac("Track B denies traversal absolute cwd symlink reference and revoked grant
  for(const cwd_relative of ["../outside","/tmp",".//x","x/../y",""])await assert.rejects(host.execute(request({cwd_relative})));
  await fs.symlink(os.tmpdir(),path.join(root,"escape"));
  await assert.rejects(host.execute(request({cwd_relative:"escape"})));
- await registry.enrollRolesTrusted([{id:"reference",root:await fs.mkdtemp(path.join(os.tmpdir(),"gsa-b-reference-")),role:"reference"}]).then(async()=>{});
+ const reference=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-b-reference-"));
+ try{
+  await registry.enrollRolesTrusted([{id:"reference",root:reference,role:"reference"}]);
+  await assert.rejects(host.execute(request({workspace_id:"reference"})));
+ }finally{await fs.rm(reference,{recursive:true,force:true});}
  registry.revoke("work");
  await assert.rejects(host.execute(request()));
 }));
