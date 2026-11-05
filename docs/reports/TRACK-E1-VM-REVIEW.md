@@ -29,3 +29,13 @@ No unresolved actionable **E1 documentation** finding in the pinned baseline. De
 The initial map left HTTP → bootstrap verification for E2. Direct inspection of `src/mcp/http.ts:7,119,123` and `src/mcp/http-cli.ts:1` confirms that macOS HTTP startup also calls `bootstrapMcpTools`. The map has been repaired in E1 (blob `45e96ffc9c67c116761d5030e4a9ef72f8def738`; commit `6cd16e60aa93534239f59d6e800a1422b5ec5913`). This was a **MINOR documentation coverage finding, RESOLVED**. Both HTTP and stdio are now in the E2 cleanup gate. Source remains unchanged, and no VM test or real-Mac operation was executed. There is no claim of complete AST-wide import closure: that is explicitly deferred to the post-integration E2 gate.
 
 Final scope verdict: **E1 documentation PASS, zero remaining known actionable E1 documentation findings**, while G4 native proof and exact-source zero-VM dependency gates remain **NOT MET / E2 BLOCKED**.
+
+## Final task closure — 2026-11-05
+
+**Track E1 state: CLOSED / COMPLETED (DOCS-ONLY).** Inventory, caller-to-callee dependency map, E2 proposal and documented review are persisted; the identified HTTP route coverage finding was repaired. No additional E1 investigation or code change is authorized by this closure.
+
+**Track E2 state: BLOCKED / NOT STARTED — external prerequisite G4 missing or unverified.** This is **not** an E1 test failure. E2 deletion cannot begin because there is no verified acceptance evidence on the user's real Mac establishing that the native replacement is installed and works through the selected plugin. GitHub-hosted macOS source/build tests, native adapters existing in source and CI preparation are insufficient to satisfy the distinct G4 actual-host gate. In addition, the final post-integration import closure, migration of `native/macos-vm/SourceCapture.swift` currently used by non-VM CI, and decisions preserving shared `ci_*` consumers remain E2 prerequisites, not completed implementation.
+
+**Responsible next work:** A/B/C/D integration and G3 must provide exact-revision, required hosted macOS CI evidence; then G4 requires separately authorized installed-plugin tests and recorded actual-host results. The E2 integrator may resume **only after** G4 PASS is independently verified and must re-pin the source dependency map before any deletion. Do not bootstrap VM, run VM tests, modify installed VM media, delete guest images, change user-local checkout, merge or deploy as a workaround.
+
+**Closure meaning:** E1 = DONE with documented limitations; E2 = WAITING_ON_G4 (BLOCKED); native Mac actual-host acceptance = PENDING USER AUTHORIZATION / EVIDENCE. No E1 work remains pending merely because downstream E2 is gated.
