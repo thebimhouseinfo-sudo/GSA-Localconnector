@@ -70,6 +70,10 @@ async function command(executable:string,args:string[],input:string,max:number,o
 }
 type Bound={id:string;root:string;rootIdentity:{device:string;inode:string};revision:number;role:"workspace"|"reference";artifacts:Record<string,string>;presign_sha256:string;code_sha256:string};
 export interface MacScopedFilesOptions {ownerLockFD?:3;authorize?:(workspaceId:string,permission:WorkspacePermission)=>Promise<void>}
+/** Host-only proposed extension; not in shared MCP catalog and not automatically active. */
+export interface MacScopedNativeFiles extends NativeScopedFiles {
+ renameDirectoryExclusive(source:ScopedFileRef,destination:ScopedFileRef):Promise<void>;
+}
 /** Keep one loader/activation boundary. Recovery cannot be enabled by editing a
  * manifest/check-name list: native evidence and reviewed installation are missing.
  * A later accepted installation must supply per-root Recovery Broker.app,
@@ -81,12 +85,12 @@ export function macFileRecoveryActivation():Readonly<{available:boolean;reason:s
 /** Fixed-operation host I/O only. App Sandbox never authorizes a host shell.
  * Compare-and-mutate operations fail closed: APFS provides no content CAS primitive.
  */
-export async function loadMacScopedFiles(registry:WorkspaceRegistry,installationRoot=path.join(identityDirectory(),"scoped-files"),options:MacScopedFilesOptions={}):Promise<NativeScopedFiles>{
+export async function loadMacScopedFiles(registry:WorkspaceRegistry,installationRoot=path.join(identityDirectory(),"scoped-files"),options:MacScopedFilesOptions={}):Promise<MacScopedNativeFiles>{
  return constructMacScopedFiles(registry,installationRoot,options);
 }
 // Candidate construction is unexported. Native fixtures expose only a temporary
 // module copy; runtime callers always require completed evidence.
-async function constructMacScopedFiles(registry:WorkspaceRegistry,installationRoot:string,options:MacScopedFilesOptions={},candidate=false):Promise<NativeScopedFiles>{
+async function constructMacScopedFiles(registry:WorkspaceRegistry,installationRoot:string,options:MacScopedFilesOptions={},candidate=false):Promise<MacScopedNativeFiles>{
  if(process.platform!=="darwin")blocked("macOS scoped files unavailable on this platform");
  await assertMacFileInstallationSeparated(registry,installationRoot);
  await protectedDirectory(installationRoot);
@@ -201,6 +205,15 @@ async function constructMacScopedFiles(registry:WorkspaceRegistry,installationRo
     }
     check();
    });
+  },
+  async renameDirectoryExclusive(source,destination){
+   const from=Object.freeze({...source}),to=Object.freeze({...destination});
+   validateWorkspaceRelative(from.path);validateWorkspaceRelative(to.path);
+   if(from.workspace_id!==to.workspace_id)blocked("Cross-root atomic directory rename denied");
+   if(from.path===to.path||from.path.startsWith(to.path+"/")||to.path.startsWith(from.path+"/"))blocked("Overlapping directory rename denied");
+   // The native broker performs exclusive descriptor-relative rename and checks
+   // held source identity. No copy/delete fallback or silent overwrite.
+   await invoke(from,"rename_directory",{},to);
   },
   async moveExclusive(source,dest,hash){await invoke(source,"move",{expectedSha256:expected(hash)},dest);},
   async trashIfHash(ref,hash){await invoke(ref,"trash",{expectedSha256:expected(hash)});}
