@@ -92,6 +92,12 @@ export function createMacDirectoryCopies(registry:WorkspaceRegistry,reader:Nativ
    const intent=cloneDirectoryCopyIntent({source:sourcePin,destination:destinationPin,expected_manifest_sha256:expected,manifest:capture.manifest});
    for(const entry of directoryCopySchedule(intent.manifest))ref({workspace_id:to.workspace_id,path:entry.path?`${to.path}/${entry.path}`:to.path});
    assertDirectoryCopyIntentBudget(intent);await check(sourcePin,destinationPin,true);
+   // Authorization can yield between the first capture and intent durability.
+   // Reject a source manifest that changed before any destination publication;
+   // this is an observed preflight CAS, not an atomic filesystem snapshot.
+   const sourceRecheck=checkedCapture(await reader.capture(from));
+   if(sourceRecheck.manifest.sha256!==expected)fail("HASH_CONFLICT","Source changed during directory copy preflight");
+   await check(sourcePin,destinationPin,true);
    const created=await store.create(id,intent);let record=created.record;
    if(!created.created)return publicOutcome(record,await readback(record));
    const observedDirectories=new Map<string,string>();
