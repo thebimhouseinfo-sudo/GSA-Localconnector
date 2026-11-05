@@ -1,5 +1,53 @@
 # Proposed product milestones
 
+## 2026-11-05 MILESTONE TASK DAG V2 — parallel delivery schedule (canonical)
+
+**Authority:** [CRITERIA.md](CRITERIA.md) §0–§10 including the 2026-10-31 unconfined shell exception; [reviewed Plan V2](IMPLEMENTATION_PLAN.md#2026-11-05-pre-code-review-v2--canonical-delivery-plan-and-parallel-work-authority); [technical V2](TECHNICAL_PROPOSAL.md#2026-11-05-pre-code-technical-proposal-v2--parallel-native-mac-tracks). These are proposed task partitions, not new Criteria, new milestone IDs, code completion or independent Critic PASS. All contradictory old sequencing/optional VM paragraphs below are superseded.
+
+### Dependency notation and dispatch
+
+`S` = strictly sequential dependency; `P` = may run concurrently on a separate branch/file owner after G0 contract freeze; `I` = sequential integration/acceptance gate. No same-file multi-agent writes; protect the dirty `codex/mac-completion` checkpoint.
+
+| Milestone / task | Concrete task and deliverable | Depends on | Execution | Suggested branch | Acceptance |
+|---|---|---|---|---|---|
+| M0-P0-01 | Source/dirty-state/Criteria gap inventory and ownership | none | S (start) | plan/precode-contract | exact baseline and no data loss |
+| M0-P0-02 | Shared Mac controller/grant/MCP + native process seam contract | P0-01 | S | plan/precode-contract | integration interface and owner freeze |
+| M0-P0-03 / VM-E1 | Freeze VM, classify VM source/tests/media dependencies | P0-01 | P with P0-02 | chore/vm-retirement-inventory | zero new VM work, no media deletion |
+| M2-A1 | Repair existing stopped-owner fixture + recovery/installed-file activation; preserve journal | P0-02 | P (Track A) | feature/mac-files-recovery | owned child physically stopped; file state honest |
+| M2-A2 | Recoverable file move, operation log, non-Git diff | P0-02, A1 interfaces | P in separate files; shared-file merge S | feature/mac-files-operations | CAS/UNKNOWN/reference denial, no overwrite |
+| M2-A3 | Directory same-root rename and directory transfer completion | P0-02 | P with A1 where file owners differ | feature/mac-directory-ops | D2 atomic no-overwrite, noncross-root denial |
+| M3-B1 | Native Mac host command adapter, no VM, no OS sandbox claim | P0-02 | P with M2-A* | feature/mac-host-runner | cwd/timeout/output/owned cancellation, real Mac commands |
+| M3-B2 | Git/process/log integration and source/exit provenance | B1 + shared contract | S within B, P with A | feature/mac-process-git | dirty Git safety, non-Git script, no replay |
+| CI-C1 | VM-free Actions macOS source build/test and SHA/evidence | P0-01 | P with A/B | ci/mac-host-preinstall | macos-latest CI PASS exact SHA |
+| CI-C2 | Safe native Mac fixture testing and mandatory/skipped classifications | P0-02, C1 | P with A/B | ci/mac-native-fixtures | no false native PASS |
+| M5-D1 | Desktop lifecycle/setup tests/design; no real install | P0-02 | P with A/B/C | feature/mac-desktop-prep | post-login/Pause/Quit contracts without real modification |
+| INT-01 | Integrate M2-A* into selected-plugin file surface | M2-A1/A2/A3 + CI-C* | I | integration/mac-native | hosted macOS G1 PASS |
+| INT-02 | Integrate M3-B* with M2 binding and MCP catalog/bootstrap | INT-01 + B1/B2 + C2 | I | integration/mac-native | hosted macOS G2 PASS |
+| MAC-G3 | Full hosted macOS preinstall test for exact candidate | INT-02 + D1 tests | I | integration/mac-native | mandatory tests PASS, artifacts identified |
+| MAC-G4 | Reviewed installed-plugin test on user's actual Mac | MAC-G3 | I | no auto-install | live plugin results, disposable roots |
+| M4-R1 | Recovery/owner/crash/restart/safe stop integration | B2, INT-02 | P source prep, I proof after G4 | feature/mac-recovery | UNKNOWN, no duplicate effect and no neighbor kill |
+| VM-E2 | Separate PR deleting all VM-only runtime/assets/tests after native replacement proof | MAC-G4 + VM-E1 | I | chore/remove-vm-runtime | zero shipped VM dependency + hosted regression |
+| M5-R1 | Desktop package/live plugin/recovery acceptance | MAC-G4 + M4-R1 + VM-E2 + D1 | I | integration/mac-native | full Criteria M5 PASS |
+| M6 | Windows parity | M5-R1 accepted | S, deferred | TBD | independent Windows native evidence |
+
+### Parallel dispatch waves
+
+**Wave 0 (sequential short):** P0-01 → P0-02 shared interface; VM-E1 may start after P0-01.
+
+**Wave 1 (parallel agents after G0):** Agent A1 files/recovery, A3 directories (disjoint files), Agent B1 host command adapter, Agent C1/C2 CI, Agent D1 desktop prep, Agent E VM inventory. A2 starts after A1 transaction interface is pinned, without awaiting A1 native acceptance. B2 follows B1 seam but need not await M2 completion.
+
+**Wave 2 (sequential integrator):** merge reviewed A branches one-by-one → hosted G1; merge reviewed B → hosted G2; fix integration only on integration branch, no parallel edits to `src/mcp/{server,catalog,runtime-bootstrap,write-dispatch}.ts`. Each merged SHA reruns hosted CI.
+
+**Wave 3 (sequential physical gates):** G3 cloud macOS preinstall PASS → reviewed actual Mac installation/verification G4 → finish M4 recovery proof and independent VM-E2 deletion PR/hosted regression → M5 full acceptance. M6 begins afterward only.
+
+### Cross-task exit checklist
+
+Each task supplies exact branch/base/head, changed paths and owner, Criteria mapping, implementation diff, reproducible test commands, SHA-pinned hosted Mac CI status, expected/actual results, skipped/blocked gaps and reviewer findings. VM-only tests are excluded, not disguised as new Mac proof. No milestone flips to COMPLETE by merging code or getting cloud source CI alone.
+
+**State as of 2026-11-05:** M2 in progress, M3/M4/M5 not accepted; VM is frozen and removal is planned, not completed. Source CI on the initial PR #4 head `28f96118588acf9e78c230c0870e514e8af42fa6` passed its configured hosted Mac test suite; that evidence does not carry forward to later document/code SHA and does not prove installed native Mac functionality.
+
+
+
 ## 2026-11-05 delivery sequence override — VM freeze and hosted macOS pre-install CI
 
 This is a human-directed correction to the execution order, **not** a newly accepted milestone or a revision of Criteria. Freeze existing VM code and make it ineligible for new feature/repair/test work. The Linux guest worker is a retirement candidate, not a fallback for Mac native execution. Plan a staged, reversible **complete removal of VM integration** with preserved historical evidence and untouched user-owned original VM media.
