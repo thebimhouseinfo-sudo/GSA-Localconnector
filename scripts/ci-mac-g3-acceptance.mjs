@@ -7,7 +7,7 @@ import {spawnSync} from 'node:child_process';
 import {createMacInstaller} from './mac-desktop-install.mjs';
 const fail=(reason)=>{throw Error('BLOCKED/FAIL C-G3: '+reason);};
 if(process.platform!=='darwin'||process.arch!=='arm64')fail('hosted Darwin ARM64 required');
-const sha=process.env.GITHUB_SHA;
+const sha=process.env.SOURCE_SHA??process.env.GITHUB_SHA;
 const git=spawnSync('git',['rev-parse','HEAD'],{encoding:'utf8'});
 if(!/^[0-9a-f]{40}$/.test(sha??'')||git.status!==0||git.stdout.trim()!==sha)fail('exact candidate SHA mismatch');
 const tests=spawnSync(process.execPath,['--test','--test-reporter=tap','scripts/test-mac-package.mjs'],{encoding:'utf8',timeout:120000,maxBuffer:8*1024*1024});
