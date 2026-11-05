@@ -19,12 +19,12 @@ if(result.status!==0||result.error){
   const lines=stdout.split('\n');
   const failing=[];
   for(let i=0;i<lines.length;i++){
-    if(/^\\s*not ok\\s+\\d+/.test(lines[i])){
+    if(/^\s*not ok\s+\d+/.test(lines[i])){
       failing.push(lines.slice(Math.max(0,i-1),Math.min(lines.length,i+32)).join('\n'));
       if(failing.length>=8)break;
     }
   }
-  process.stderr.write('C0 FAILED TEST DIAGNOSTICS:\\n'+(failing.length?failing.join('\\n---\\n'):'No TAP failing-test markers found; process may have exited early')+'\\n');
+  process.stderr.write('C0 FAILED TEST DIAGNOSTICS:\n'+(failing.length?failing.join('\n---\n'):'No TAP failing-test markers found; process may have exited early')+'\n');
   process.stderr.write(stderr.slice(-8192));
 }else console.log('C0 compiled TAP suite completed; summary follows');
 
