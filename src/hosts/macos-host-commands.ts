@@ -61,11 +61,7 @@ export class MacNativeCommands implements VerifiedNativeSandbox,VerifiedNativePr
   if(slice.length!==data.length)run.output_limited=true;
  }
  private buffer(chunks:Buffer[]):string{
-  const value=Buffer.concat(chunks);
-  let end=value.length;
-  while(end>0&&(value[end-1]&0xc0)===0x80)end--;
-  // Buffer's UTF-8 decoder safely replaces an incomplete last codepoint.
-  return value.subarray(0,end).toString("utf8");
+  return Buffer.concat(chunks).toString("utf8");
  }
  private async launch(request:SandboxedProcessRequest):Promise<Run>{
   if(this.runs.size>=128)throw Error("PROCESS_HISTORY_CAPACITY");
