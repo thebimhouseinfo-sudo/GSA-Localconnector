@@ -21,3 +21,10 @@ Track D did not modify shared `src/mcp/{server,catalog,runtime-bootstrap,write-d
 - Real-Mac Dock interaction, Login Items/background after actual login, live tunnel/API credentials, sleep/wake behavior, physical-process coexistence and installed-plugin acceptance: **pending user require**.
 - **pending user require** is a deferred user-dependent acceptance item, not a hosted-CI failure and not evidence of physical Mac PASS. It must not block declaring the *hosted-only test phase* complete once all mandatory hosted checks have actually passed; it still blocks claiming real-Mac acceptance.
 - Latest inspected branch SHA before this documentation revision: `9eaaaa23cc97d2147961beaaa06552e3f1ac7b75`. GitHub Actions push run [42059630490](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/42059630490) was **IN_PROGRESS**; `c0-source` had successful checkout, tool setup and host identification, dependencies still in progress. PR run [42059643485](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/42059643485) was **PENDING**. Do not claim CI PASS until completed exact-SHA evidence exists.
+
+## Exact external-owner blockers for D1 CI closure (2026-11-05)
+1. Track C must execute `node --test --test-reporter=tap test/desktop-supervisor.test.mjs` as a mandatory non-skippable `macos-latest` step; current compiled-test discovery omits this .mjs suite. The report must record tests/pass/fail/skipped and source SHA.
+2. Track C must execute native Swift AppKit compile and desktop package/smoke tests on a disposable GitHub macOS runner; prevent live login/tunnel changes; G3 existing package gate alone does not establish D1 coverage.
+3. Track A/Integration should inspect TS2739 prior failed CI at run `42046143138` (legacy source SHA `c6fa97f`). Do not override source ownership or assume still failing.
+4. Once CI wiring and D1 code findings are resolved, obtain a completed exact-HEAD hosted macOS run, independently inspect job steps/logs, then update the D1 test evidence and review statuses.
+5. Real Mac execution remains expressly **pending user require**, outside hosted-only completion.
