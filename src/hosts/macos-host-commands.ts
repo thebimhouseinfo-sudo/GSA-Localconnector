@@ -126,7 +126,11 @@ export class MacNativeCommands implements VerifiedNativeSandbox,VerifiedNativePr
  async cancel(process_id:string,workspace_id:string):Promise<boolean>{
   const run=this.get(process_id);
   if(run.workspace!==workspace_id)throw Error("PROCESS_NOT_OWNED_BY_WORKSPACE");
-  run.cancelled=true;return this.terminate(run);
+  run.cancelled=true;
+  const groupStopped=await this.terminate(run);
+  if(!groupStopped)return false;
+  await Promise.race([run.settled,new Promise<void>(resolve=>setTimeout(resolve,1000))]);
+  return run.closed&&run.stopProof;
  }
  async start(request:SandboxedProcessRequest):Promise<{native_id:string}>{
   const run=await this.launch(request);return {native_id:run.id};
