@@ -28,7 +28,7 @@ onMac("Track B native process stdout stderr exit and subdirectory cwd",()=>fixtu
  assert.equal(receipt.exit_code,0);assert.equal(receipt.stdout,"ok");assert.equal(receipt.stderr,"err");
  assert.equal(receipt.timed_out,false);assert.equal(receipt.output_limited,false);
  const pwd=await host.execute(request({cwd_relative:"child",argv:["-e","process.stdout.write(process.cwd())"]}));
- assert.equal(pwd.stdout,path.join(root,"child"));
+ assert.equal(await fs.realpath(pwd.stdout),await fs.realpath(path.join(root,"child")));
 }));
 onMac("Track B denies traversal absolute cwd symlink reference and revoked grant",()=>fixture(async(host,root,registry)=>{
  for(const cwd_relative of ["../outside","/tmp",".//x","x/../y",""])await assert.rejects(host.execute(request({cwd_relative})));
