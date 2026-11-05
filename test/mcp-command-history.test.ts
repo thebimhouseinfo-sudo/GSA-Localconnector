@@ -172,3 +172,27 @@ test('timed out command preserves its receipt and reports UNKNOWN consistently w
  assert.equal(result.state,'UNKNOWN');assert.equal(result.receipt!.exit_code,124);
  const saved=(await f.store.load(result.process_id))!;assert.equal(saved.status.state,'UNKNOWN');assert.equal(saved.stdout,receipt.stdout);assert.equal(saved.output_complete,false);
 });
+
+test('MCP native command arguments preserve optional workspace-relative cwd and reject unknown fields',{skip:process.platform==='win32'},async t=>{
+ const seen:any[]=[];
+ const f=await fixture(t,async (r:any)=>{seen.push(r);return receipt;});
+ const command=decode(await f.invoke({name:'run_command',arguments:{workspace_id:'A',command:'/bin/tool',args:['argument'],cwd_relative:'scripts'}}));
+ assert.equal(command.ok,true,JSON.stringify(command));
+ assert.equal(seen.length,1);
+ assert.equal(seen[0].cwd_relative,'scripts');
+ assert.equal(seen[0].network_allowed,false);
+ const defaultCwd=decode(await f.invoke({name:'run_command',arguments:{workspace_id:'A',command:'/bin/tool',args:[]}}));
+ assert.equal(defaultCwd.ok,true,JSON.stringify(defaultCwd));
+ assert.equal(seen[1].cwd_relative,'.');
+ for(const extra of [{cwd_relative:17},{cwd_relative:null},{unexpected:'ignored'}]){
+  const denied=decode(await f.invoke({name:'run_command',arguments:{workspace_id:'A',command:'/bin/tool',args:[],...extra}}));
+  assert.equal(denied.ok,false,'unrecognized or malformed command arguments must not execute');
+ }
+ assert.equal(seen.length,2,'rejected requests must have zero side effects');
+ const capabilities=decode(await f.invoke({name:'list_capabilities',arguments:{}}));
+ assert.equal(capabilities.ok,true);
+ assert.equal(capabilities.result.executionEnvironment,'macos-native');
+ assert.equal(capabilities.result.command_confinement,'none (user account)');
+ assert.equal(capabilities.result.state_integrity_vs_commands,'not_protected');
+ assert.equal(capabilities.result.git,'local-only; network-blocked');
+});
