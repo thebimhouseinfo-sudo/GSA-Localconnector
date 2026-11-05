@@ -110,7 +110,7 @@ export function macFileRecoveryActivation():Readonly<{available:boolean;reason:s
 /** Fixed-operation host I/O only. App Sandbox never authorizes a host shell.
  * Compare-and-mutate operations fail closed: APFS provides no content CAS primitive.
  */
-export async function loadMacScopedFiles(registry:WorkspaceRegistry,installationRoot=path.join(identityDirectory(),"scoped-files"),options:MacScopedFilesOptions={}):Promise<MacScopedNativeFiles>{
+export async function loadMacScopedFiles(registry:WorkspaceRegistry,installationRoot=path.join(identityDirectory(),"scoped-files"),options:MacScopedFilesOptions={}):Promise<NativeScopedFiles>{
  return constructMacScopedFiles(registry,installationRoot,options);
 }
 // Candidate construction is unexported. Native fixtures expose only a temporary
