@@ -53,12 +53,12 @@ Complete all **GitHub-verifiable** P0 source checks and produce an executable co
 
 ## P0-04 — GSA Planning Job reconciliation and review
 
-- Current replacement Mac-only planning Job: `J-FA79` / `01a1ab7b-14d0-7a65-bb9b-d8475aabfa79`; 16 task nodes **G0 → A/B/C/D/E1 → INT-A → INT-B → G3 → G4 → M4/E2 → M5**. Windows is **not** a node or task of this Mac project planning round.
-- Approved Criteria binding in Job revision 2 was corrected to `3386b803ef655d4398d438c6c6b0d8a3343afb24` and independently read back. It remains `DRAFT`, `planning_review:PENDING` and `planning_topology:[]`. This report does **not** falsely claim durable planning review PASS.
-- Prior historical `J-2600` READY and earlier Reviewer PASS belong to an obsolete strict M2→M3 source-coding plan. Current replacement needs independent current-revision PASS; do not inherit old review or supersede without verified CAS/LLC58 transition.
-- Reviewer should check the *task dependency edges*, not treat display-only `topology.stage/next` as additional constraints. If a distinct `planning_topology` DAG is a schema requirement, planner must persist 16 task nodes with `depends_on` matching `docs/MILESTONES.md`, with no M6 node, and read back.
+- Current replacement Mac-only planning Job: `J-FA79` / `01a1ab7b-14d0-7a65-bb9b-d8475aabfa79`, **planning revision 3, READY, Reviewer PASS**, 16 task nodes **G0 → A/B/C/D/E1 → INT-A → INT-B → G3 → G4 → M4/E2 → M5**. Windows is **not** a node or task of this Mac project planning round.
+- Approved Criteria binding `3386b803ef655d4398d438c6c6b0d8a3343afb24` is independently read back. Job revision 3 contains **16 explicit `planning_topology` nodes**, exactly matching task dependencies, no dependency cycles and no Windows task. Independent planning Reviewer verification `01a1ab9b-f30d-73da-8d92-8105ade491de.json` is durably **PASS / zero findings**, and the Job was moved to **READY** by authorized exact-SHA transition/readback.
+- Prior historical `J-2600` strict M2→M3 source-coding plan has been transitioned to **SUPERSEDED**, result `SUPERSEDED`, using the GSA guarded exact-SHA transition and GitHub readback (Job blob `b0304603e5f433e36f47fb5f900e8ffb32a5e1a5`). Its older Reviewer PASS does not transfer to the current plan.
+- Reviewer accepted the 16-task `planning_topology` and actual `depends_on` edges at revision 3. Display-only `topology.stage/next` does not add dependencies; the DAG is the accepted authority.
 
-**P0-04 verdict:** Criteria and Mac-only scope reconciled; durable topology+Reviewer still PENDING.
+**P0-04 verdict:** PASS for current pre-code planning topology, Criteria, Mac-only scope and old Job disposition. This is **NOT** a PASS for host checkout custody or product implementation.
 
 ## P0 / G0 exit checklist
 
@@ -68,7 +68,7 @@ Complete all **GitHub-verifiable** P0 source checks and produce an executable co
 - [x] Source VM freeze/retirement candidates classified without deleting anything
 - [x] Current connected Mac plugin queried read-only; no workspace/dirty state falsely inferred
 - [ ] Exact physical Mac dirty checkout, unpushed commits, local installer/plugin identities and state canary safely observed (blocked: `WORKSPACE_ROOT_CHANGED`, no enrolled workspace)
-- [ ] Current Job revision bound to complete DAG, role-isolated independent Reviewer PASS persisted/read back, and historic job disposition reconciled
+- [x] Current Job revision 3 bound to complete 16-node DAG, independent Reviewer PASS with zero findings persisted/read back, old `J-2600` marked SUPERSEDED, new `J-FA79` READY
 - [ ] G0 review confirms common interface plus local custody as needed for safe product-code merge
 
-**Current verdict: P0 SOURCE AUDIT COMPLETE; P0/G0 OVERALL BLOCKED/PENDING.** No product source edits, no Mac install, no VM mutation, no main merge or deployment. It is unsafe to claim P0 PASS while local dirty work and durable Reviewer are unknown.
+**Current verdict: P0-02/P0-03/P0-04 SOURCE/PLAN PASS; P0-01 GitHub remote source PASS but physical Mac custody BLOCKED. Thus G0 OVERALL BLOCKED on actual Mac checkout/grants, not on planning findings.** No product source edits, no Mac install, no VM mutation, no main merge or deployment. It is unsafe to claim full P0/G0 PASS while local dirty work remains uninspected.
