@@ -88,3 +88,33 @@ Reviewer independently checks: all approved Criteria §0–§10, M0–M6 coverag
 
 **Current state:** V3 documents are prepared for Reviewer; no product source changed and no Mac installation performed. Only a verified Reviewer PASS on exact V3 (and, if requested, later CR) counts as review closure. Human approval is still required before coding.
 
+
+## PHASE 5 — Job-ready dispatch registry and source-of-truth reconciliation
+
+### GOAL
+
+Translate the reviewed product requirements into an unambiguous set of parallel *future* coding assignments, including M6 deferral, without activating a task or rewriting a READY historical Job prematurely.
+
+**Two-level dependencies.** At the *source authoring* level, file/backend (A), native command (B), CI (C), desktop preparation (D) and VM inventory (E1) run concurrently after the shared T0 contract, each on a separate feature branch with exclusive file ownership. At the *capability acceptance* level, files must be integrated before command dispatcher wiring, full hosted macOS native tests must pass before any real-Mac installation, and real Mac verification precedes VM removal and M5 sign-off. Do not let a linear presentation order become an implicit dependency edge.
+
+**GSA planning reconciliation:** historical `J-2600` revision 3 has the old M2→M3 linear topology. The replacement planning Job `J-FA79` is a planning artifact, not an implementation job; its task graph MUST be normalized to the DAG in Milestones (including a deferred M6 node). Old Reviewer PASS never authorizes it. GSA Project Memory Criteria must match the approved current `docs/CRITERIA.md` byte-for-byte; the 2026-10-31 unconfined shell exception cannot be lost by re-binding to the stale Criteria version. Use GSA-controlled job revision/verification and independent Reviewer readback before future coding assignment. Any unavailable Job update leaves this source plan usable for review, but marks the durable planning handoff **BLOCKED**, not READY.
+
+**Task assignment readiness contract:** each future task explicitly supplies (1) exact starting Git SHA and active development branch, (2) owner/allowlisted paths and common files that MUST NOT be changed, (3) prerequisites based on IDs rather than milestone-complete shortcuts, (4) contract to reuse and prohibited second system, (5) positive, negative and failure-mode tests, (6) expected GitHub macOS runner evidence on exact SHA, (7) review disposition and known local-host gaps. Source-coding Tasks may not auto-start from this document.
+
+**Known hold points before coding:** (i) reconcile unpublished/dirty Mac checkout, (ii) review actual `cwd_relative` validator and `runtime-bootstrap.ts` guest wiring, (iii) finish the prior installer test's owned-child stop cleanup before native fixture reuse, (iv) prove CI's required suites are wired rather than merely named, and (v) prevent stale VM-capability names from being mistaken for real Mac host readiness.
+
+### Task-to-milestone traceability
+
+| Criteria | Task owner(s) | Milestone evidence |
+|---|---|---|
+| §1–§3 machine/plugin grant, multi-root work/reference roles | T0, A1, INT-A, G4 | selected plugin binds/rebinds/revokes current grants without per-folder manual installer |
+| §4 file create/edit/patch/copy/move/delete/diff and references | A1–A3, C-A, G1, G4 | conflict and UNKNOWN readback, two roots and read-only references |
+| §4–§5 actual host command, Git and project scripts | B1–B4, C-B, G2, G4 | real Darwin execution, Git dirty repo, non-Git script, commands scoped by cwd |
+| §5–§6 logs/status/output and long-running cancel | B2–B3, C-B, R1 | bounded stdout/stderr, exit, source version identity and exact owned physical stop |
+| §7 file boundary and accepted command exception | A, B, C, G4 | file API root/reference denials and honest unconfined command declaration |
+| §8 reconnect/crash/reboot truthfulness | R1–R2, G4, M5 | no duplicate effects, UNKNOWN where physical stop or prior effect unproven |
+| §9 Windows parity | M6-01/M6-02 | starts only after M5 Mac sign-off; independent Windows host proof |
+| §10 full user journey | D1/D2, G4, M5 | background/Dock/tunnel, independent projects and full plugin functionality |
+
+**Definition of plan-review complete:** exact V3 Plan/Milestones/Proposal agree on these owner/dependency/test facts, Reviewer record has zero unresolved findings and is pinned to matching repository blobs, the active GSA Project Job references current approved Criteria and reflects the non-linear topology, and all historical conflicting proposals are marked archival. No merge, deploy, local installation or product coding is implied by review completion.
+
