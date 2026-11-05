@@ -1,5 +1,20 @@
 # Implementation Plan — GSA-Localconnector
 
+## 2026-11-05 — Human direction: freeze VM, test on GitHub-hosted macOS before installing locally
+
+**Effective scope:** No further Linux/macOS guest VM development, fixes, provisioning, QEMU, EFI or VM-based runtime validation. The Linux VM worker is deprecated, not an optional implementation path for M3. Prepare complete removal of VM integration after native Mac replacement and tests; retain historical evidence and do not erase any original user VM media. A GitHub Actions `macos-*` hosted runner is a remote macOS test host, **not** a request to develop/run our own VM. No new connector CI/DAG engine.
+
+**Order (applies to M2–M5):**
+1. Inventory VM dependencies/imports, production registrations, tests and workflows. Mark VM entrypoints frozen; forbid new VM work except safe removal. Classify files as VM-only, shared/non-VM, historical evidence or external media.
+2. Implement the smallest direct-macOS-host file, process, Git and project-script path, respecting CRITERIA §7's 2026-10-31 command exception. Use existing process/log facilities, no new local agent or orchestration engine.
+3. **Pre-install test gate:** run `npm ci --ignore-scripts`, `npm run build`, `npm test`, and relevant non-destructive native-macOS fixture tests on GitHub Actions `macos-latest` from the exact PR commit. Record runner OS/arch, SHA, actual results and skips. No private tunnel, local user secrets, installed connector, or privileged/system-mutating fixture in hosted CI. A green Actions run is preliminary, not proof of local installed-plugin behavior.
+4. If pre-install CI is green, only then conduct a separately reviewed installed integration test on the user's actual Mac, using disposable workspace roots and verified installer/artifact identity. Do not install, activate or replace the user connector automatically.
+5. After direct-host execution has equivalent coverage, remove all VM-only code, install scripts, worker/guest assets and VM-only CI/test registrations in a separate reversible cleanup PR. Validate no production references and run hosted macOS regression again. Preserve historical reports, original user media and external files. **Target: zero VM runtime dependency in shipped connector.**
+6. Complete M3 process/log/Git/script, M4 recovery and M5 plugin/desktop acceptance on actual Mac; Windows stays deferred.
+
+**Current status:** this directive adds plan and hosted-CI preparation only; no M2–M5 acceptance, no local installation and no native-host execution claim. Existing implementation/status snapshots may describe earlier VM behavior but do not override the freeze.
+
+
 Status: ACTIVE
 
 **Current handoff (2026-11-02):** Start with [MAC-QWEN-HANDOFF.md](MAC-QWEN-HANDOFF.md) for the working-tree checkpoint, remaining review finding and exact next actions. M2 is in progress; M2–M5 are not accepted. The active P02 simplification and first stopped-owner slice in [TECHNICAL_PROPOSAL.md](TECHNICAL_PROPOSAL.md#p02-simplification--active-2026-11-01) govern over conflicting historical proposals. Do not restart discovery or infer milestone completion from historical evidence.
