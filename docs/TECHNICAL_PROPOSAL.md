@@ -1,5 +1,101 @@
 # Technical Proposal — Coder-owned, whole Plan
 
+## 2026-11-05 PRE-CODE TECHNICAL PROPOSAL V2 — parallel native Mac tracks
+
+**Proposal scope and authority:** implement approved [CRITERIA.md](CRITERIA.md), including D1 unconfined user-account commands (§7, 2026-10-31), D2 minimal directory rename, D3 scoped reviewer and 2026-11-05 VM freeze, removal plan and hosted macOS preinstall CI. This V2 supersedes contradictory 2026-10-19/11-01 optional-VM and fully-serial implementation passages below, which remain historical and evidence-bounded. **No independent Critic PASS for V2 yet; no product code/install/activation here.**
+
+### Verified existing code (source path presence) versus unverified capability
+
+- **Seen in repository:** `src/mcp/{server,catalog,write-dispatch,runtime-bootstrap}.ts` (dispatch); `src/local/{grants,mac-owner,file-transaction-store,directory-copy-store,process-store}.ts` (roles/controller/history); `src/hosts/macos-{scoped-files,file-recovery,directory-copy}.ts` and `native/macos-files/{broker,recovery-broker,tree-broker}.swift` (native file candidate); `src/core/{native-io,process-manager,process-journal,git-engine,git-plans}.ts` (execution/process/Git contracts); `native/macos-desktop` and desktop install tests (lifecycle); VM code and `src/core/ci-*.ts` (legacy). Path presence is **not** runtime readiness.
+- **Unverified/blocked:** installed full write/move/rename file set, final reviewed stopped-owner fixture cleanup, held-FD relocation, plugin binding/recovery activation, actual-host command and Git, real Mac lifecycle and M4 recovery. The prior 2026-11-02 handoff records unfinished native fixture cleanup and preserved work. Do not treat GitHub CI or historic native tests as fresh plugin PASS.
+- **Already recorded:** GitHub hosted macOS source/native-safe CI on PR #4 SHA `28f96118588acf9e78c230c0870e514e8af42fa6` completed successfully; its command set excludes dedicated VM work but does not certify all Mac capabilities.
+
+### T0 shared interface freeze (single owner; blocking to parallel edits)
+
+Design and review only the minimum seams first. Keep existing Workspace/Reference grants, epoch/revision, controller lease and root identity. All file writes through the existing checked file backend, durable transaction store and readback. No second journal, installer or approval gate. Keep an existing `VerifiedNativeSandbox`-compatible process execution interface where possible, but rename/document semantics for native macOS host (it is **not** an OS-security sandbox). Do not reuse guest-specific `macos-vm-runtime` for execution.
+
+Proposed host adapter contract (illustrative TypeScript; check actual `native-io.ts` types before implementation):
+
+```ts
+type MacHostRun = {
+  workspaceId: string;
+  relativeCwd: string;
+  argv: string[];
+  timeoutMs: number;
+  maxOutputBytes: number;
+  controlToken: string;
+};
+type RunObservation = {
+  runId: string;
+  platform: "darwin";
+  arch: string;
+  cwd: string;
+  argv: string[];
+  status: "running" | "completed" | "failed" | "cancelled" | "unknown";
+  exitCode?: number;
+  stdoutCursor?: string;
+  stderrCursor?: string;
+  outputRefs?: string[];
+  commandConfinement: "none (user account)";
+  stateIntegrityVsCommands: "not_protected";
+};
+```
+
+This is a design sketch, not an instruction to replace stable existing public types. Preserve legacy API/tool names and JSON shapes if consumers depend on them; adapt at the host seam. Scope validation is at request start and recheck where relevant. Native command process runs as the logged-in user, `cwd` within an explicitly granted workspace only. Do not claim child filesystem confinement; commands may access external locations with user permissions. No direct command from a Reference root. Do not pass connector tunnel/token/secret variables to child environment; allowlisted toolchain/path environment, bounded output and timeout. External network/download/secret access requires separate explicit authorization as in Criteria §5. Protect ownership of exact spawned process group; no PID-only broad kill. Monitor/readback/cancel must refer to the same owned run.
+
+### Track A — file and reference operations (M2-A1/A2/A3)
+
+**Owner:** `src/hosts/macos-scoped-files.ts`, `src/hosts/macos-file-recovery.ts`, `src/hosts/macos-directory-*.ts`, `native/macos-files/*`, file transaction/directory stores and file-specific tests; installer shared files serialized by A integrator.
+
+- A1: inspect actual working tree and recover the stopped-owner fixture correction first: bounded child lifetime, owned-group physical stop before cleanup, retain disposable fixture on uncertain termination. Reuse existing signed broker, `applyMacScopedRecovery` candidate, checked loader, protected grant snapshot and journal. Preserve previous generation/captures; ambiguous publication or file mutation is UNKNOWN, never replay. Do not activate production recovery on synthetic-only proof.
+- A2: extend one existing transaction/readback flow for file move (including between granted workspaces), conflict detection, operation log and non-Git diff; use existing stores where possible. Maintain source on failed destination copy/commit, report partial outcome on interrupted move. No new second transaction subsystem.
+- A3: complete reference→workspace and workspace↔workspace directory copy; D2 directory rename is **same workspace and volume, no overwrite**, with reasoned rejection otherwise. No general directory-move engine, no VM shared mount.
+- Positive and denial tests: role-bound read/copy-out, source/destination owner and grant epoch, revocation, symlink/root replacement, hash/CAS conflict, UNKNOWN/readback/no double effect, existing user-data and journal byte preservation, cross-workspace independent outcomes. Filed retained-FD relocation defect remains explicit; do not assert universal file boundary proof before repaired/verified.
+
+### Track B — host command, Git and processes (M3-B1/B2)
+
+**Owner:** `src/hosts/macos-host-commands.ts` (proposed) and `src/core/{native-io,process-manager,durable-process,process-journal,git-*}.ts`. **No concurrent B write to shared MCP files**: integration owner applies final `server.ts`, `catalog.ts`, `runtime-bootstrap.ts` changes after A integration.
+
+- B1: implement a minimal actual macOS child-process backend using existing Node/process facilities and current runtime identity. Command is explicit argv or documented shell form; validate workspace-relative cwd via scoped root resolution; reject reference cwd. Use existing bounded run/start, incremental log retrieval, status, timeout and exact owned cancel (track process group and descendants where established). Do not create new background job engine, guest VM or permission approval gates.
+- B2: use existing process journal as one run record; ensure current command, cwd, host architecture/toolchain, exit signal/code, stderr/stdout cursor, output/artifact provenance and UNKNOWN when unproven. Git operations apply to local repository only, preserve dirty/unrelated files and report non-Git status as not applicable. Remote fetch/push remains separately network-authorized. A project's scripts can run existing builds/tests on macOS host, including non-Git folder.
+- Tests: on GitHub Actions macOS, build/run `node -p process.platform` and `uname`, a temporary non-Git test script, local ephemeral Git repo with dirty files, stdout/stderr/exit 0 and nonzero, log truncation/cursors, timeout/cancel owned child, neighbor process untouched; avoid destructive external paths. On user's Mac, repeat through **installed selected plugin** only after CI and reviewed install. Report `command_confinement` and `state_integrity_vs_commands` exactly per Criteria §7.
+
+### Track C — GitHub macOS preinstall CI and evidence (CI-C1/C2)
+
+**Owner:** `.github/workflows/ci.yml` and CI-only tests/scripts. Runs on `macos-latest`, Node 22; record `GITHUB_SHA`, `sw_vers`, `uname -m`, `xcodebuild -version`. Use `npm ci --ignore-scripts`, `npm run build`, non-VM test suite and relevant native Mac disposable fixture tests. The current workflow invokes a selective test set; **audit suite selection** so frozen VM coverage is not counted as required Mac proof and non-VM regressions are not silently omitted. Do not introduce a new CI scheduler or project VM.
+
+CI provenance report: exact source SHA, lockfile hash, OS/arch/toolchain, step commands/exits and PASS/FAIL/SKIP with rationale. Use Actions native log/artifact retention. Keep secrets absent; do not connect to user's Mac or start a production tunnel. Test fixtures must be disposable and avoid privileged host changes. A missing mandatory native-host test is BLOCKED, never PASS. Do not auto-install after CI. Re-run on the exact merged candidate, not just earlier independent track PRs.
+
+### Track D — desktop setup/lifecycle preparation (M5-D1)
+
+**Owner:** `native/macos-desktop/*`, desktop packaging/lifecycle tests and docs. Design/setup/testing can progress independently after T0; actual installation waits G3/G4. Preserve ignored `.env` with allowlisted parsing of tunnel ID/runtime key, no logging or shell source. Retain Dock icon, background post-login launch, Pause/Resume/Quit, graceful scoped shutdown preserving unrelated apps, restart/wake truthfulness; sleep prevention stays external/out of scope. No touching real login items during CI or docs-only review.
+
+### Track E — VM freeze and retirement (VM-E1/E2)
+
+Inventory `native/macos-vm/*`, `src/hosts/macos-vm-*.ts`, VM runtime/installer/provisioning scripts, guest-worker tests, VM-only CI steps and `src/core/ci-* / src/local/ci-*` by **real imports/consumers**; the latter require classification and may contain reusable process/log pieces, so do not delete by name alone. Freeze all VM development immediately. After hosted Mac direct-host CI and a local native replacement proof, remove VM-specific shipped source/runtime/entrypoints/tests/install paths in an isolated reversible PR and rerun full hosted macOS regression. Preserve historic reports, external images, digests and user media. Remove only code proven unreferenced by surviving native functionality.
+
+### Integration gates and nonoverlap rule
+
+**One integration owner** serially owns `src/mcp/{server,catalog,runtime-bootstrap,write-dispatch,batch-dispatch}.ts` and final adapters, not A/B/D in parallel. T0 → independent A/B/C/D/E branches → A integration/hosted G1 → B integration/hosted G2 → exact-sha hosted G3 **before any Mac-local install** → reviewed local G4 → M4 recovery/VM removal regression → M5. This is a code DAG, not a new user-facing approval system. A/B development parallel; capability activation and M5 acceptance sequential.
+
+Source verification is focused build/test + full relevant non-VM regression, reviewed changed diff and exact-SHA CI. Native-host proof requires observed real macOS process/file effects on the hosted runner and, later, installed-plugin proof on user's Mac; fixture or GitHub CI cannot establish local TCC, tunnel, persistence or login behavior. No new code without resolving the corresponding source/contract conflict first. Unsupported capabilities stay disabled and are reported honestly.
+
+### PRE_CODE technical critic checklist and result
+
+- [x] Criteria authority: no local agent, no fresh VM/CI engine, Mac before Windows.
+- [x] Corrected direct-host safety language for 2026-10-31 §7 exception.
+- [x] No shared-file concurrent writes; explicit interface/ownership gate.
+- [x] Cloud macOS before local installation, and cloud PASS distinguished from physical installed-plugin acceptance.
+- [x] VM complete retirement scheduled after working direct-host replacement; original media/historical evidence preserved.
+- [x] UNKNOWN/partial/no replay, dirty-tree and unrelated-process preservation.
+- [ ] Independent role-isolated Critic/Reviewer assessment of **this V2** — NOT PERFORMED.
+- [ ] Actual MAC-CI candidate runtime/provisioning/native command PASS — NOT PERFORMED (the earlier docs/CI-only PR PASS is narrower).
+- [ ] Actual local installed selected-plugin acceptance — NOT PERFORMED.
+
+**Self-review conclusion:** PRE-CODE DOCUMENT CONSISTENCY PASS; product implementation/readiness NOT PASS. This checklist does not retroactively extend previous CR approvals, grant source mutation authority or mark milestones complete.
+
+
+
 Status: ACTIVE DELTA — P02 simplification, first stopped-owner slice reviewed
 Critic CR: PASS for the first stopped-owner recovery/installer slice only (2026-11-01, PRE_CODE_TECHNICAL, independent Critic); prior revision 2 PASS is historical. Coordination is GUIDED_ONLY; this is not native or product acceptance.
 
