@@ -36,3 +36,20 @@ No D1 PASS, no merge/deploy/install claim.
 - **D-R09 CURRENT_STATUS:** D1 has unfinished functional items (Pause/Resume, authoritative IDLE observer, Dock activation policy) independently of the CI issue. These remain open software findings, not physical-host deferrals.
 - **Host test disposition:** GitHub macOS runner only is requested now; real Mac tests **pending user require**. This defers physical acceptance but does not excuse missing hosted checks or missing software features.
 - **Closure:** BLOCKED / no D1 completion claim. All edits stayed within Track D ownership; no merge/install/deploy performed.
+
+## FINAL TASK CLOSURE — BLOCKED (2026-11-05)
+
+**Task:** D1 — Mac Desktop Application & Lifecycle. **Disposition:** CLOSED_BLOCKED (task work stopped and handed to integration owners; not DONE/PASS). **Source snapshot reviewed:** `2cf162650f93192eff270cc1a3ff37404ab6da73`, before writing this closure. No merge, deploy, user-Mac install or real tunnel changes.
+
+### Exact reasons blocking D1 completion
+1. **BLOCKER D-B01 — incomplete product behavior (Track D / Integration):** There is no completed Pause/Resume action; `scripts/mac-desktop-adapter.mjs` returns `UNKNOWN` from `ownedWorkState`, so safe Quit cannot stop an owned tunnel unless a reliable IDLE/ACTIVE result exists. Must not force-stop retained/unknown work or neighbor processes. Requires verified work observer and lifecycle integration.
+2. **BLOCKER D-B02 — Dock behavior not implemented as approved (Track D):** `native/macos-desktop/Info.plist` uses `LSUIElement=true` and `App.swift` invokes `NSApp.setActivationPolicy(.accessory)`. This implements menu bar accessory rather than proving the requested Dock application. Requires an appropriate UI behavior fix and hosted compile, with physical visual verification deferred.
+3. **BLOCKER D-B03 — missing mandatory hosted D1 test execution (Track C):** `.github/workflows/ci.yml` does not directly invoke `test/desktop-supervisor.test.mjs`; `scripts/ci-mac-source-tests.mjs` runs `dist/test/*.test.js` only. Source checks therefore cannot prove the D1 regression suite. Track C owns workflow wiring.
+4. **BLOCKER D-B04 — full exact-revision CI not green (Track C / Integrator):** [run 42060878248](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/42060878248) at earlier SHA `1693714afcbef10797f9645195f01dd7a804b803` completed FAILURE: C0 compiled-source test step failed; G3 prerequisite and C-A/C-B/C-G3 gates failed. [run 42060906252](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/42060906252) at reviewed SHA was still IN_PROGRESS with C0 test step running on last inspection, so no PASS claim. Older TypeScript TS2739 failure at SHA `c6fa97f` belongs to shared integration, not established on current SHA. Many old runs were cancelled by concurrent commits. Investigate the exact failing test logs with appropriate owners and retest exact HEAD.
+
+### Ownership and unblock conditions
+- **Track D owner:** complete Pause/Resume, Dock behavior, and conservative owned-process lifecycle; add source-bound regressions without weakening active/unknown safety.
+- **Integration owner:** provide authoritative retained-work observer and resolve cross-track shared contracts only in integrator-owned MCP paths.
+- **Track C owner:** wire direct D1 tests plus Swift/native desktop packaging smoke into mandatory `macos-latest` workflow; obtain completed exact-revision jobs with zero required skips, inspect logs and evidence.
+- **Resumption trigger:** owners commit verified fixes and CI coverage, then a separately coordinated D1 re-review/hosted retest passes. Closure is not a claim that work is accepted or source is complete.
+- **Real Mac:** Dock/login with physical session, live tunnel/key, sleep/wake, installed-plugin check, neighbor apps: **pending user require**. This is explicitly deferred and is NOT the cause of this task's blocked status.
