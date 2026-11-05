@@ -25,7 +25,11 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Build source
         run: npm run build
-      - name: Run source tests
-        run: npm test
+      - name: Run non-VM source tests
+        shell: bash
+        run: |
+          mapfile -t tests < <(find dist/test -maxdepth 1 -type f -name '*.test.js' ! -name 'macos-vm-*' | sort)
+          test "${#tests[@]}" -gt 0
+          node --test "${tests[@]}"
       - name: Test native source-capture fixture (no VM)
         run: python3 scripts/test-native-source-capture.py
