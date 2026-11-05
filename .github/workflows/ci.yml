@@ -2,6 +2,9 @@ name: macOS Native Source and Pre-install Gates
 on:
   push:
   pull_request:
+concurrency:
+  group: macos-native-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
