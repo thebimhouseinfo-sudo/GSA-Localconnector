@@ -6,7 +6,8 @@ Freeze evidence-backed runtime, test and packaging edges at source HEAD `1cb77c2
 ## Production graph
 | Actual caller → callee | Classification | Evidence path / location | Action owner |
 |---|---|---|---|
-| `src/mcp/cli.ts` → `src/mcp/runtime-bootstrap.ts:bootstrapMcpTools` | production entry | `src/mcp/cli.ts:4,14` | integrator |
+| `src/mcp/cli.ts` → `src/mcp/runtime-bootstrap.ts:bootstrapMcpTools` | stdio production entry | `src/mcp/cli.ts:4,14` | integrator |
+| `src/mcp/http-cli.ts` → `src/mcp/http.ts:startHttpMcp` → `src/mcp/runtime-bootstrap.ts:bootstrapMcpTools` | **HTTP production entry; Mac branch**, previously omitted | `src/mcp/http-cli.ts:1`; `src/mcp/http.ts:7,119,123` | integrator |
 | `src/mcp/runtime-bootstrap.ts` → `src/hosts/macos-vm-runtime.ts:loadMacVmRuntime` | **ACTIVE VM** | `src/mcp/runtime-bootstrap.ts:6,69,94` | integrator E2 only after G4 |
 | `src/mcp/runtime-bootstrap.ts` → `src/hosts/macos-vm-ci.ts:MacVmCiExecutor` | **ACTIVE VM CI** | `src/mcp/runtime-bootstrap.ts:8,96` | integrator |
 | `src/mcp/runtime-bootstrap.ts` → `src/mcp/server.ts:createReadOnlyTools` | shared service | `src/mcp/runtime-bootstrap.ts:20,97` | integrator retain |
@@ -43,7 +44,10 @@ Freeze evidence-backed runtime, test and packaging edges at source HEAD `1cb77c2
 | `.github/workflows/ci.yml` → `dist/test/*.test.js` EXCLUDING `macos-vm-*` | non-VM test selection | `.github/workflows/ci.yml`, Run non-VM source tests | C |
 | `.github/workflows/ci.yml` → `scripts/test-native-source-capture.py` → `native/macos-vm/SourceCapture.swift` | **NON-VM CI STILL VM-PATH-COUPLED** | workflow last step; `scripts/test-native-source-capture.py:20` | C plus E2 migrate fixture |
 | `test/runtime-bootstrap.test.ts` → `src/mcp/runtime-bootstrap.ts` | shared regression, VM absence assumptions | `test/runtime-bootstrap.test.ts:8,15-21,46` | integrator migrate expectations |
-| `src/mcp/cli.ts` → bootstrap and `src/mcp/http-cli.ts` → HTTP entry | differing entry route | `src/mcp/cli.ts:4,14`; `src/mcp/http-cli.ts:1` | verify HTTP -> bootstrap import at E2 |
+| `src/mcp/cli.ts` → bootstrap and `src/mcp/http-cli.ts` → `src/mcp/http.ts` → bootstrap on macOS | **both entry routes verified** | `src/mcp/cli.ts:4,14`; `src/mcp/http-cli.ts:1`; `src/mcp/http.ts:7,119,123` | keep both routes in E2 post-integration static gates |
 
 ## Classification rule and coverage bounds
 Direct edges are observed import/reference pairs, not speculative linkage. No full AST-based repository-wide import closure was executed; GitHub recursive tree and targeted source reads were performed. At E2 take exact candidate HEAD after A/B/C/D integration, run static import/reference graph over `src/**`, `scripts/**`, `test/**`, `.github/**`, `native/**`, `package.json`, and inspect JS dynamic `import()`, `require`, subprocess invocations and generated files. Record **zero product VM paths/callers**, preserving historical docs as deliberate exceptions. Newly introduced graph edges invalidate this snapshot.
+
+## Post-E1 branch reconciliation (2026-11-05)
+Later branch head `2affed17e556d7436efb8170d1bfaa9f301abb73` was independently inspected, with 467 recursive tree nodes (`truncated=false`). `src/mcp/runtime-bootstrap.ts` continued importing the VM runtime and CI executor, while `.github/workflows/ci.yml` had acquired C-A/C-B/C-G3 required steps and still called the source-capture fixture. E1's original source pins remain authoritative for its **snapshot**; these newer branch observations do not establish G4 or authorize E2. This updated map explicitly verifies the previously uncertain HTTP entry. Recompute all paths at the actual E2 candidate head, because multiple tracks concurrently write this branch.
