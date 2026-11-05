@@ -43,3 +43,11 @@ Review the exact Track A diff without claiming an independent Reviewer PASS or n
 | A-R07 Native source-swap race | MAJOR | BLOCKED: held directory identity/post-rename check can detect wrong inode after an adversarial same-root swap, but no kernel source-content CAS exists; runtime native adversarial test required; UNKNOWN on uncertainty |
 
 **Self-review result: CHANGES_REQUIRED / PARTIAL**, not independent Reviewer PASS, not G1 PASS. Tests on exact SHA are queued/unverified. In-scope source additions remain candidate-only; unresolved required A2 move and required native tests prevent closing Track A. No code outside Track A was changed by this coder and no forced Git update, merge or deployment was attempted.
+
+## Review scope correction — current Human decision (2026-11-05)
+
+Use **GitHub-hosted macOS runner** as the only required execution environment for this phase. Physical device/plugin/installed-release validation is **PENDING USER REQUIRE**, not a blocker for hosted-source/native-CI acceptance. Safety-negative and native signed disposable CI tests must still pass before any capability is advertised. The A1 owned-process fixture remains deliberately SKIP unless it can prove safe physical shutdown even on GitHub CI.
+
+**New finding A-R08 (FIXED IN SOURCE / RETEST PENDING):** Track A accidentally widened the public loader return type to `MacScopedNativeFiles`, breaking `runtime-bootstrap.ts` with TS2739. CI runs `42045394162` and `42046143138` both FAILED C0 compile. Repair `9eaaaa23cc97d2147961beaaa06552e3f1ac7b75` restores `Promise<NativeScopedFiles>` without changing protected shared source. Check a completed newer hosted runner before closing A-R08. This is not a physical-host blocker.
+
+**Review remains PARTIAL / CHANGES_REQUIRED** because hosted exact-SHA evidence and required A2 cross-root recoverable move are still missing; no false G1 PASS.
