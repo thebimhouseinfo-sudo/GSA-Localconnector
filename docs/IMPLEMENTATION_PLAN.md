@@ -93,7 +93,7 @@ Derived from the approved [CRITERIA.md](CRITERIA.md) (Status: APPROVED, kept unc
 |---|---|---|---|---|---|
 | M1 | A concrete Mac boundary decision: what the existing broker proves, its limits, and what stays blocked | §0, §4, §7 | none | PLAN-M1 | Docs decision exists; file boundary remains BLOCKED by retained-FD authority survival after root relocation; §7 accepts unconfined host commands |
 | M2 | GSA edits real projects on the selected Mac across multiple working/reference roots with no per-operation approval | §1–§4, §7 | M1 | PLAN-M2 | IN PROGRESS: source slices have evidence; installed/native file delivery pending |
-| M3 | GSA runs real commands, Git and existing project scripts on this Mac and gets truthful status, logs and outputs | §4, §5, §6 | M1, M2 | PLAN-M3 | PENDING: actual Mac shell/Git not started |
+| M3 | GSA runs real commands, Git and existing project scripts on this Mac and gets truthful status, logs and outputs | §4, §5, §6 | M1 + G0 interface contract for parallel source; M2 integration before Mac installed acceptance | PLAN-M3 | PENDING: source may be developed in parallel with M2, native/plugin acceptance remains blocked |
 | M4 | Disconnects, crashes and reboots never produce false results or duplicate mutations | §6, §8 | M3 | PLAN-M4 | PENDING |
 | M5 | The full Mac journey is accepted per host, including several independent projects | §1–§8, §10 | M2, M3, M4 | PLAN-M5 | PENDING |
 | M6 | The same journey works on Windows, built only after M5 is accepted | §9, plus §1–§8 on Windows | M5 | PLAN-M6 | NOT STARTED by design |
@@ -132,7 +132,7 @@ No `docs/discussions/` DEC files exist, so no accepted Decision is linked below;
 - **CRITERIA references:** §4, §5, §6
 - **Current state / gap:** process journal and history source exist; actual Mac host shell/Git/script execution is not implemented or proven.
 - **Implementation:** reuse the process journal as the sole run record. Run commands as the logged-in user with validated workspace-relative cwd, timeout, output limit and owned cancellation. Report `command_confinement: none (user account)` and `state_integrity_vs_commands: not_protected`; detect and report suspected state changes. No connector CI/DAG engine or multi-OS matrix.
-- **Dependencies:** M1 decision, M2
+- **Dependencies:** G0 interface freeze permits source development parallel to M2; final MCP integration requires a verified M2 grant/file path.
 - **Acceptance:** pass/fail, stdout/stderr/exit and outputs; timeout and owned cancellation; dirty-Git and non-Git behavior; no stale-result claims.
 - **Verification:** real commands on the Mac with recorded evidence; relevant working/reference boundary checks.
 - **Limitations / non-goals:** commands and descendants can access and change data outside the workspace, including connector state, with the user's permissions. Use trusted projects; file tools and connector APIs retain their scoped boundary. Tunnel credentials in the existing ignored environment file share this risk.
@@ -169,7 +169,7 @@ No `docs/discussions/` DEC files exist, so no accepted Decision is linked below;
 
 ## Technical direction
 
-TypeScript ESM on Node >=20, existing Swift helpers and Python guest tools; no new dependency or platform capability is presumed. The Linux VM worker stays optional and is removed from the connector if it fails in real use, per the 2026-10-19 rule. Original VM media stays untouched.
+TypeScript ESM on Node >=20 and existing native Swift/macOS helpers; no new product VM, guest toolchain or local CI engine. The former optional Linux VM disposition is superseded by the 2026-11-05 freeze-and-retire decision. Preserve original VM media, remove VM-only shipped integration after direct-host replacement proof.
 
 ## Open Human questions
 
