@@ -4,7 +4,7 @@ on:
   pull_request:
 concurrency:
   group: macos-native-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
