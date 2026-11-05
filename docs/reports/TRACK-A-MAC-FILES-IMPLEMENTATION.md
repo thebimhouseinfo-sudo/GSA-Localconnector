@@ -28,3 +28,17 @@ Source inspection, TypeScript build, relevant macOS native-safe tests and existi
 ## Delivery state
 
 Pre-code proposal recorded. Exact source change, test outcomes, review, remaining findings and integration requests are tracked in the companion reports. This planning record does not itself certify any capability.
+
+## Implemented revision — 2026-11-05
+
+**Exact Track A source/test commit:** `cc83ae852b33abcd2c39afa6013e59f1a3ae1246` (plus earlier A3 `c5490cb15920b55827f08928438ab331bfb50981`). This is a candidate, not G1 acceptance.
+
+**Changed source/tests:** A1 `test/helpers/mac-recovery-installed-fixture.mjs`, `test/mac-scoped-installer.test.ts`; A2 `src/local/file-transaction-store.ts`, `test/mac-file-transaction-log.test.ts`, `src/hosts/macos-scoped-files.ts`, `test/mac-non-git-diff.test.ts`; A3 `src/hosts/macos-directory-copy.ts`, `test/mac-directory-copy.test.ts`, `native/macos-files/broker.swift`, `native/macos-files/test-broker.py`, `test/mac-directory-rename-native.test.ts`.
+
+| Task | Current disposition | Evidence boundary |
+| --- | --- | --- |
+| A1 | PARTIAL: direct child PIDs recorded and required absent before disposable cleanup | native owner fixture deliberately skipped; full descendant/session proof and actual host installation BLOCKED |
+| A2 | PARTIAL: existing transaction journal gains authorized bounded log reader, pure captured-baseline text diff | cross-root recoverable file move and shared MCP wiring NOT MET |
+| A3 | PARTIAL: copy-source manifest preflight; candidate descriptor-based atomic rename with exclusive/no-follow/beneath flags and native tests | exact-SHA signed native execution and selected plugin not verified |
+
+**Tests:** recent C0 older revision compiled, but its exhaustive suite failed in another Track. Exact Track A revision GitHub Actions still queued; no new source/unit/native PASS. The user's connected Mac has `WORKSPACE_ROOT_CHANGED` and file backend unavailable. Capability advertisement remains unchanged; no secondary journal, no automatic mutation replay, no main merge/deploy. Findings A-R01 through A-R05 remain open pending native verification, cross-root move and integration.
