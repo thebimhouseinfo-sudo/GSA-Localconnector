@@ -140,7 +140,7 @@ export async function revokeStaleTrustedRoots(dir=identityDirectory()):Promise<{
    if(!ids.has(entry.id))return entry;
    floor=Math.max(floor,entry.revision!)+1;
    if(!Number.isSafeInteger(floor))throw Error("INVALID_GRANT_STORE");
-   return {...entry,revoked:true,permissions:[] as WorkspacePermission[],revision:floor};
+   return {...entry,revoked:true as const,permissions:[] as WorkspacePermission[],revision:floor};
   });
   await validatedRegistry(revised,dir); // refuse publication if any retained root is unsafe
   await persistEntries(dir,revised,publication,undefined,floor);
