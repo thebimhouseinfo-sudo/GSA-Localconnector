@@ -2,7 +2,7 @@ import {assertDirectoryCopyId} from "../core/directory-copy.js";
 import {validateWorkspaceRelative,hasReservedWorkspaceSegment} from "../core/workspace-path.js";
 import {WorkspaceRegistry} from "../core/workspace.js";
 import {requireNativeBackend,type NativeScopedFiles,type ScopedFileRef} from "../core/native-io.js";
-import {createFile,updateFile,createFileBytes,updateFileBytes,editFile,applyPatch,createDirectory,trashFile,copyFile,moveFile} from "../core/write-engine.js";
+import {createFile,updateFile,createFileBytes,updateFileBytes,editFile,applyPatch,createDirectory,trashFile,copyFile,moveFile,editFileAsNewVersion} from "../core/write-engine.js";
 const str=(v:unknown):string=>{if(typeof v!=="string")throw Error("INVALID_ARGUMENTS");return v;};
 const fields=(args:Record<string,unknown>,keys:readonly string[])=>{
  if(Object.keys(args).some(k=>!keys.includes(k))||keys.some(k=>typeof args[k]!=="string"))throw Error("INVALID_ARGUMENTS");
@@ -62,6 +62,14 @@ export async function dispatchFileMutation(name:string,args:Record<string,unknow
    fields(args,["workspace_id","path","old_text","new_text","expected_sha256"]);
    const file=ref(registry,str(args.workspace_id),str(args.path),"write");
    return editFile(io,file,str(args.old_text),str(args.new_text),str(args.expected_sha256));
+  }
+  case "edit_file_as_new_version":{
+   fields(args,["source_workspace_id","source_path","destination_workspace_id","destination_path","old_text","new_text","expected_sha256"]);
+   if(!io.supportedOperations?.includes("create_file"))throw Error("SECURITY_BLOCKED");
+   const src=ref(registry,str(args.source_workspace_id),str(args.source_path),"read");
+   const dst=ref(registry,str(args.destination_workspace_id),str(args.destination_path),"write");
+   if(registry.requireGrant(dst.workspace_id,"write").role==="reference")throw Error("SECURITY_BLOCKED");
+   return editFileAsNewVersion(io,src,dst,str(args.old_text),str(args.new_text),str(args.expected_sha256));
   }
   case "apply_patch":{
    fields(args,["workspace_id","path","patch","expected_sha256"]);
