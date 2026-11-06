@@ -11,7 +11,7 @@ function def(name:string,description:string,properties:Record<string,unknown>,re
 }
 export const controlledToolNames=new Set([
  "bind_workspaces","unbind_workspace","create_file","update_file","create_file_bytes","update_file_bytes","edit_file","apply_patch",
- "delete_file","create_directory","copy_file","move_file","batch_file_operations","run_command",
+ "delete_file","create_directory","copy_file","move_file","edit_file_as_new_version","batch_file_operations","run_command",
  "start_process","stop_process","git_status","git_diff","git_log","git_show","compare_commits",
  "git_fetch","git_pull","git_add","git_commit","git_push","create_branch","git_checkout",
  "ci_prepare_source","ci_run","ci_rerun_failed","ci_cancel","get_file_transaction",
@@ -35,6 +35,9 @@ export const plannedTools=[
  def("create_file","Create a new file under a writable workspace, fail on conflict",{...target,content:str}),
  def("update_file","Replace an existing file with expected SHA256 guard",{...target,content:str,expected_sha256:str}),
  def("edit_file","Exact-match replace in a file with expected SHA256",{...target,old_text:str,new_text:str,expected_sha256:str}),
+ def("edit_file_as_new_version","Create an exclusive new UTF-8 file with one exact-match edit against a SHA-256 pinned source; never overwrite the source",{
+  source_workspace_id:str,source_path:str,destination_workspace_id:str,destination_path:str,old_text:str,new_text:str,expected_sha256:str
+ }),
  def("apply_patch","Apply a checked source patch",{...target,patch:str,expected_sha256:str}),
  def("delete_file","Move a file to system Trash/Recycle Bin",{...target,expected_sha256:str}),
  def("create_directory","Create a directory under granted root",target),
