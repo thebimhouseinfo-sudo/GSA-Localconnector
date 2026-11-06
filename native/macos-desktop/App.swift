@@ -42,6 +42,8 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
     private var timer: Timer?
     private var launchFailed = false
     private var quitRequested = false
+    private var quitAttemptBaseline = 0
+    private var quitRequestedAt: Date?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -134,12 +136,31 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
 
     private func refreshStatus() {
         if quitRequested {
-            if supervisor?.isRunning == true {
-                setStatus("Đang yêu cầu dừng connector an toàn…")
+            if supervisor?.isRunning != true {
+                quitRequested = false
+                quitRequestedAt = nil
+                NSApp.terminate(nil)
                 return
             }
-            quitRequested = false
-            NSApp.terminate(nil)
+            if let statusPath, let status = try? privateJSON(statusPath),
+               let attempt = status["stopAttempt"] as? Int, attempt > quitAttemptBaseline {
+                let reason = status["stopBlockedReason"] as? String ?? "STOP_UNCONFIRMED"
+                quitRequested = false
+                quitRequestedAt = nil
+                switch reason {
+                case "ACTIVE_WORK_PRESENT": setStatus("Không thể thoát: còn tác vụ đang chạy.")
+                case "ACTIVE_WORK_UNKNOWN": setStatus("Không thể thoát: chưa xác minh tác vụ đã dừng.")
+                default: setStatus("Không thể xác nhận dừng connector: " + reason)
+                }
+                return
+            }
+            if let started = quitRequestedAt, Date().timeIntervalSince(started) > 10 {
+                quitRequested = false
+                quitRequestedAt = nil
+                setStatus("Yêu cầu thoát không được phản hồi; connector vẫn hoạt động.")
+                return
+            }
+            setStatus("Đang yêu cầu dừng connector an toàn…")
             return
         }
         guard !launchFailed else { return }
@@ -170,6 +191,8 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
         guard let process = supervisor, process.isRunning else { NSApp.terminate(nil); return }
         // Only signal our retained supervisor. It decides whether its owned tunnel
         // can stop; ACTIVE/UNKNOWN work must never be force-killed by the GUI.
+        quitAttemptBaseline = (statusPath.flatMap { try? privateJSON($0) }?["stopAttempt"] as? Int) ?? 0
+        quitRequestedAt = Date()
         quitRequested = true
         setStatus("Đang yêu cầu dừng connector an toàn…")
         process.terminate()
