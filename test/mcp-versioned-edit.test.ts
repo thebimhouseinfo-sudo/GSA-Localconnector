@@ -40,7 +40,7 @@ test("BASE-only edit-as-new-version leaves source immutable and returns new SHA"
  const original=encode("header\nversion one\n");files.set("source/draft.txt",original);
  const result=await dispatchFileMutation("edit_file_as_new_version",argumentsFor(sha256(original)),registry,io);
  assert.ok("source_sha256" in result && "after_sha256" in result && "file_mutated" in result);
- assert.equal(result.source_sha256,sha256(original));assert.equal(result.after_sha256,sha256(encode("header\\nversion two\\n")));
+ assert.equal(result.source_sha256,sha256(original));assert.equal(result.after_sha256,sha256(encode("header\nversion two\n")));
  assert.equal(result.committed,false);assert.equal(result.file_mutated,true);
  assert.deepEqual(files.get("source/draft.txt"),original);
  assert.equal(files.get("dest/draft-v2.txt")?.toString(),"header\nversion two\n");
