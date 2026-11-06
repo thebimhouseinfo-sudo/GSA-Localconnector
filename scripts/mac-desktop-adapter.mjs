@@ -117,7 +117,7 @@ function safeEnvironment() {
 }
 
 export class MacDesktopAdapter {
-  constructor({configPath}) {this.configPath = configPath; this.privateFile = createMacPrivateFile(); this.runtime = null;}
+  constructor({configPath}) {this.configPath = configPath; this.privateFile = createMacPrivateFile(); this.runtime = null; this.quitOutcome = null;}
   ensureLogin(options) {return ensureLogin(options);}
   async start() {
     if (this.runtime) return this.runtime;
@@ -183,8 +183,9 @@ export class MacDesktopAdapter {
     if (this.statusPublication) return this.statusPublication;
     this.statusPublication = (async () => {
       const status = await this.status();
-      await publish(this.privateFile, this.config.statusPath, Buffer.from(JSON.stringify(status)));
-      return status;
+      const published = this.quitOutcome ? {...status,...this.quitOutcome} : status;
+      await publish(this.privateFile, this.config.statusPath, Buffer.from(JSON.stringify(published)));
+      return published;
     })();
     try { return await this.statusPublication; }
     finally { this.statusPublication = null; }
@@ -222,29 +223,24 @@ async function main() {
   }
   const first = await adapter.status();
   if (first.state === "SETUP_REQUIRED") return;
-  let stopAttempt = 0, stopBlockedReason = null;
+  let stopAttempt = 0;
   let publishing = false;
   const timer = setInterval(() => {
     if (publishing) return;
     publishing = true;
-    void adapter.publishStatus().then(async status => {
-    if (stopAttempt > 0) await publish(privateFile, config.statusPath, Buffer.from(JSON.stringify({...status,stopAttempt,stopBlockedReason})));
+    void adapter.publishStatus().then(status => {
     if (["STOPPED", "FAILED"].includes(status.state)) clearInterval(timer);
   }).catch(() => {clearInterval(timer); process.exitCode = 1;}).finally(() => {publishing = false;});}, 1000);
   for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => {
     void adapter.stopOwned().then(async result => {
       stopAttempt++;
-      stopBlockedReason = result.stopped ? null : (result.reason ?? "STOP_UNCONFIRMED");
-      const status = await adapter.status();
-      await publish(privateFile, config.statusPath, Buffer.from(JSON.stringify({...status,stopAttempt,stopBlockedReason})));
+      adapter.quitOutcome = {stopAttempt,stopBlockedReason:result.stopped ? null : (result.reason ?? "STOP_UNCONFIRMED")};
+      await adapter.publishStatus();
       if (result.stopped) clearInterval(timer);
     }).catch(async () => {
       stopAttempt++;
-      stopBlockedReason = "STOP_UNCONFIRMED";
-      try {
-        const status = await adapter.status();
-        await publish(privateFile, config.statusPath, Buffer.from(JSON.stringify({...status,stopAttempt,stopBlockedReason})));
-      } catch {process.exitCode = 1;}
+      adapter.quitOutcome = {stopAttempt,stopBlockedReason:"STOP_UNCONFIRMED"};
+      try {await adapter.publishStatus();} catch {process.exitCode = 1;}
     });
   });
 }
