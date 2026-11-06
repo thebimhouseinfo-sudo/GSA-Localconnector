@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "native/macos-files/recovery-broker.swift"
 FIXTURE = ROOT / "native/macos-files/test-recovery-broker.py"
 CANDIDATE = Path("/private/tmp/gsa-recovery-broker-candidate")
-PINNED_SOURCE_SHA256 = "d31392926056ce369999ee48ccc4c3ce47a715a25e3db972da015b496407e14f"
+PINNED_SOURCE_SHA256 = "6b5debec3543ca6d0c25b2844e77113630f884ca1513d168bfd161d52fe0fab8"
 
 
 def run():
