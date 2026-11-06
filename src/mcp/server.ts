@@ -362,7 +362,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            if(sourceCapture?.verified)ci.push("ci_prepare_source");
            if(fileTransactionReadbackAvailable())read.push("get_file_transaction");
            if(directoryAvailable())read.push("inspect_directory","get_directory_copy");
-           const files=protectedStorage.available?[...fileOperations,...(fileOperations.includes("create_file")?["create_file_bytes"]:[]),...(fileOperations.includes("update_file")?["update_file_bytes"]:[]),...(batchFileWrites?["batch_file_operations"]:[])]:[];
+           const files=protectedStorage.available?[...fileOperations,...(fileOperations.includes("create_file")&&controlStore?["create_file_bytes","edit_file_as_new_version"]:fileOperations.includes("create_file")?["create_file_bytes"]:[]),...(fileOperations.includes("update_file")?["update_file_bytes"]:[]),...(batchFileWrites?["batch_file_operations"]:[])]:[];
            const enabled=new Set([...read,...files,...execution,...ci,...(controlStore&&protectedStorage.available?["acquire_control","renew_control","release_control"]:[])]);
            result={workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,read,files,execution,ci,blocked:plannedTools.map(t=>t.name).filter(n=>!enabled.has(n)),shellIsolation:sandbox?.verified?"none (user account)":"blocked",...fileCapabilities(),...processHistory(),git:sandbox?.verified?"local-only; network-blocked":"blocked",command_confinement:sandbox?.verified?"none (user account)":null,state_integrity_vs_commands:sandbox?.verified?"not_protected":null,executionEnvironment:sandbox?.verified?"macos-native":null,workspaceMode:sandbox?.verified?"host-workspace":null,restartRecovery:options.processPersistence?.store.health?.().admission_blocked?"degraded-process-journal":"blocked"};
           }break;
@@ -476,6 +476,9 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           if(outcome.status!=="APPLIED")return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:outcome.status==="UNKNOWN"?"RESULT_UNKNOWN":"FILE_TRANSACTION_CONFLICT",result:outcome})}]};
           result=outcome;break;
         }
+        case "edit_file_as_new_version":
+          if(!fileOperations.includes("create_file")||!protectedStateCapability().available||!controlStore)throw Error("SECURITY_BLOCKED");
+          result=await dispatchFileMutation(call.name,args,registry,nativeFiles);break;
         case "create_file_bytes":case "update_file_bytes":case "create_file":case "update_file":case "edit_file":case "apply_patch":case "create_directory":case "delete_file":case "copy_file":case "move_file":
           if(!fileOperations.includes(call.name==="create_file_bytes"?"create_file":call.name==="update_file_bytes"?"update_file":call.name))throw Error("SECURITY_BLOCKED");
           result=await dispatchFileMutation(call.name,args,registry,nativeFiles);
