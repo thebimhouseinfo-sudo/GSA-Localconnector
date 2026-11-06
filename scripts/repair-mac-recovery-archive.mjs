@@ -29,10 +29,12 @@ async function safeRead(file,max){
  try {
   const opened=await f.stat({bigint:true});
   if(opened.dev!==s.dev||opened.ino!==s.ino)deny('Archive file changed');
-  const bytes=await f.readFile();
+  // A growing file cannot exhaust memory before the final pin check.
+  const size=Number(s.size),buffer=Buffer.alloc(size+1);let offset=0;
+  while(offset<buffer.length){const {bytesRead}=await f.read(buffer,offset,buffer.length-offset,offset);if(!bytesRead)break;offset+=bytesRead;}
   const end=await f.stat({bigint:true}),named=await fs.lstat(file,{bigint:true});
-  if(bytes.length!==Number(s.size)||end.dev!==s.dev||end.ino!==s.ino||end.mtimeNs!==s.mtimeNs||end.ctimeNs!==s.ctimeNs||named.dev!==s.dev||named.ino!==s.ino)deny('Archive file changed');
-  return bytes;
+  if(offset!==size||end.dev!==s.dev||end.ino!==s.ino||end.mtimeNs!==s.mtimeNs||end.ctimeNs!==s.ctimeNs||named.dev!==s.dev||named.ino!==s.ino)deny('Archive file changed');
+  return buffer.subarray(0,offset);
  }finally{await f.close();}
 }
 /** Pure byte recreation. Reject a would-be substitute not EXACTLY pinned by
