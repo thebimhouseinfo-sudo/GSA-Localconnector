@@ -75,6 +75,7 @@ func run(_ req:[String:Any])throws->[String:Any] {
  case "create":allowed.insert("base64")
  case "mkdir":break
  case "copy":allowed.formUnion(["expectedSha256","destination"])
+ case "rename_directory":allowed.insert("destination")
  default:try fail("SECURITY_BLOCKED_ATOMIC_COMPARE_UNAVAILABLE")
  }
  #if CONTAINMENT_TESTS
@@ -107,6 +108,27 @@ func run(_ req:[String:Any])throws->[String:Any] {
  case "mkdir":try check(mkdirat(fd,name,0o700)==0,"ALREADY_EXISTS_OR_DENIED")
  case "copy":
   let bytes=try expected();guard let dest=req["destination"] as? String else{try fail("INVALID_REQUEST")};let(df,dn)=try parent(dest);defer{close(df)};try writeExclusive(df,dn,bytes)
+ case "rename_directory":
+  guard let dest=req["destination"] as? String else{try fail("INVALID_REQUEST")}
+  try check(dest != relative && !dest.hasPrefix(relative+"/") && !relative.hasPrefix(dest+"/"),"INVALID_REQUEST")
+  let (df,dn)=try parent(dest);defer{close(df)}
+  try check((try statFD(df)).st_dev==identity.st_dev,"DEVICE_BOUNDARY")
+  // Hold the source directory inode to verify that the exact directory
+  // (not an exchanged symlink or other entry) was atomically published.
+  let sourceFD=openat(fd,name,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC)
+  try check(sourceFD>=0,"PATH_OR_ACCESS_DENIED");defer{close(sourceFD)}
+  let source=try statFD(sourceFD)
+  try check((source.st_mode&S_IFMT)==S_IFDIR && source.st_dev==identity.st_dev,"UNSAFE_DIRECTORY")
+  var named=stat()
+  try check(fstatat(fd,name,&named,AT_SYMLINK_NOFOLLOW)==0 && named.st_dev==source.st_dev && named.st_ino==source.st_ino && (named.st_mode&S_IFMT)==S_IFDIR,"CONCURRENT_CHANGE")
+  // RENAME_EXCL is essential: never replace an occupied destination.
+  // NOFOLLOW_ANY and RESOLVE_BENEATH defend races in both descriptor paths.
+  let flags=UInt32(RENAME_EXCL)|UInt32(RENAME_NOFOLLOW_ANY)|UInt32(RENAME_RESOLVE_BENEATH)
+  let moved=renameatx_np(fd,name,df,dn,flags)
+  if moved != 0 {try fail(errno==EEXIST ? "ALREADY_EXISTS_OR_DENIED" : "ATOMIC_RENAME_UNAVAILABLE_OR_DENIED")}
+  var published=stat()
+  try check(fstatat(df,dn,&published,AT_SYMLINK_NOFOLLOW)==0 && published.st_dev==source.st_dev && published.st_ino==source.st_ino && (published.st_mode&S_IFMT)==S_IFDIR,"MUTATION_OUTCOME_UNKNOWN")
+  try check(fsync(fd)==0 && fsync(df)==0,"MUTATION_OUTCOME_UNKNOWN")
  case "replace","move","trash":
   _ = try expected()
   // APFS has atomic rename, but no atomic compare-content-and-mutate primitive.

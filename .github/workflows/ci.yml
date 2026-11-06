@@ -1,37 +1,94 @@
-name: Source Contract CI
+name: macOS Native Source and Pre-install Gates
 on:
   push:
   pull_request:
+concurrency:
+  group: macos-native-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: false
+permissions:
+  contents: read
 jobs:
-  contract:
+  c0-source:
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --ignore-scripts
-      - run: npm test
-      - name: Verify worker snapshot seed (no VM starts or downloads)
-        run: python3 scripts/test-vm-worker-seed.py
-
-      - name: Verify descriptor-native source capture fixtures
+          cache: npm
+      - name: C0 host and exact source identity
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          echo "SOURCE_SHA=$SOURCE_SHA"
+          echo "checkout=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          sw_vers
+          uname -s
+          uname -m
+          xcodebuild -version
+          swiftc -version
+          node --version
+          npm --version
+          shasum -a 256 package-lock.json
+      - name: C0 dependencies (no lifecycle scripts)
+        run: npm ci --ignore-scripts
+      - name: C0 compile
+        run: npm run build
+      - name: C0 exhaustive non-VM node suites (skips forbidden)
+        run: node scripts/ci-mac-source-tests.mjs
+      - name: C0 required Desktop Swift AppKit compile and Info.plist validation
+        run: |
+          set -euo pipefail
+          /usr/bin/swiftc -typecheck native/macos-desktop/App.swift
+          /usr/bin/plutil -lint native/macos-desktop/Info.plist
+      - name: C-VM no production Linux VM dependencies
+        run: node scripts/ci-mac-vm-absence.mjs
+      - name: C0 existing native-safe source capture
         run: python3 scripts/test-native-source-capture.py
-
-      - name: Compile worker and reject malformed input before VM construction
-        if: runner.os == 'macOS'
+      - name: C0 source result notice
+        run: echo 'C0 PASS establishes source/build tests only; never native connector acceptance.'
+  g3-preinstall:
+    needs: c0-source
+    if: ${{ needs.c0-source.result == 'success' }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Exact candidate identity and C0 dependency
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          C0_RESULT: ${{ needs.c0-source.result }}
         run: |
-          swiftc -framework Virtualization native/macos-vm/WorkerHost.swift -o "$RUNNER_TEMP/gsa-worker-host"
-          codesign --force --sign - --entitlements native/macos-vm/Virtualization.entitlements "$RUNNER_TEMP/gsa-worker-host"
-          codesign --verify --strict "$RUNNER_TEMP/gsa-worker-host"
-          set +e
-          printf '%s\n' 'invalid-json' | "$RUNNER_TEMP/gsa-worker-host" > "$RUNNER_TEMP/gsa-worker-invalid.json"
-          rc=$?
-          set -e
-          test "$rc" -eq 2
-          grep -q 'INVALID_CONFIG' "$RUNNER_TEMP/gsa-worker-invalid.json"
-
-      - name: Syntax-check explicit native install and runtime test entrypoints
+          echo "GITHUB_SHA=$GITHUB_SHA C0_RESULT=$C0_RESULT"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$C0_RESULT" = success
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Prepare G3 candidate without installation
         run: |
-          node --check scripts/install-native-vm.mjs
-          node --check scripts/test-vm-runtime-native.mjs
+          npm ci --ignore-scripts
+          npm run build
+      - name: Prepare real verified upstream tunnel-client for hosted package gate
+        run: python3 scripts/ci-mac-stage-tunnel-client.py
+      - name: C-A required full native file acceptance
+        if: ${{ always() }}
+        run: node scripts/ci-mac-require-gate.mjs C-A scripts/ci-mac-a-acceptance.mjs
+      - name: C-B required full native command acceptance
+        if: ${{ always() }}
+        run: node scripts/ci-mac-require-gate.mjs C-B scripts/ci-mac-b-acceptance.mjs
+      - name: C-G3 packaging and desktop smoke gate
+        if: ${{ always() }}
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/ci-mac-require-gate.mjs C-G3 scripts/ci-mac-g3-acceptance.mjs

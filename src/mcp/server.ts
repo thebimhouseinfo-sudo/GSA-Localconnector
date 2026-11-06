@@ -188,9 +188,9 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           if(Object.keys(args).length) throw Error("INVALID_ARGUMENTS");
           {const base=connectorStatus(),protectedStorage=protectedStateCapability();result={...base,
            protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,
-           capabilities:{...base.capabilities,shellIsolation:sandbox?.verified?"verified":"blocked",localCi:ciExecutor?.verified?"available":"blocked"},
-           readyForShell:!!sandbox?.verified,executionEnvironment:sandbox?.verified?"linux-arm64-vm":null,
-           workspaceMode:sandbox?.verified?"disposable-snapshot":null,...fileCapabilities(),git:"blocked",
+           capabilities:{...base.capabilities,shellIsolation:sandbox?.verified?"none (user account)":"blocked",localCi:ciExecutor?.verified?"available":"blocked"},
+           readyForShell:!!sandbox?.verified,executionEnvironment:sandbox?.verified?"macos-native":null,
+           workspaceMode:sandbox?.verified?"host-workspace":null,...fileCapabilities(),git:sandbox?.verified?"local-only; network-blocked":"blocked",command_confinement:sandbox?.verified?"none (user account)":null,state_integrity_vs_commands:sandbox?.verified?"not_protected":null,
            workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",
            ...processHistory(),restartRecovery:options.processPersistence?.store.health?.().admission_blocked?"degraded-process-journal":"blocked"};}break;
         case "list_workspaces":
@@ -356,7 +356,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           {if(typeof args.workspace_id==="string"&&!registry.get(args.workspace_id))throw Error("WORKSPACE_NOT_FOUND");
            const protectedStorage=protectedStateCapability();
            const read=["connector_status","list_workspaces","get_workspace","bind_workspaces","unbind_workspace","list_directory","fetch_file","fetch_file_bytes","get_file_info","search","glob","list_capabilities","ci_validate_workflow","ci_list_workflows","ci_list_runs","ci_status","ci_artifacts","ci_read_artifact","ci_logs"].filter(name=>protectedStorage.available||!controlledToolNames.has(name));
-           const execution=sandbox?.verified?["run_command","start_process","stop_process","list_processes","process_status","process_output"]:[];
+           const execution=sandbox?.verified?["run_command","start_process","stop_process","list_processes","process_status","process_output","git_status","git_diff","git_log","git_show","compare_commits","git_add","git_commit","create_branch","git_checkout"]:[];
            if(options.processPersistence&&protectedStorage.available)read.push("list_processes","process_status","process_output");
            const ci=ciExecutor?.verified?["ci_run","ci_rerun_failed","ci_cancel"]:[];
            if(sourceCapture?.verified)ci.push("ci_prepare_source");
@@ -364,7 +364,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            if(directoryAvailable())read.push("inspect_directory","get_directory_copy");
            const files=protectedStorage.available?[...fileOperations,...(fileOperations.includes("create_file")?["create_file_bytes"]:[]),...(fileOperations.includes("update_file")?["update_file_bytes"]:[]),...(batchFileWrites?["batch_file_operations"]:[])]:[];
            const enabled=new Set([...read,...files,...execution,...ci,...(controlStore&&protectedStorage.available?["acquire_control","renew_control","release_control"]:[])]);
-           result={workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,read,files,execution,ci,blocked:plannedTools.map(t=>t.name).filter(n=>!enabled.has(n)),shellIsolation:sandbox?.verified?"verified":"blocked",...fileCapabilities(),...processHistory(),git:"blocked",executionEnvironment:sandbox?.verified?"linux-arm64-vm":null,workspaceMode:sandbox?.verified?"disposable-snapshot":null,restartRecovery:options.processPersistence?.store.health?.().admission_blocked?"degraded-process-journal":"blocked"};
+           result={workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,read,files,execution,ci,blocked:plannedTools.map(t=>t.name).filter(n=>!enabled.has(n)),shellIsolation:sandbox?.verified?"none (user account)":"blocked",...fileCapabilities(),...processHistory(),git:sandbox?.verified?"local-only; network-blocked":"blocked",command_confinement:sandbox?.verified?"none (user account)":null,state_integrity_vs_commands:sandbox?.verified?"not_protected":null,executionEnvironment:sandbox?.verified?"macos-native":null,workspaceMode:sandbox?.verified?"host-workspace":null,restartRecovery:options.processPersistence?.store.health?.().admission_blocked?"degraded-process-journal":"blocked"};
           }break;
         case "glob":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||typeof args.pattern!=="string"||Object.keys(args).length!==3||args.pattern.length>160||!args.pattern)throw Error("INVALID_ARGUMENTS");
@@ -492,17 +492,17 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            result=await executeGit(sandbox,args.workspace_id,call.name,parameters);
           }break;
         case "run_command":
-          if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string"))throw Error("INVALID_ARGUMENTS");
+          if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string")||(args.cwd_relative!==undefined&&typeof args.cwd_relative!=="string")||Object.keys(args).some(k=>!["workspace_id","command","args","cwd_relative"].includes(k)))throw Error("INVALID_ARGUMENTS");
           requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,"execute");
-          {const request={workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:false};
+          {const request={workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:typeof args.cwd_relative==="string"?args.cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:false};
            result=options.processPersistence?await durable.run(request,sandbox!):await processes.run(request);
           }break;
         case "start_process":
-          if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string")||Object.keys(args).length!==3)throw Error("INVALID_ARGUMENTS");
+          if(typeof args.workspace_id!=="string"||typeof args.command!=="string"||!Array.isArray(args.args)||args.args.some(x=>typeof x!=="string")||(args.cwd_relative!==undefined&&typeof args.cwd_relative!=="string")||Object.keys(args).some(k=>!["workspace_id","command","args","cwd_relative"].includes(k)))throw Error("INVALID_ARGUMENTS");
           if(!nativeProcesses)requireNativeBackend(sandbox);
           registry.requireGrant(args.workspace_id,"execute");
-          {const request={workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:"." as const,time_limit_ms:30000,max_output_bytes:65536,network_allowed:false};
+          {const request={workspace_id:args.workspace_id,executable:args.command,argv:args.args as string[],cwd_relative:typeof args.cwd_relative==="string"?args.cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:false};
            result=nativeProcesses?await durable.start(request):options.processPersistence?await durable.startCommand(request,sandbox!):processes.start(request);
           }break;
         case "stop_process":

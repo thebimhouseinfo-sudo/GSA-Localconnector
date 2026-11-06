@@ -221,6 +221,18 @@ test('installed qualified broker handles mutation and dropped reply with a real 
  const result=await observeOwnedFixtureGroup(child,f.temp);
  assert.equal(result.code,0,result.stderr);const actual=JSON.parse(result.stdout);assert.equal(actual.dropped,'UNKNOWN');assert.equal(actual.readback,'APPLIED');assert.equal(actual.trash,'APPLIED');
  assert.equal(await fs.readFile(canary,'utf8'),'unchanged');
+ // All subprocess spawns are recorded by the actual fixture before execution.
+ // Verify each recorded PID is physically gone, even if it escaped the
+ // original process group. Never signal an unknown or recycled PID.
+ const recorded=JSON.parse(await fs.readFile(path.join(f.temp,'owned-child-pids.json'),'utf8'));
+ assert.ok(Array.isArray(recorded)&&recorded.length>=2,'missing owned-child inventory');
+ assert.equal(new Set(recorded).size,recorded.length,'duplicate owned-child PID');
+ for(const pid of recorded){
+  assert.ok(Number.isSafeInteger(pid)&&pid>0,'invalid owned-child PID');
+  let stopped=false;
+  try{process.kill(pid,0);}catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')stopped=true;else throw error;}
+  assert.ok(stopped,`owned fixture PID ${pid} remains observable; retain fixture`);
+ }
  // Scoped fixture contract: the child awaits close of each broker invocation,
  // the launcher/fixture exited successfully, and the original group is absent.
  // This does NOT certify unrelated or session-escaping descendants. If any

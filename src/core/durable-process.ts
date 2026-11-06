@@ -1,6 +1,6 @@
 import {randomUUID} from "node:crypto";
 import type {SandboxedProcessRequest,VerifiedNativeProcessController,NativeProcessStatus,VerifiedNativeSandbox,SandboxedProcessReceipt} from "./native-io.js";
-import {validateProcessRequest,type ProcessRecord,type ProcessState,type WorkspaceProcessStop,ProcessAdmission,observeProcessStop} from "./process-manager.js";
+import {validateProcessRequest,type ProcessRecord,type ProcessState,type WorkspaceProcessStop,ProcessAdmission,observeProcessStop,validCommandCwd} from "./process-manager.js";
 import {requireNativeBackend} from "./native-io.js";
 import type {ProcessJournal,ProcessJournalRecord} from "./process-journal.js";
 export interface ProcessPersistence {store:ProcessJournal;ownerSession:string}
@@ -187,7 +187,7 @@ export class DurableProcessManager{
  private async startAdmitted(request:SandboxedProcessRequest,token:ReturnType<DurableProcessManager["begin"]>):Promise<{process_id:string;state:"RUNNING"}>{
   const native=requireNativeBackend(this.backend);
   await this.ready;token.check();
-  if(!request.workspace_id||!request.executable||request.cwd_relative!=="."||request.network_allowed||
+  if(!request.workspace_id||!request.executable||!validCommandCwd(request.cwd_relative)||request.network_allowed||
     !Number.isInteger(request.time_limit_ms)||request.time_limit_ms<1||request.time_limit_ms>120000||
     !Number.isInteger(request.max_output_bytes)||request.max_output_bytes<1||request.max_output_bytes>2097152||
     !Array.isArray(request.argv)||request.argv.some(a=>typeof a!=="string"||a.includes(String.fromCharCode(0))))

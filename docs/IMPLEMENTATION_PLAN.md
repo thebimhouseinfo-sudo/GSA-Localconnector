@@ -1,97 +1,120 @@
-# Implementation Plan — GSA-Localconnector
+# Implementation Plan — GSA-Localconnector, Native Mac V3 (2026-11-05)
 
-Status: ACTIVE
+## GOAL
 
-**Current handoff (2026-11-02):** Start with [MAC-QWEN-HANDOFF.md](MAC-QWEN-HANDOFF.md) for the working-tree checkpoint, remaining review finding and exact next actions. M2 is in progress; M2–M5 are not accepted. The active P02 simplification and first stopped-owner slice in [TECHNICAL_PROPOSAL.md](TECHNICAL_PROPOSAL.md#p02-simplification--active-2026-11-01) govern over conflicting historical proposals. Do not restart discovery or infer milestone completion from historical evidence.
+Enable online GSA to operate the user's existing macOS workspace directly through `gsa-lc-mac` with full scoped file operations, reference-only read/copy, native shell/Git/build/test/process/logs, real evidence and truthful recovery. **No product VM.** GitHub-hosted macOS build/tests must PASS for the exact installation candidate *before* considering any change to the user's Mac. Retire old VM integration completely after native replacement proof. Mac M5 is the finish line of this planning scope; Windows is a separate future phase, with no Windows task in the current Mac Job.
 
-Derived from the approved [CRITERIA.md](CRITERIA.md) (Status: APPROVED, kept unchanged by the user). It reorganizes the already reviewed sequence in [MILESTONES.md](MILESTONES.md) and the detailed [implementation plan](plans/GSA-LOCALCONNECTOR-IMPLEMENTATION-PLAN.md) into GOALs; it adds no new product scope, milestone or task. Facts: [PROJECT_PROFILE.md](PROJECT_PROFILE.md), [ARCHITECTURE.md](ARCHITECTURE.md), current state: [STATUS.md](STATUS.md). CRITERIA has no per-requirement IDs, so references use `CRITERIA §N` (its numbered sections 1–10 and the 2026-10-18 scope confirmation, `§0`).
+**Status:** PRE-CODE DOCUMENT REVISION. Approved source of requirements: [CRITERIA](CRITERIA.md) §0–§10 including the 2026-10-31 unconfined-user-account command exception and 2026-11-05 VM retirement decision in [DECISIONS](DECISIONS.md). Task assignment: [MILESTONES](MILESTONES.md). Exact implementation design and CI matrix: [TECHNICAL PROPOSAL](TECHNICAL_PROPOSAL.md). Superseded technical proposal archived at `docs/archive/TECHNICAL-PROPOSAL-LEGACY-PRE-20261105.md`. Older linear/optional-VM instructions do not apply.
 
-**GOALMAP is inside this Plan.** Milestone IDs are kept as the reviewed identities; State is only a pointer to evidence in STATUS.md, never a completion claim. Gate state is owned by `harness/gate.mjs`; nothing here advances it.
+### Baseline facts and gaps
 
-## GOALMAP
+- M0/M1 have bounded design/native broker evidence; M2 in progress, M3/M4/M5 NOT accepted, Windows not planned in this Job. No source-only or historical fixture PASS establishes current installed-plugin Mac acceptance.
+- Existing `runtime-bootstrap.ts` invokes VM runtime/CI; `server.ts` and `catalog.ts` retain VM descriptions and Git denial; command cwd is currently limited to `"." `. Native Mac runner is a missing product capability, not a current PASS.
+- Existing native file brokers, owner/grants/journals, process journal and desktop components are reusable candidates. Previously reported retained-FD relocation and fixture physical-stop limitations remain open and may block affected operations.
+- First PR #4 source-only GitHub macOS CI PASS for old SHA `28f96118588acf9e78c230c0870e514e8af42fa6` is narrower than mandatory future native command/file suite. CI results must bind to each **new** exact commit.
+- Dirty/unpushed Mac work described by `MAC-QWEN-HANDOFF.md` must be inspected and protected; GitHub branch is not proof of local state.
 
-| Goal ID | Observable result | Approved CRITERIA | Dependencies | Plan section | State |
-|---|---|---|---|---|---|
-| M1 | A concrete Mac boundary decision: what the existing broker proves, its limits, and what stays blocked | §0, §4, §7 | none | PLAN-M1 | Docs decision exists; file boundary remains BLOCKED by retained-FD authority survival after root relocation; §7 accepts unconfined host commands |
-| M2 | GSA edits real projects on the selected Mac across multiple working/reference roots with no per-operation approval | §1–§4, §7 | M1 | PLAN-M2 | IN PROGRESS: source slices have evidence; installed/native file delivery pending |
-| M3 | GSA runs real commands, Git and existing project scripts on this Mac and gets truthful status, logs and outputs | §4, §5, §6 | M1, M2 | PLAN-M3 | PENDING: actual Mac shell/Git not started |
-| M4 | Disconnects, crashes and reboots never produce false results or duplicate mutations | §6, §8 | M3 | PLAN-M4 | PENDING |
-| M5 | The full Mac journey is accepted per host, including several independent projects | §1–§8, §10 | M2, M3, M4 | PLAN-M5 | PENDING |
-| M6 | The same journey works on Windows, built only after M5 is accepted | §9, plus §1–§8 on Windows | M5 | PLAN-M6 | NOT STARTED by design |
+## PHASE 0 — Freeze interfaces and protect existing work (SEQUENTIAL)
 
-No M0 item is planned: the baseline/design milestone is planning evidence only.
+### GOAL
 
-## Plan items
+Create one precise source/contract baseline to permit parallel feature work without corrupting state or changing Criteria.
 
-No `docs/discussions/` DEC files exist, so no accepted Decision is linked below; the settled scope decisions live in [DECISIONS.md](DECISIONS.md) and CRITERIA §0.
+| Task | Owner | Work | Exit |
+|---|---|---|---|
+| P0-01 | Planner/integrator | Verify GitHub source branch/HEAD, current GitHub tree and published handoff; record the Mac-local checkout and current broken-plugin state as UNKNOWN | Remote source baseline and explicit local custody restrictions; do not inspect/modify unavailable local files |
+| P0-02 | Integrator | Pin grant/controller/owner revision contracts, native file/process interfaces and single MCP shared-file ownership; no second installer/journal/agent | Reviewed interface/caller map; no overlapping writer |
+| P0-03 | VM inventory agent | Freeze all VM work; classify dependency graph as VM-only/shared/historical/user media | Immutable retirement inventory and deletion prerequisites |
+| P0-04 | Planner | Align current GSA Project Job/Task topology with this approved Criteria + V3 plan; previous READY linear M2→M3 is historical | New exact-revision review evidence and project Job reconciliation before dispatch |
 
-### PLAN-M1 — GOAL: a documented Mac boundary decision that says what is proven and what stays disabled
+**No product code before full Plan/Milestones/Technical Proposal review PASS and subsequent Human authorization.** Planning Job revision 3 Reviewer PASS is recorded. G0 can certify remote source/interface readiness even when current plugin cannot bind a workspace. G0 does not require successful Mac-local connector operation, local Git checkout observation or installation. Those are separately protected operations at integration/local-host gates. Do not make M3 *source development* wait for M2 completion.
 
-- **CRITERIA references:** §0, §4, §7
-- **Current state / gap:** [M1 feasibility](plans/M1-MAC-BOUNDARY-FEASIBILITY.md), [design](plans/M1-MAC-HOST-BOUNDARY-DESIGN.md) and [decision](plans/M1-MAC-BOUNDARY-DECISION.md) exist with broker and retained-capture evidence. The reproduced retained-FD authority survival after root relocation is unresolved; the Apple Endpoint Security entitlement is reported absent/unknown and nothing is assumed about it.
-- **Implementation:** retain the broker characterization for file operations. The 2026-10-31 §7 decision accepts host commands under the logged-in account without OS confinement; it does not resolve the file broker's retained-FD limitation.
-- **Dependencies:** none
-- **Acceptance:** blocked mutation, cross-root and reference-copy paths stay explicitly disabled until a reviewed mechanism is proven.
-- **Verification:** reviewed documents plus the recorded signed-broker native runs; no new native run is required by this Plan.
-- **Limitations / non-goals:** broker success is not command-boundary or full Mac acceptance.
+## PHASE 1 — Parallel workstreams AFTER G0
 
-### PLAN-M2 — GOAL: GSA works on real Mac projects in several granted roots, with workspace full-access and reference read/copy-out only
+### GOAL
 
-- **CRITERIA references:** §1, §2, §3, §4, §7
-- **Current state / gap:** registry, persistence, explicit role binding, regular-file recoverable operations, transaction readback, directory copy and installed-file delivery slices have source/bounded native evidence ([STATUS.md](STATUS.md), [Mac core resumption](plans/2026-10-19-MAC-CORE-RESUME.md)). Remaining: installed native file delivery, move/rename, remaining directory cases and live-plugin routing proof. Production activation of recovery stays false.
-- **Decisions:** [Human D1–D3](reviews/2026-10-30-MAC-FINISH-PLAN.md) and [§7 decision](reviews/2026-10-30-CRITERIA-S7-DELTA-PROPOSAL.md); the 2026-11-01 instruction is to simplify Plan and Proposal against Criteria before more code. D2's directory move is same workspace and volume, atomic, no overwrite, no separate recovery; it does not remove the requirement for file moves between granted workspaces.
-- **Implementation — revised M2 direction (2026-11-01):** finish one vertical path through the selected plugin, scoped broker, existing transaction journal and readback before adding further infrastructure. Reuse the checked Mac file/recovery backend and existing journal where they meet Criteria; retain capture/history and return UNKNOWN on uncertainty, never replay automatically. Simplify the installer/evidence path in [P02 revision](TECHNICAL_PROPOSAL.md#p02-simplification--active-2026-11-01), keeping effective boundary, conflict detection and artifact identity checks. The exact historical qualification report, helper count and repeated proof plumbing are not product outcomes. Do not disable an existing guard until the replacement path is implemented and its equivalent required behavior is actually demonstrated.
-- **Delivery order:** (1) integrated file recovery/installation with preserved old history, (2) file move and operation-log/non-Git diff through existing stores, plus minimal D2 directory rename, (3) selected-plugin installed delivery with disposable Mac fixtures; then M3 → M4 → M5 as already ordered. Historical step2b implementation detail is superseded only where the active P02 revision says so; preserve existing commits, evidence, uncommitted work and actual installation data until a safe migration or explicit disposition is reviewed.
-- **Dependencies:** M1
-- **Acceptance:** list/search/read, create, write/edit/patch/binary, copy/move/rename/delete, diff and logs in working roots; A↔B copy/move between workspaces; reference read/copy only; invalid or overlapping roots, races, TCC, revocation and no widening are rejected.
-- **Verification:** `npm run build`, `npm test` (verified in `harness/common/checks.json`) for source; matching real-Mac disposable-fixture runs for native claims. Unit tests never certify native behavior.
-- **Limitations / non-goals:** no command-completeness claim; Windows is out of scope.
-- **Coverage / feasibility / conflicts:** §3–§4/§7 file boundaries, concurrent projects, log/diff and §8 UNKNOWN/no replay remain required; no new CI, daemon or per-operation approval. Held-descriptor relocation and installed integration remain UNVERIFIED for the revised path; native tests are needed. Past proof applies only to the exact tested artifact and must not be promoted to the new path. Approved Criteria and D1–D3 take precedence over older M2 technical wording; no other active decision is intentionally changed.
+Use independent branches/file owners to advance usable Mac capabilities in parallel, while preserving deterministic integration.
 
-### PLAN-M3 — GOAL: GSA runs real project commands, Git and existing scripts on this Mac and reads back honest results
+| Track | Tasks | Source writer scope | Can run alongside | Conditions |
+|---|---|---|---|---|
+| A — Mac files | A1 installer/recovery; A2 file move/log/diff; A3 directory copy/rename | `src/hosts/macos-{scoped-files,file-recovery,directory-*}.ts`, `native/macos-files/*`, file stores and tests; own existing installer | B, C, D, E inventory | A1 fixture stop and journal preservation; A2/A3 subwork parallel only on disjoint files |
+| B — Native command/process/Git | B1 host adapter; B2 cwd/owned stop; B3 journal and Git; B4 MCP integration (integrator-only) | `src/hosts/macos-host-commands.ts` candidate, `src/core/{native-io,process-manager,durable-process,process-journal,git-*}.ts`, process tests | A, C, D, E inventory | B2/B3 require B1 seam, no actual host activation before source tests |
+| C — GitHub-hosted macOS CI | C1 workflow, C2 native safe fixture suites | `.github/workflows/ci.yml`, CI-only scripts/test | A, B, D, E | exact SHA, mandatory tests fail when absent/unexpected skip; no VM tests |
+| D — Desktop lifecycle prep | D1 Mac Dock/login/env/quit tests | `native/macos-desktop/*` and desktop-specific scripts/tests | A, B, C, E | No hosted workflow modifies local login or real installed app |
+| E — VM retirement inventory | E1 classify/remove map (docs-only); E2 deletion code PR deferred | E1 documents; E2 VM-only source and registries, controlled by integrator | E1 with A–D | E2 only after accepted native host replacement evidence (G4) |
 
-- **CRITERIA references:** §4, §5, §6
-- **Current state / gap:** process journal and history source exist; actual Mac host shell/Git/script execution is not implemented or proven.
-- **Implementation:** reuse the process journal as the sole run record. Run commands as the logged-in user with validated workspace-relative cwd, timeout, output limit and owned cancellation. Report `command_confinement: none (user account)` and `state_integrity_vs_commands: not_protected`; detect and report suspected state changes. No connector CI/DAG engine or multi-OS matrix.
-- **Dependencies:** M1 decision, M2
-- **Acceptance:** pass/fail, stdout/stderr/exit and outputs; timeout and owned cancellation; dirty-Git and non-Git behavior; no stale-result claims.
-- **Verification:** real commands on the Mac with recorded evidence; relevant working/reference boundary checks.
-- **Limitations / non-goals:** commands and descendants can access and change data outside the workspace, including connector state, with the user's permissions. Use trusted projects; file tools and connector APIs retain their scoped boundary. Tunnel credentials in the existing ignored environment file share this risk.
+**Shared files** `src/mcp/{server,catalog,runtime-bootstrap,write-dispatch,batch-dispatch}.ts` are written by ONE integration agent, **never in competing A/B/D branches**. Staging source branches from the same reviewed G0 base avoids cherry-pick of unreviewed shared runtime edits. Cross-track changes to `native-io.ts` need integrator contract review before merge. No source edits against `main`; product and test source changes start only after separate Human execution authorization.
 
-### PLAN-M4 — GOAL: operations stay truthful across disconnect, service failure and reboot
+## PHASE 2 — Sequential integration and GitHub macOS test gates
 
-- **CRITERIA references:** §6, §8
-- **Current state / gap:** pending after M3; interruption evidence exists only for the file-recovery adapter.
-- **Implementation:** owner fencing before reconciliation, immutable terminal results, UNKNOWN instead of guessing, no duplicate mutation.
-- **Dependencies:** M3
-- **Acceptance:** competing/expired/revoked controllers rejected; real crash, restart, reboot and wake behave as recorded; unrelated processes untouched.
-- **Verification:** actual-host crash/restart/reboot runs.
-- **Limitations / non-goals:** power-loss and failed-fsync durability remain unverified until separately tested.
+### GOAL
 
-### PLAN-M5 — GOAL: the complete Mac journey is accepted, including multiple independent projects
+Merge reviewed work deterministically with continuous exact-revision macOS checks before exposing any version to the user's Mac.
 
-- **CRITERIA references:** §1–§8, §10
-- **Current state / gap:** pending; the desktop lifecycle (saved setup, login startup, Dock UI, Pause/Resume/Quit) follows only after core Mac functions are verified.
-- **Implementation:** installed artifact with signature identity, background lifecycle without Terminal, selected-plugin routing and control, non-Git local-only and hybrid flows.
-- **Dependencies:** M2, M3, M4
-- **Acceptance:** every required Mac criterion has current proof; no required Mac capability unresolved.
-- **Verification:** fresh installed-artifact runs with source, artifact and toolchain identity recorded.
-- **Limitations / non-goals:** Mac evidence does not certify Windows.
+| Gate | Dependencies | Action | Required result |
+|---|---|---|---|
+| G0 | P0-01/02/03/04 + reviewed planning | Freeze GitHub source baseline, single-writer interface/branch ownership and VM inventory; record local checkout as UNKNOWN without making a working plugin a precondition | READY for separately authorized **GitHub-branch source development**; NOT an installed-Mac approval |
+| G1 — M2 | reviewed A1/A2/A3 + C file-fixtures | Integrate Track A *serially*, run hosted macOS C0+C-A | M2 file contracts pass on exact commit; blocked functionality labeled |
+| G2 — M3 | G1 grant surface + reviewed B + C command-fixtures | Integrate native Mac runner into shared MCP *serially*; prohibit VM fallback | hosted C0+C-A+C-B pass and capability reports truthful |
+| G3 — pre-install | G2, applicable D source prep, package identity | Full hosted `macos-latest` suite C-G3 at exact installation candidate and artifact | all mandatory tests PASS, no unexplained skips, no secrets, no destructive fixture |
+| G4 — user's real Mac | **G3 PASS + separately reviewed/authorized installer action** | Install matching artifact only through a controlled action; test plugin with disposable roots | actual native selected-plugin files, scripts, Git, process/log/stop and canary observations |
+| G5 — recovery + retirement | G4 native replacement proof; M4 source may prep earlier | Verify real Mac crash/restart/UNKNOWN/revocation; separately remove VM-only code and hosted C-VM regression | recovery proof + no shipped VM import; original user media untouched |
+| G6 — M5 | G4+G5, completed D | Observe installed background/Dock/setup and concurrent independent projects | full Mac Criteria met, no required capability UNKNOWN |
+| Next phase (outside this Plan) — Windows | Mac M5 accepted | Create a separate Windows Plan, Milestones, Technical Proposal and reviewed Job when authorized | No Windows implementation or acceptance obligation inside this Mac Job |
 
-### PLAN-M6 — GOAL: the same tool groups and journey work on Windows
+A/B/C/D/E can research/design in parallel, but the gates **G0→G6 remain sequential for integrated acceptance**. M4 source tests may start after B run semantics freeze in parallel to integration; restart/reboot proof requires G4. E2 VM deletion is independent/reversible after native replacement and has its own SHA-pinned CI; on failure revert only E2 PR, never automatically reactivate VM. No automatic production installation or connector state migration based on CI status.
 
-- **CRITERIA references:** §9 and §1–§8 on Windows
-- **Current state / gap:** deliberately not started; no Windows feature work or native feasibility before M5 is accepted.
-- **Implementation:** to be planned only after M5; needs its own Windows ACL, storage, process and package implementation.
-- **Dependencies:** M5
-- **Acceptance:** Windows-specific evidence per host; three-OS source CI is regression evidence only.
-- **Verification:** actual Windows runs.
-- **Limitations / non-goals:** skips are not native passes.
+## PHASE 3 — Evidence, safety and acceptance
 
-## Technical direction
+### GOAL
 
-TypeScript ESM on Node >=20, existing Swift helpers and Python guest tools; no new dependency or platform capability is presumed. The Linux VM worker stays optional and is removed from the connector if it fails in real use, per the 2026-10-19 rule. Original VM media stays untouched.
+Prove each required capability without misrepresenting source, hosted Mac, historical VM or installed Mac observations.
 
-## Open Human questions
+**C0 source CI:** GitHub `macos-latest`, Node 22, `npm ci --ignore-scripts`, `npm run build`, all non-VM source suites; existing `scripts/test-native-source-capture.py`; record commit/lockfile, host OS/arch/Xcode/Swift, command exits and skipped suite list. A static check disallows new runtime VM imports on post-retirement builds. Frozen old VM tests not counted as native acceptance.
 
-None required for steps 2–6 now. Domain or scope escalations (for example a path that would need the Endpoint Security entitlement) will be raised when they arise, not assumed.
+**C-A file fixture on hosted Mac:** disposable signed native broker and file tests, reference-denial, A↔B transfer, CAS change, atomic rename, journal readback/UNKNOWN and owned helper shutdown; fixtures retained on unproven stop, never kill unrelated process. **C-B command fixture on hosted Mac:** actual macOS `uname`/`node`/`swiftc`/Git, non-Git script, cwd subdir and reference denial, pass/fail/stdout/stderr, output cursor and cap, timeout, exact owned process stop with neighboring process unchanged. **C-G3** requires C0+C-A+C-B plus package/manifest checks. If a required suite is missing or skipped, treat gate **BLOCKED**, not PASS. The exact eventual entrypoint commands are delivered/tested by responsible C/A/B coders; do not invent their presence now. Native-safe cloud proof is not Mac-local TCC, identity, tunnel, sleep/wake or Dock acceptance.
+
+**Real host:** only after G3 review and separate install authorization; use disposable roots, file canaries, source/build/install hashes, signed identity, owner/lease/grant revisions, run ID/argv/cwd/exit/stdout/stderr/artifacts, timeout/cancel, unknown/recovery and data preservation. Preserve GPTWorker/CadGPT/RevitGPT/other processes. `command_confinement: none (user account)` and `state_integrity_vs_commands: not_protected` are mandatory; command descendants can access outside roots with user's permissions; API/file broker must not. Do not claim sandbox protection for arbitrary shell.
+
+**E2 retirement and rollback:** native Mac replacement first, hosted and selected-plugin evidence; separate VM deletion branch/PR with deletion map and full hosted regression. No user media deletion, no recovery journal rewrite, no original VM asset deletion. On CI failure keep E2 unmerged; if already integrated and regression red, roll back only its commits while preserving native execution and user artifacts. A rollback of installed Mac release is a *separate explicit* reviewed/human-approved operation, never automatic VM fallback.
+
+## PHASE 4 — Planning review closure and dispatch boundary
+
+### GOAL
+
+Deliver implementation-ready, task-sized artifacts without performing product implementation during document review.
+
+Reviewer independently checks: all approved Criteria §0–§10, Mac M0–M5 coverage and task dependencies; Windows excluded from this planning Job; exact file/function/caller mapping and expected outputs in [Technical Proposal](TECHNICAL_PROPOSAL.md); branch ownership, shared MCP integration, File/Process UNKNOWN/no-replay, unconfined command declarations, hosted pre-install vs local acceptance, staged VM retirement/rollback and protected uncommitted Mac work. Every finding must have evidence, owner and closure. Update durable GSA planning Job/Review only through authorized CAS/readback and exact source SHA; previous 2026-10-22 READY Job Reviewer PASS does not approve this V3.
+
+**Current state:** V3 documents are prepared for Reviewer; no product source changed and no Mac installation performed. Only a verified Reviewer PASS on exact V3 (and, if requested, later CR) counts as review closure. Human approval is still required before coding.
+
+
+## PHASE 5 — Job-ready dispatch registry and source-of-truth reconciliation
+
+### GOAL
+
+Translate the reviewed product requirements into an unambiguous set of parallel *future* coding assignments, explicitly excluding Windows implementation, without activating a task or rewriting a READY historical Job prematurely.
+
+**Two-level dependencies.** At the *source authoring* level, file/backend (A), native command (B), CI (C), desktop preparation (D) and VM inventory (E1) run concurrently after the shared T0 contract, each on a separate feature branch with exclusive file ownership. At the *capability acceptance* level, files must be integrated before command dispatcher wiring, full hosted macOS native tests must pass before any real-Mac installation, and real Mac verification precedes VM removal and M5 sign-off. Do not let a linear presentation order become an implicit dependency edge.
+
+**GSA planning reconciliation:** historical `J-2600` was superseded; the Mac-only planning revision recorded as `J-FA79` revision 3 previously passed review on an *earlier source SHA*. Changes to these source documents require a **new exact-revision planning review and Job replacement/revalidation** before claiming a current PASS. The authoritative active Job must have 16 task DAG nodes ending at M5, current approved Criteria SHA `3386b803ef655d4398d438c6c6b0d8a3343afb24`, no Windows node, and explicit parallel `depends_on`. Project Memory lifecycle READY does not authorize code, prove current plugin works, or remove the operation-specific need to protect the old Mac checkout.
+
+**Task assignment readiness contract:** each future task explicitly supplies (1) exact starting Git SHA and active development branch, (2) owner/allowlisted paths and common files that MUST NOT be changed, (3) prerequisites based on IDs rather than milestone-complete shortcuts, (4) contract to reuse and prohibited second system, (5) positive, negative and failure-mode tests, (6) expected GitHub macOS runner evidence on exact SHA, (7) review disposition and known local-host gaps. Source-coding Tasks may not auto-start from this document.
+
+**Scope-specific hold points:** (i) before writing, checking out, syncing, installing into or overwriting the **user's existing Mac checkout**, observe and reconcile unpublished/dirty Mac files using a separately approved means; this does **not** block work on independent GitHub branches; (ii) B must fix the actual `cwd_relative` validators and `runtime-bootstrap.ts` VM wiring during authorized development, not before G0; (iii) A must fix the owned-child cleanup before repeating its native installer fixture; (iv) C must implement mandatory native test suites before G1/G2/G3 acceptance, not before code begins; (v) installed-plugin recovery is a development/acceptance target, never a G0 prerequisite. Existing `WORKSPACE_ROOT_CHANGED`, absent grants and blocked shell/file/Git are evidence of unfinished functionality, not a request to make the old plugin work first.
+
+### Task-to-milestone traceability
+
+| Criteria | Task owner(s) | Milestone evidence |
+|---|---|---|
+| §1–§3 machine/plugin grant, multi-root work/reference roles | T0, A1, INT-A, G4 | selected plugin binds/rebinds/revokes current grants without per-folder manual installer |
+| §4 file create/edit/patch/copy/move/delete/diff and references | A1–A3, C-A, G1, G4 | conflict and UNKNOWN readback, two roots and read-only references |
+| §4–§5 actual host command, Git and project scripts | B1–B4, C-B, G2, G4 | real Darwin execution, Git dirty repo, non-Git script, commands scoped by cwd |
+| §5–§6 logs/status/output and long-running cancel | B2–B3, C-B, R1 | bounded stdout/stderr, exit, source version identity and exact owned physical stop |
+| §7 file boundary and accepted command exception | A, B, C, G4 | file API root/reference denials and honest unconfined command declaration |
+| §8 reconnect/crash/reboot truthfulness | R1–R2, G4, M5 | no duplicate effects, UNKNOWN where physical stop or prior effect unproven |
+| §9 Windows parity | Future separate Windows phase (not a Mac task) | Only after Mac M5 acceptance and its own reviewed Plan/Technical Proposal/Job |
+| §10 full user journey | D1/D2, G4, M5 | background/Dock/tunnel, independent projects and full plugin functionality |
+
+**Definition of plan-review complete:** exact V3 Plan/Milestones/Proposal agree on these owner/dependency/test facts, Reviewer record has zero unresolved findings and is pinned to matching repository blobs, the active GSA Project Job references current approved Criteria and reflects the non-linear topology, and all historical conflicting proposals are marked archival. No merge, deploy, local installation or product coding is implied by review completion.
+

@@ -112,7 +112,7 @@ posixTest('released controller cannot continue directory copy after a new contro
   assert.equal(body(get).result.status,'UNKNOWN');assert.equal(body(get).result.readback.status,'DIFFERENT');assert.deepEqual(await recordBytes(x),bytesBeforeGet);
   const bytesBeforeDuplicate=await recordBytes(x),duplicate=await invoke(fresh,'copy_directory',await copyArgs(x.copyId),controllerB.token);assertNoDisclosure(duplicate,x,[controllerA.token,controllerB.token]);
   assert.equal(body(duplicate).result.status,'UNKNOWN');assert.equal(body(duplicate).result.readback.status,'DIFFERENT');assert.deepEqual(await recordBytes(x),bytesBeforeDuplicate);
-  assert.deepEqual(x.captureEvents,['source','source','destination','destination','source','destination']);assert.deepEqual(x.calls,['mkdir:dst:copied']);assert.equal(x.calls.filter(call=>call.startsWith('create:')).length,0);assert.equal(x.calls.some(call=>/rollback|unlink|trash|remove|delete/i.test(call)),false);
+  assert.deepEqual(x.captureEvents,['source','source','source','destination','destination','source','source','destination']);assert.deepEqual(x.calls,['mkdir:dst:copied']);assert.equal(x.calls.filter(call=>call.startsWith('create:')).length,0);assert.equal(x.calls.some(call=>/rollback|unlink|trash|remove|delete/i.test(call)),false);
   const final=JSON.parse((await recordBytes(x)).toString('utf8')) as DirectoryCopyRecord;assert.equal(final.revision,3);assert.equal(final.status,'PENDING');t.diagnostic(JSON.stringify({case:'controller-reacquire',record_sha256:recordHash(await recordBytes(x)),revision:final.revision,status:final.status,...eventSummary(x),controllerSessionsDiffer:controllerA.session!==controllerB.session}));
  });}finally{if(controllerB){try{const released=await invoke(dispatch,'release_control',{},controllerB.token);assertNoDisclosure(released,x,[controllerA.token,controllerB.token]);assert.equal(body(released).ok,true);}catch(error){x.preserve();throw error;}}}
 });
@@ -130,7 +130,7 @@ posixTest('durable source revocation stops the next directory dispatch and block
    assertDenied(await invoke(target,'copy_directory',await copyArgs(x.copyId),controller.token),'WORKSPACE_GRANT_REVOKED',x,[controller.token]);
   };
   await denied(dispatch);const fresh=x.buildDispatcher(new DirectoryCopyStore(x.journal));await denied(fresh);
-  assert.deepEqual(x.captureEvents,['source','source','destination']);assert.deepEqual(x.calls,['mkdir:dst:copied']);assert.deepEqual(await recordBytes(x),before);
+  assert.deepEqual(x.captureEvents,['source','source','source','destination']);assert.deepEqual(x.calls,['mkdir:dst:copied']);assert.deepEqual(await recordBytes(x),before);
   assert.equal(x.calls.filter(call=>call.startsWith('create:')).length,0);assert.equal(x.calls.some(call=>/rollback|unlink|trash|remove|delete/i.test(call)),false);
   t.diagnostic(JSON.stringify({case:'durable-source-revocation',record_sha256:recordHash(before),revision:record.revision,status:record.status,...eventSummary(x),durableSourceRevoked:durableRevoked}));
  });
@@ -149,7 +149,7 @@ posixTest('new durable grant revision cannot authorize an old directory intent',
    assertDenied(await invoke(target,'copy_directory',await copyArgs(x.copyId),controller.token),'WORKSPACE_GRANT_CHANGED',x,[controller.token]);
   };
   await denied(dispatch);const fresh=x.buildDispatcher(new DirectoryCopyStore(x.journal));await denied(fresh);
-  assert.deepEqual(x.captureEvents,['source','source','destination']);assert.deepEqual(x.calls,['mkdir:dst:copied']);assert.deepEqual(await recordBytes(x),before);
+  assert.deepEqual(x.captureEvents,['source','source','source','destination']);assert.deepEqual(x.calls,['mkdir:dst:copied']);assert.deepEqual(await recordBytes(x),before);
   assert.equal(x.calls.filter(call=>call.startsWith('create:')).length,0);assert.equal(x.calls.some(call=>/rollback|unlink|trash|remove|delete/i.test(call)),false);
   t.diagnostic(JSON.stringify({case:'durable-destination-revision',record_sha256:recordHash(before),revision:record.revision,status:record.status,...eventSummary(x),grantRevisionBefore:original.revision,grantRevisionAfter:revisionAfter,sameRootAndPermissions:true}));
  });

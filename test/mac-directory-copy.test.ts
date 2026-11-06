@@ -51,6 +51,16 @@ test('copies a selected workspace root and nested source into a different worksp
  assert.equal(result.status,'APPLIED');assert.ok(x.dirs.has('dst:copy/empty'));
 });
 
+test('source manifest drift during preflight rejects before journal intent or destination effects',async t=>{
+ let sourceReads=0;
+ const changed=capture([d(''),f('other.txt',new Uint8Array([9]))],[{path:'other.txt',bytes:new Uint8Array([9])}]);
+ const x=await fixture(t,'reference',async ref=>ref.workspace_id==='src'?(++sourceReads===1?simple:changed):simple);
+ await assert.rejects(x.copies.copy(uuid,{workspace_id:'src',path:'.'},{workspace_id:'dst',path:'copied'},simple.manifest.sha256),(error:any)=>error.code==='HASH_CONFLICT');
+ assert.equal(sourceReads,2);
+ assert.deepEqual(x.calls.filter(c=>c.startsWith('mkdir:')||c.startsWith('create:')),[]);
+ await assert.rejects(x.store.load(uuid),(error:any)=>error.code==='DIRECTORY_COPY_NOT_FOUND');
+});
+
 test('hash mismatch and lexical overlap reject before persistent intent or namespace calls',async t=>{
  const x=await fixture(t);
  await assert.rejects(x.copies.copy(uuid,refs.source,refs.destination,'0'.repeat(64)));

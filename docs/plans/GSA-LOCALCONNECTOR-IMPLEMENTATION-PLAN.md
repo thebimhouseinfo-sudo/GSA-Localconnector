@@ -1,5 +1,21 @@
 # GSA-Localconnector implementation plan
 
+## Direction override — 2026-11-05 (VM freeze → native Mac → GitHub-hosted Mac CI → real Mac)
+
+The human has explicitly superseded previous "optional VM retention" language. No new VM/guest/QEMU/EFI/VM-provisioning work, no VM defect repair campaigns, and no VM-dependent product acceptance. Treat remaining VM-only source as **frozen and scheduled for complete retirement**, with user-owned original media and historical evidence preserved. We are building a local connector exposing local file, Git, processes and project scripts to online GSA, not an isolated general-purpose VM or independent CI engine.
+
+**Execution path and checkpoints:**
+
+- **FZ-01 Inventory and freeze:** enumerate VM-specific imports, registrations, CI jobs, scripts, tests, guest assets and dependencies; separate VM-only from shared native/file components. No production VM activation or tests, except non-executing reference inspection required for removal.
+- **MAC-01 Direct-host:** complete actual macOS file backend and Mac user-account shell/Git/script/process/log operations. Enforce file API scope, conflict protections and output/time/cancellation boundaries; declare `command_confinement: none (user account)` and `state_integrity_vs_commands: not_protected` under the approved 2026-10-31 Criteria §7. Do not invent OS confinement or per-operation approval.
+- **MAC-CI-01 Pre-install:** run on GitHub Actions `macos-latest` for each install candidate: `npm ci --ignore-scripts`, `npm run build`, `npm test`, and relevant safe/native fixture tests. Pin commit SHA, report runner macOS/arch, outcomes and skipped checks. No VM startup/compilation, no local tunnel secrets, no installation onto user's Mac, no unsafe host modifications. Actions source pass alone does not prove live MCP operation.
+- **MAC-INSTALL-01:** only after MAC-CI-01 PASS, review installer effects and artifact provenance; explicitly stage/test on the user's own Mac with disposable roots, then verify real/plugin-visible file/Git/commands/test/results and lifecycle. Do not make a CI PASS an automatic deployment authorization.
+- **VM-RETIRE-01:** after Mac replacement passes focused hosted/native verification, delete VM-only runtime, CI engine attachments, guest scripts/assets, VM-only tests, VM install/provisioning paths and product registrations in a **separate reviewable cleanup PR**, preserving shared source and historical documentation. Verify zero VM execution references in shipped product, run hosted Mac full regression, and retain rollback capability. Do not delete original VM media or user's external assets. No replacement VM work.
+- **M4/M5:** verify interruption recovery and installed Mac end-to-end on the real user Mac, with actual evidence; Windows follows only after M5. Unverified capabilities stay explicitly blocked.
+
+**Acceptance boundary:** hosted macOS CI PASS is required **before** any installation of new connector builds on the user's Mac, but is insufficient for M2–M5 installed-host acceptance. A VM retirement plan is not a claim that source has been removed. Historical prior VM guidance below is superseded where contradictory.
+
+
 ## Current personal-use scope — user correction,2026-10-18
 
 Provide local file/Git tools, run the project's existing scripts/build/tests on the actual selected Mac or Windows, and return status, exit code, logs and outputs. Do not build a universal test suite for every OS or a separate test/configuration framework. When a project needs cross-OS testing, use project-specific GitHub CI with the applicable publication/network authorization. Android/iOS are targets of developed apps, not connector hosts. Existing VM/guest work below is historical research, outside the active delivery path; no further VM/media provisioning or isolation-lab expansion is planned. Current implementation must still report unsupported behavior honestly and preserve the settled workspace/reference boundaries. Milestone IDs are not advanced by this scope correction.

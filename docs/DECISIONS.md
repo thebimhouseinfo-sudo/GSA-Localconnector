@@ -1,5 +1,12 @@
 # Product decisions
 
+## 2026-11-05 decision — freeze and retire product VM, hosted Mac CI before Mac installation
+
+The user superseded the 2026-10-19 "keep optional Linux worker" disposition. **Stop all development, repair, reprovisioning and dedicated testing of product VM backends**. Aim to remove the VM integration entirely from the connector after replacement native Mac execution is proven; preservation of previous reports and original user-owned VM media is mandatory. Do not use old VM as the route for Git, build/test or macOS SDKs. The project remains an online-AI-to-local-tool connector with practical boundary safety under the accepted Criteria §7 exception, not an agent, VM framework or bespoke CI orchestration engine.
+
+Before any new version is installed/tested on the user's real Mac, run its exact PR/source revision on a GitHub Actions `macos-latest` runner. GitHub's hosted macOS environment is allowed **as CI infrastructure**; it must not be confused with developing a product VM. Run source/build and appropriate non-destructive macOS-native tests, retain logs, report skips and failures. Green CI authorizes *consideration* of reviewed real-Mac installation, not automatic installation or acceptance. Cleanup VM code in a distinct reversible PR after direct-host replacement, retaining historical evidence, then re-run hosted macOS CI. Mac actual-host functional acceptance still required before Windows.
+
+
 ## Scope disposition confirmed — 2026-10-19
 
 1. Stop expanding the connector CI/DAG engine; reuse only components needed for project command status/log/output/cancel.

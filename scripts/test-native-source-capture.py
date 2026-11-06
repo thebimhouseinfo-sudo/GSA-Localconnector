@@ -17,7 +17,7 @@ class CaptureTests(unittest.TestCase):
     def setUpClass(cls):
         cls.build = tempfile.TemporaryDirectory(prefix="gsa-capture-build-")
         cls.binary = Path(cls.build.name) / "source-capture"
-        source = REPO / "native/macos-vm/SourceCapture.swift"
+        source = REPO / "native/macos-source-capture/SourceCapture.swift"
         assert source.exists(), "descriptor-relative source capture helper is missing"
         subprocess.run(["swiftc", str(source), "-o", str(cls.binary)], check=True)
 

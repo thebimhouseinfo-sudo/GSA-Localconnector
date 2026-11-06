@@ -1,6 +1,7 @@
 // Disposable real-owner fixture; not a plugin or production activation test.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import {writeFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
@@ -18,9 +19,16 @@ for(const directory of [identity,workspace]){const s=await fs.lstat(directory);i
 const owner=await verifyMacOwner(identity),registry=await loadTrustedRegistry(identity),installation=path.join(identity,'scoped-files');
 const grants=registry.list();if(grants.length!==1||grants[0].id!=='work'||grants[0].role!=='workspace'||grants[0].canonicalRoot!==workspace)throw Error('Fixture grant is not the disposable workspace');
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');let dropReply=true;
+// Record every helper-owned spawn before it can outlive a lost parent reply.
+// Parent may clean the disposable fixture only after each recorded PID is absent.
+const ownedChildren=[];
 async function run(executable,args,input,max,fd){
  return new Promise((resolve,reject)=>{
   const child=spawn(executable,args,{env:{PATH:'/usr/bin:/bin',HOME:'/var/empty',LANG:'C',TMPDIR:'/private/tmp'},stdio:fd===undefined?['pipe','pipe','pipe']:['pipe','pipe','pipe',fd]});
+  if(!Number.isSafeInteger(child.pid)||child.pid<=0){child.kill('SIGKILL');reject(Error('Fixture child identity missing'));return;}
+  ownedChildren.push(child.pid);
+  try{writeFileSync(path.join(scratch,'owned-child-pids.json'),JSON.stringify(ownedChildren),{flag:'w',mode:0o600});}
+  catch(error){child.kill('SIGKILL');reject(error);return;}
   let out=Buffer.alloc(0),failure;const timer=setTimeout(()=>{failure=Error('fixture command timeout');child.kill('SIGKILL');},15000);
   child.stdout.on('data',chunk=>{if(out.length+chunk.length>max){failure=Error('fixture output limit');child.kill('SIGKILL');}else out=Buffer.concat([out,chunk]);});child.stderr.on('data',()=>{});child.stdin.on('error',()=>{});child.on('error',error=>{failure=error;});
   child.on('close',code=>{clearTimeout(timer);if(failure||code!==0)reject(failure??Error('fixture command failed'));else resolve(out);});child.stdin.end(input);

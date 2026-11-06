@@ -46,6 +46,43 @@ export class FileTransactionStore {
    const record=cloneFileTransaction(parsed as FileTransactionRecord);if(record.transaction_id!==id)fail("INVALID_FILE_TRANSACTION","Journal identity mismatch");return record;
   }finally{await fd.close();}
  }
+ /** Bounded, authorized read-only view over the existing durable mutation journal.
+  * This is not a second log, and it never reconciles or replays a mutation.
+  * The host must provide a persisted-grant read authorizer for this workspace.
+  */
+ async listWorkspace(workspaceId:string,authorize:(id:string)=>Promise<void>,limit=100):Promise<readonly FileTransactionRecord[]>{
+  if(typeof workspaceId!=="string"||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(workspaceId)||!Number.isSafeInteger(limit)||limit<1||limit>100)fail("INVALID_FILE_TRANSACTION","Invalid workspace log request");
+  if(typeof authorize!=="function")fail("SECURITY_BLOCKED","Workspace read authorization required");
+  await authorize(workspaceId);
+  await this.directory();
+  const names:string[]=[];
+  const directory=await fs.opendir(this.root);
+  try{
+   let scanned=0;
+   for await(const entry of directory){
+    if(++scanned>4096)fail("FILE_TRANSACTION_LOG_LIMIT","Transaction journal directory exceeds bounded scan");
+    if(entry.name.endsWith(".json")){
+     const id=entry.name.slice(0,-5);
+     assertFileTransactionId(id);
+     if(!entry.isFile())fail("UNSAFE_FILE_TRANSACTION_RECORD","Journal entry is not a regular file");
+     names.push(id);
+    }
+   }
+  }finally{await directory.close().catch(()=>{});}
+  names.sort();
+  const results:FileTransactionRecord[]=[];
+  for(const id of names){
+   await authorize(workspaceId);
+   const record=await this.load(id);
+   if(record.intent.source.workspace_id===workspaceId||record.intent.destination?.workspace_id===workspaceId){
+    results.push(record);
+    if(results.length===limit)break;
+   }
+  }
+  await authorize(workspaceId);
+  await this.directory();
+  return Object.freeze(results);
+ }
  private journalContext():ProtectedJournalContext{return {root:this.root,directory:create=>this.directory(create),syncDirectory:()=>this.syncDirectory(),error:(code,message)=>new FileTransactionError(code,message),lockedCode:"FILE_TRANSACTION_LOCKED",durableLock:true};}
  private locked<T>(id:string,operation:()=>Promise<T>):Promise<T>{
   assertFileTransactionId(id);return withProtectedJournalLock(this.journalContext(),id,operation);

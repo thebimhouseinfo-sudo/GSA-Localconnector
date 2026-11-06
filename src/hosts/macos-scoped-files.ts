@@ -17,6 +17,30 @@ import {loadCheckedMacRecoveryInstallation} from "./macos-recovery-installation.
 import type {NativeRecoverableFileMutations,NativeFileOperation} from "../core/native-io.js";
 
 const MAX=8*1024*1024;
+const MAX_DIFF_BYTES=1_048_576;
+export interface MacNonGitTextDiff {
+ readonly before_sha256:string;readonly after_sha256:string;
+ readonly changed:boolean;readonly patch:string;
+}
+/** Pure bounded comparator; caller must supply a previously captured baseline.
+ * Non-Git files have no implicit historical snapshot. Never fake a baseline. */
+export function diffCapturedMacText(before:Uint8Array,after:Uint8Array):MacNonGitTextDiff {
+ if(!(before instanceof Uint8Array)||!(after instanceof Uint8Array)||before.byteLength>MAX_DIFF_BYTES||after.byteLength>MAX_DIFF_BYTES)throw Error("DIFF_LIMIT_EXCEEDED");
+ const decoder=new TextDecoder("utf-8",{fatal:true});
+ let oldText:string,newText:string;
+ try{oldText=decoder.decode(before);newText=decoder.decode(after);}catch{throw Error("NON_TEXT_DIFF_UNSUPPORTED");}
+ if(oldText.includes("\0")||newText.includes("\0"))throw Error("NON_TEXT_DIFF_UNSUPPORTED");
+ const oldHash=sha(before),newHash=sha(after);
+ if(oldHash===newHash)return Object.freeze({before_sha256:oldHash,after_sha256:newHash,changed:false,patch:""});
+ const previous=oldText.split("\n"),next=newText.split("\n");
+ let prefix=0;
+ while(prefix<previous.length&&prefix<next.length&&previous[prefix]===next[prefix])prefix++;
+ let oldEnd=previous.length,newEnd=next.length;
+ while(oldEnd>prefix&&newEnd>prefix&&previous[oldEnd-1]===next[newEnd-1]){oldEnd--;newEnd--;}
+ const removed=previous.slice(prefix,oldEnd),added=next.slice(prefix,newEnd);
+ const patch=`@@ -${prefix+1},${removed.length} +${prefix+1},${added.length} @@\n`+removed.map(line=>"-"+line+"\n").join("")+added.map(line=>"+"+line+"\n").join("");
+ return Object.freeze({before_sha256:oldHash,after_sha256:newHash,changed:true,patch});
+}
 const sha=(data:Uint8Array|string)=>createHash("sha256").update(data).digest("hex");
 function blocked(message:string):never {throw Object.assign(Error(message),{code:"SECURITY_BLOCKED"});}
 async function protectedRead(file:string,max:number):Promise<Buffer>{
@@ -70,6 +94,11 @@ async function command(executable:string,args:string[],input:string,max:number,o
 }
 type Bound={id:string;root:string;rootIdentity:{device:string;inode:string};revision:number;role:"workspace"|"reference";artifacts:Record<string,string>;presign_sha256:string;code_sha256:string};
 export interface MacScopedFilesOptions {ownerLockFD?:3;authorize?:(workspaceId:string,permission:WorkspacePermission)=>Promise<void>}
+/** Host-only proposed extension; not in shared MCP catalog and not automatically active. */
+export interface MacScopedNativeFiles extends NativeScopedFiles {
+ renameDirectoryExclusive(source:ScopedFileRef,destination:ScopedFileRef):Promise<void>;
+ diffNonGitText(ref:ScopedFileRef,capturedBaseline:Uint8Array):Promise<MacNonGitTextDiff>;
+}
 /** Keep one loader/activation boundary. Recovery cannot be enabled by editing a
  * manifest/check-name list: native evidence and reviewed installation are missing.
  * A later accepted installation must supply per-root Recovery Broker.app,
@@ -86,7 +115,7 @@ export async function loadMacScopedFiles(registry:WorkspaceRegistry,installation
 }
 // Candidate construction is unexported. Native fixtures expose only a temporary
 // module copy; runtime callers always require completed evidence.
-async function constructMacScopedFiles(registry:WorkspaceRegistry,installationRoot:string,options:MacScopedFilesOptions={},candidate=false):Promise<NativeScopedFiles>{
+async function constructMacScopedFiles(registry:WorkspaceRegistry,installationRoot:string,options:MacScopedFilesOptions={},candidate=false):Promise<MacScopedNativeFiles>{
  if(process.platform!=="darwin")blocked("macOS scoped files unavailable on this platform");
  await assertMacFileInstallationSeparated(registry,installationRoot);
  await protectedDirectory(installationRoot);
@@ -201,6 +230,21 @@ async function constructMacScopedFiles(registry:WorkspaceRegistry,installationRo
     }
     check();
    });
+  },
+  async diffNonGitText(ref,capturedBaseline){
+   const captured=new Uint8Array(capturedBaseline);
+   if(captured.byteLength>MAX_DIFF_BYTES)throw Error("DIFF_LIMIT_EXCEEDED");
+   const current=await readSnapshot(Object.freeze({...ref}),MAX_DIFF_BYTES);
+   return diffCapturedMacText(captured,current.bytes);
+  },
+  async renameDirectoryExclusive(source,destination){
+   const from=Object.freeze({...source}),to=Object.freeze({...destination});
+   validateWorkspaceRelative(from.path);validateWorkspaceRelative(to.path);
+   if(from.workspace_id!==to.workspace_id)blocked("Cross-root atomic directory rename denied");
+   if(from.path===to.path||from.path.startsWith(to.path+"/")||to.path.startsWith(from.path+"/"))blocked("Overlapping directory rename denied");
+   // The native broker performs exclusive descriptor-relative rename and checks
+   // held source identity. No copy/delete fallback or silent overwrite.
+   await invoke(from,"rename_directory",{},to);
   },
   async moveExclusive(source,dest,hash){await invoke(source,"move",{expectedSha256:expected(hash)},dest);},
   async trashIfHash(ref,hash){await invoke(ref,"trash",{expectedSha256:expected(hash)});}

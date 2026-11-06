@@ -154,3 +154,28 @@ test("releases installation ownership exactly once after confirmed child close",
  assert.equal((await runtime.stopOwned()).stopped,true);
  assert.equal(calls.released,1);
 });
+
+
+test("connection loss and wake-style reconnect never spawn a second child or touch neighbors",async()=>{
+ const states=["CONNECTED","DISCONNECTED","UNKNOWN","CONNECTING","CONNECTED"];
+ let index=0;
+ const {adapter,child,neighbor,calls}=makeAdapter({connectionStatus:async()=>states[Math.min(index++,states.length-1)]});
+ const runtime=await startDesktopRuntime({runtimeRoot:runtimeRoot(),envPath:"/fixture/setup/.env",platformAdapter:adapter});
+ for(const connection of states) {
+  const observed=await runtime.status();
+  assert.equal(observed.state,"RUNNING");
+  assert.equal(observed.connection,connection);
+ }
+ assert.equal(calls.spawn.length,1);
+ assert.deepEqual(child.signals,[]);
+ assert.deepEqual(neighbor.signals,[]);
+});
+
+test("active retained work refuses Quit without signalling any process",async()=>{
+ const {adapter,child,neighbor,calls}=makeAdapter({ownedWorkState:async()=>"ACTIVE"});
+ const runtime=await startDesktopRuntime({runtimeRoot:runtimeRoot(),envPath:"/fixture/setup/.env",platformAdapter:adapter});
+ assert.deepEqual(await runtime.stopOwned(),{stopped:false,reason:"ACTIVE_WORK_PRESENT"});
+ assert.deepEqual(child.signals,[]);
+ assert.deepEqual(neighbor.signals,[]);
+ assert.equal(calls.released,0);
+});

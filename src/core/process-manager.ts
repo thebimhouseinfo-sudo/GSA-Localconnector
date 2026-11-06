@@ -1,4 +1,5 @@
 import {randomUUID} from "node:crypto";
+import {validateWorkspaceRelative} from "./workspace-path.js";
 import type {SandboxedProcessRequest,SandboxedProcessReceipt,VerifiedNativeSandbox} from "./native-io.js";
 export type ProcessState="QUEUED"|"RUNNING"|"SUCCEEDED"|"FAILED"|"CANCELLED"|"UNKNOWN";
 export type WorkspaceProcessStop={state:"STOPPED"|"UNKNOWN";pending_starts:number;outcomes:readonly {process_id:string;stopped:boolean;state:ProcessState}[]};
@@ -31,8 +32,12 @@ export interface ProcessRecord {
  readonly receipt?:SandboxedProcessReceipt;
 }
 export class ProcessError extends Error{constructor(public readonly code:"SECURITY_BLOCKED"|"PROCESS_NOT_FOUND"|"PROCESS_BUSY"|"INVALID_PROCESS",message:string){super(message);}}
+/** Lexical command cwd admission; native host adapter must additionally check active grant and realpath. */
+export function validCommandCwd(value:unknown):boolean{
+ try{validateWorkspaceRelative(value as string,true);return true;}catch{return false;}
+}
 export function validateProcessRequest(request:SandboxedProcessRequest):void{
- if(!request.workspace_id||!request.executable||!Array.isArray(request.argv)||request.argv.some(a=>typeof a!=="string"||a.includes(String.fromCharCode(0)))||request.cwd_relative!=="."||!Number.isSafeInteger(request.time_limit_ms)||request.time_limit_ms<1||request.time_limit_ms>120000||!Number.isSafeInteger(request.max_output_bytes)||request.max_output_bytes<1||request.max_output_bytes>2097152||request.network_allowed)
+ if(!request.workspace_id||!request.executable||!Array.isArray(request.argv)||request.argv.some(a=>typeof a!=="string"||a.includes(String.fromCharCode(0)))||!validCommandCwd(request.cwd_relative)||!Number.isSafeInteger(request.time_limit_ms)||request.time_limit_ms<1||request.time_limit_ms>120000||!Number.isSafeInteger(request.max_output_bytes)||request.max_output_bytes<1||request.max_output_bytes>2097152||request.network_allowed)
   throw new ProcessError("INVALID_PROCESS","Invalid process request");
 }
 /** Reference lifecycle. Native worker must be injected; this class never spawns unrestricted OS children. */

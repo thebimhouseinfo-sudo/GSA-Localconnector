@@ -66,7 +66,7 @@ try{
  const observer=path.join(root,'observe.swift'),observerBin=path.join(root,'observe');
  await fs.writeFile(observer,'import AppKit\nimport Foundation\nimport CoreGraphics\nlet p=pid_t(CommandLine.arguments[1])!\nguard let a=NSRunningApplication(processIdentifier:p) else {exit(2)}\nprint(a.activationPolicy.rawValue)\nlet windows=CGWindowListCopyWindowInfo([.optionOnScreenOnly,.excludeDesktopElements],kCGNullWindowID) as? [[String:Any]] ?? []\nprint(windows.filter {($0[kCGWindowOwnerPID as String] as? Int)==Int(p)}.count)\n');
  await execute('/usr/bin/swiftc',[observer,'-o',observerBin]);
- const observed=await execute(observerBin,[String(appPid)]);assert.equal(observed.stdout.trim().split('\n')[0],'1','menu bar app must use accessory activation policy');
+ const observed=await execute(observerBin,[String(appPid)]);assert.equal(observed.stdout.trim().split('\n')[0],'0','Dock app must use regular activation policy');
  assert.equal(observed.stdout.trim().split('\n')[1],'0','saved setup must not present a setup/error window');
  const processList=await execute('/bin/ps',['-o','pid=,ppid=,comm=','-ax']);
  const rows=processList.stdout.split('\n').map(x=>x.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/)).filter(Boolean);
@@ -86,7 +86,7 @@ try{
   const nextRows=afterUpdate.stdout.split('\n').map(x=>x.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/)).filter(Boolean);
   nodeChild=nextRows.find(x=>Number(x[2])===appPid&&x[3].endsWith('/bin/node'));assert.ok(nodeChild,'updated app retains its new bundled Node');
   assert.equal(nextRows.some(x=>Number(x[2])===appPid&&/Terminal|\/bash$|\/zsh$/.test(x[3])),false);
-  assert.deepEqual((await execute(observerBin,[String(appPid)])).stdout.trim().split('\n'),['1','0']);
+  assert.deepEqual((await execute(observerBin,[String(appPid)])).stdout.trim().split('\n'),['0','0']);
   assert.notEqual(next.id,current.id);
   assert.equal(await fs.readlink(path.join(home,'Applications/GSA Local Connector.app')),path.join(next.runtimeRoot,'GSA Local Connector.app'));
   assert.equal((await privateFile.readVerified(envPath)).identity,original);
@@ -109,11 +109,11 @@ try{
   while(Date.now()<deadline){try{reloaded=JSON.parse(await fs.readFile(path.join(desktop,'status.json'),'utf8'));if(reloaded.state==='RUNNING'&&reloaded.sessionId!==oldSession)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
   assert.equal(reloaded?.state,'RUNNING');assert.notEqual(reloaded.sessionId,oldSession);
   const job=await execute('/bin/launchctl',['print',fixtureJob]);appPid=Number(job.stdout.match(/\bpid = (\d+)/)?.[1]);assert.ok(appPid>0);
-  const loginUI=await execute(observerBin,[String(appPid)]);assert.deepEqual(loginUI.stdout.trim().split('\n'),['1','0']);
+  const loginUI=await execute(observerBin,[String(appPid)]);assert.deepEqual(loginUI.stdout.trim().split('\n'),['0','0']);
   assert.equal((await privateFile.readVerified(envPath)).identity,original);process.kill(sentinel.pid,0);
   loginRegistration='TEMPORARY_RUNATLOAD_JOB_PASS';
  }
- console.log(JSON.stringify({state:'NATIVE_SMOKE_PASS',root,appPid,nodePid:Number(nodeChild[1]),accessoryMenuBarApp:true,noTerminalChild:true,savedEnvIdentityPreserved:true,noSetupWindow:true,neighborAlive:true,loginRegistration,fixtureJob:fixtureJob??null,realPlugin:'NOT_EXECUTED'}));
+ console.log(JSON.stringify({state:'NATIVE_SMOKE_PASS',root,appPid,nodePid:Number(nodeChild[1]),dockApp:true,noTerminalChild:true,savedEnvIdentityPreserved:true,noSetupWindow:true,neighborAlive:true,loginRegistration,fixtureJob:fixtureJob??null,realPlugin:'NOT_EXECUTED'}));
  if(process.argv.includes('--ui-fixture')){
   console.log(JSON.stringify({state:'UI_FIXTURE_READY',fixtureBundleId,appPath:path.join(current.runtimeRoot,'GSA Local Connector.app')}));
   await new Promise(resolve=>{process.stdin.once('data',resolve);process.stdin.once('end',resolve);process.stdin.resume();});process.stdin.pause();
