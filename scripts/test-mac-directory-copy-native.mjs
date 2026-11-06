@@ -12,6 +12,7 @@ import {directoryManifestDigest,validateDirectoryCapture} from '../dist/src/core
 import {normalizedStrippedMacFileCode} from '../dist/src/hosts/macos-file-code.js';
 import {requireMacDirectoryBuild,requireMacDirectoryEvidence} from '../dist/src/hosts/macos-directory-evidence.js';
 import {reserveAttempt} from './mac-recovery-probe-control.mjs';
+import {inspectPlatformFixtures} from './mac-directory-fixture-preflight.mjs';
 
 export const limits=Object.freeze({helperLaunches:24,signedBundles:2,observerInvocations:3,relocations:1,helperMs:20000,commandMs:60000,outputBytes:12_582_912,diagnosticBytes:65536,compilerBytes:268_435_456,receiptBytes:335_544_320});
 export const protocol='gsa-directory-capture-response-v1';
@@ -295,7 +296,7 @@ function expectedLimitCapture({depth=0,entries=0,bytes=0}){
 }
 
 function sameRows(a,b){return JSON.stringify(a)===JSON.stringify(b);}
-export async function prepareReaderRun(context,{inputs,writeInvalidName=fs.writeFile,onEvent=()=>{}}={}){
+export async function prepareReaderRun(context,{inputs,writeInvalidName=fs.writeFile,onEvent=()=>{},platformPreflight}={}){
  const {stage,report}=context;
  context.fixture=await createFixtures(stage);context.roots=[];
  for(const [role,root] of Object.entries(context.fixture.roots)){const stat=await fs.stat(root,{bigint:true});context.roots.push({id:role,role,root,rootIdentity:ident(stat),revision:1});}
@@ -324,6 +325,13 @@ export async function prepareReaderRun(context,{inputs,writeInvalidName=fs.write
   await fs.chmod(binary,0o500);await fs.chmod(buildPath,0o600);context.release={binary,build};
  }
  report.fixturePreflight='INCOMPLETE';report.readiness='NOT_READY';context.ready=false;
+ if(platformPreflight){
+  const result=await platformPreflight(stage,root);
+  report.fifoFixture=result.fifoFixture;report.mountFixture=result.mountFixture;
+  if(result.fifoFixture?.state!=='VERIFIED'||result.mountFixture?.state!=='VERIFIED'||result.mountFixture.differentDevice!==true)
+   throw fail('PLATFORM_FIXTURE_INCOMPLETE');
+  report.fixturePreflight='COMPLETE';report.readiness='READY';context.ready=true;
+ }
  await onEvent('preflight-prepared',context);return context;
 }
 
@@ -458,5 +466,5 @@ async function runNative(context,options={}){
  return report;
 }
 
-async function main(){const argv=process.argv.slice(2);if(argv.length===0||argv.length===1&&argv[0]==='--plan'){console.log(JSON.stringify(getPlan()));return;}const report=await runAcknowledged(argv,{run:()=>runReaderPipeline({reserve:async()=>reserveAttempt(reservation,{format:'gsa-directory-native-once-v1',source_sha256:sha(await boundedRegularRead(source,1024*1024)),driver_sha256:sha(await boundedRegularRead(script,1024*1024)),observer_sha256:sha(await boundedRegularRead(observer,1024*1024)),limits,at:new Date().toISOString(),activation:false})},nativeRunAuthorization)});console.log(JSON.stringify({state:report.state,stage:report.stage,counts:report.counts,activation:false,unresolved:report.unresolved.length,receipts:report.receipts?.length??0}));if(report?.state!=='TREE_NATIVE_CAPTURE_SUITE_OBSERVED')process.exitCode=report?.state==='BLOCKING'?2:1;}
+async function main(){const argv=process.argv.slice(2);if(argv.length===0||argv.length===1&&argv[0]==='--plan'){console.log(JSON.stringify(getPlan()));return;}const report=await runAcknowledged(argv,{run:()=>runReaderPipeline({platformPreflight:inspectPlatformFixtures,reserve:async()=>reserveAttempt(reservation,{format:'gsa-directory-native-once-v1',source_sha256:sha(await boundedRegularRead(source,1024*1024)),driver_sha256:sha(await boundedRegularRead(script,1024*1024)),observer_sha256:sha(await boundedRegularRead(observer,1024*1024)),limits,at:new Date().toISOString(),activation:false})},nativeRunAuthorization)});console.log(JSON.stringify({state:report.state,stage:report.stage,counts:report.counts,activation:false,unresolved:report.unresolved.length,receipts:report.receipts?.length??0}));if(report?.state!=='TREE_NATIVE_CAPTURE_SUITE_OBSERVED')process.exitCode=report?.state==='BLOCKING'?2:1;}
 if(process.argv[1]&&path.resolve(process.argv[1])===script)main().catch(error=>{console.error(error.code??error.message);process.exitCode=1;});
