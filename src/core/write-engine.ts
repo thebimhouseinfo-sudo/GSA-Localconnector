@@ -66,6 +66,25 @@ export async function editFile(io:NativeScopedFiles,ref:ScopedFileRef,oldText:st
  const planned=planExactEdit(snap.bytes,expectedSha256,oldText,newText);
  return replace(io,ref,planned.content,expectedSha256);
 }
+/** Safe non-destructive text-edit path available on a qualified BASE create-only backend.
+ * A source digest is a snapshot precondition, not a claim that concurrent source
+ * changes are locked. Destination creation is exclusive and never replaces data.
+ */
+export async function editFileAsNewVersion(io:NativeScopedFiles,source:ScopedFileRef,destination:ScopedFileRef,oldText:string,newText:string,expectedSha256:string):Promise<MutationReceipt&{source_workspace_id:string;source_path:string;source_sha256:string}>{
+ source=captureRef(source);destination=captureRef(destination);
+ if(source.workspace_id===destination.workspace_id&&source.path===destination.path)
+  throw new MutationError("INVALID_ARGUMENTS","Destination must differ from source");
+ const captured=await io.read(source,MAX_BYTES);
+ const planned=planExactEdit(captured.bytes,expectedSha256,oldText,newText);
+ if(planned.content.byteLength>MAX_BYTES)throw new MutationError("FILE_TOO_LARGE","Versioned edit exceeds 8 MiB");
+ // Capture again to reject a source edit that happened during planning.
+ // The caller knows the resulting version derives from the pinned snapshot.
+ const reread=await io.read(source,MAX_BYTES);
+ requireExpectedHash(reread.bytes,expectedSha256);
+ await io.createExclusive(destination,planned.content);
+ return {...receipt(destination,null,planned.after_sha256),
+  source_workspace_id:source.workspace_id,source_path:source.path,source_sha256:planned.before_sha256};
+}
 export async function createDirectory(io:NativeScopedFiles,ref:ScopedFileRef):Promise<void>{validate(ref);await io.makeDirectory(ref);}
 export async function trashFile(io:NativeScopedFiles,ref:ScopedFileRef,expectedSha256:string):Promise<RecoverableMutationResult>{
  ref=captureRef(ref);const snap=await io.read(ref,MAX_BYTES);requireExpectedHash(snap.bytes,expectedSha256);
