@@ -223,6 +223,54 @@ class RecoveryBrokerTests(unittest.TestCase):
         self.assertEqual(inspected["status"], "APPLIED")
         self.assertTrue(inspected["observations"]["source_absent"])
 
+    def test_closed_broker_lost_reply_readback_never_replays(self):
+        """Actual signed broker completion, deliberately lost reply, read-only inspection.
+
+        This proves a bounded *candidate* crash-window property, not the
+        checked installation's inherited owner FD or escaped descendants.
+        """
+        entry = self.fx.workspace / "item"
+        entry.write_bytes(b"original")
+        req = self.fx.request("replace", payload=b"one-publish")
+        before_canary = self.fx.outside.read_bytes()
+        proc = subprocess.Popen(
+            [str(self.fx.executable)], stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            cwd=str(self.fx.base), start_new_session=True,
+        )
+        pid = proc.pid
+        self.assertGreater(pid, 1)
+        try:
+            _, diagnostic = proc.communicate(json.dumps(req).encode(), timeout=8)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate(timeout=5)
+            self.fail("owned signed recovery broker did not terminate")
+        self.assertEqual(proc.returncode, 0, diagnostic[:400])
+        # waitpid() was completed by communicate(): direct owned helper is
+        # reaped; checking its PID cannot accidentally terminate a neighbor.
+        with self.assertRaises(ProcessLookupError):
+            os.kill(pid, 0)
+        self.assertEqual(entry.read_bytes(), b"one-publish")
+        captured = self.fx.recovery / req["transaction_id"] / "captured"
+        self.assertEqual(captured.read_bytes(), b"original")
+        captured_before = (captured.stat().st_dev, captured.stat().st_ino)
+        inspected = self.fx.call({
+            "protocol": PROTOCOL, "operation": "inspect",
+            "transaction_id": req["transaction_id"],
+        })
+        self.assertTrue(inspected["ok"])
+        self.assertEqual(inspected["status"], "APPLIED")
+        self.assertEqual(inspected["observations"]["destination_sha256"], sha(b"one-publish"))
+        self.assertEqual((captured.stat().st_dev, captured.stat().st_ino), captured_before)
+        self.assertEqual(entry.read_bytes(), b"one-publish")
+        self.assertEqual(self.fx.outside.read_bytes(), before_canary)
+        # An identical request cannot be replayed after acknowledgment loss.
+        replay = self.fx.call(req)
+        self.assertFalse(replay["ok"])
+        self.assertEqual(replay["error"], "TRANSACTION_EXISTS_OR_DENIED")
+        self.assertEqual(entry.read_bytes(), b"one-publish")
+
     def test_inspect_is_read_only(self):
         (self.fx.workspace / "item").write_bytes(b"original")
         r = self.fx.call(self.fx.request("replace"))
