@@ -101,6 +101,53 @@ export async function loadTrustedRegistry(dir=identityDirectory()):Promise<Works
  if(!protectedStateCapability().available)return new WorkspaceRegistry();
  return validatedRegistry(await readEntries(dir),dir);
 }
+/** Inspect only the identity of explicitly pinned durable roots.
+ * Never grant authority from this read: the caller must separately use
+ * loadTrustedRegistry for any operation requiring a valid current root.
+ */
+async function stalePinnedEntries(entries:readonly Entry[]):Promise<Entry[]>{
+ const result:Entry[]=[];
+ for(const entry of entries){
+  if(entry.revoked||!pinned(entry))continue;
+  let canonical:string,stat;
+  try{
+   canonical=await fs.realpath(entry.root);
+   stat=await fs.lstat(entry.root,{bigint:true});
+  }catch(error){
+   if(["ENOENT","ENOTDIR"].includes((error as NodeJS.ErrnoException).code??"")){result.push(entry);continue;}
+   throw error; // EACCES/IO errors are unknown, never permission for revocation
+  }
+  if(canonical!==entry.root||!stat.isDirectory()||
+    String(stat.dev)!==entry.rootIdentity.device||String(stat.ino)!==entry.rootIdentity.inode)result.push(entry);
+ }
+ return result;
+}
+export async function inspectStaleTrustedRoots(dir=identityDirectory()):Promise<readonly {id:string;root:string;revision:number}[]>{
+ requireProtectedState();
+ const entries=(await readStore(dir)).entries;
+ return Object.freeze((await stalePinnedEntries(entries)).map(entry=>Object.freeze({id:entry.id,root:entry.root,revision:entry.revision!})));
+}
+/** Local administration only, under the same owner/stopped fence as broker rebind.
+ * Preserve matching grants verbatim. Revoke just the durable pins whose exact
+ * canonical inode is lost; never reinterpret old authority as a new root grant.
+ */
+export async function revokeStaleTrustedRoots(dir=identityDirectory()):Promise<{revoked:readonly {id:string;root:string;revision:number}[];retained:number}>{
+ return withGrantLock(dir,async publication=>{
+  const store=await readStore(dir),stale=await stalePinnedEntries(store.entries);
+  if(!stale.length)return {revoked:[],retained:store.entries.filter(entry=>!entry.revoked&&pinned(entry)).length};
+  const ids=new Set(stale.map(entry=>entry.id));let floor=store.revisionFloor;
+  const revised=store.entries.map(entry=>{
+   if(!ids.has(entry.id))return entry;
+   floor=Math.max(floor,entry.revision!)+1;
+   if(!Number.isSafeInteger(floor))throw Error("INVALID_GRANT_STORE");
+   return {...entry,revoked:true as const,permissions:[] as WorkspacePermission[],revision:floor};
+  });
+  await validatedRegistry(revised,dir); // refuse publication if any retained root is unsafe
+  await persistEntries(dir,revised,publication,undefined,floor);
+  return {revoked:stale.map(entry=>({id:entry.id,root:entry.root,revision:revised.find(v=>v.id===entry.id)!.revision!})),
+   retained:revised.filter(entry=>!entry.revoked&&pinned(entry)).length};
+ });
+}
 /** Recheck durable revocation/epoch and root identity before and during native work. */
 export async function requirePersistedGrant(registry:WorkspaceRegistry,workspaceId:string,dir=identityDirectory(),permission:WorkspacePermission="execute"):Promise<WorkspaceGrant>{
  requireProtectedState();

@@ -9,7 +9,7 @@ import {spawn} from 'node:child_process';
 import {createHash,createHmac,randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
-import {loadTrustedRegistry} from '../dist/src/local/grants.js';
+import {loadTrustedRegistry,inspectStaleTrustedRoots,revokeStaleTrustedRoots} from '../dist/src/local/grants.js';
 import {identityDirectory} from '../dist/src/local/identity.js';
 import {normalizedStrippedMacFileCode} from '../dist/src/hosts/macos-file-code.js';
 import {requireMacFileEvidence,MAC_FILE_SIGNING_PROFILE} from '../dist/src/hosts/macos-file-evidence.js';
@@ -579,9 +579,13 @@ async function main(){
  const identityRoot=flags['--identity-root']??identityDirectory();process.umask(0o077);
  if(mode==='inspect'||mode==='--dry-run')console.log(JSON.stringify(await inspectMacScopedFiles(identityRoot)));
  else if(mode==='stage'){const staged=await withStoppedMacConnector(identityRoot,()=>stageMacScopedFiles(identityRoot));console.log(JSON.stringify({state:'SCOPED_FILES_STAGED_UNVERIFIED',...staged,buildMetadata:path.join(staged.stage,'build.json')}));}
+ else if(mode==='inspect-stale')console.log(JSON.stringify({state:'SCOPED_FILES_STALE_GRANTS_INSPECTION',stale:await inspectStaleTrustedRoots(identityRoot)}));
+ else if(mode==='revoke-stale')console.log(JSON.stringify(await withStoppedMacConnector(identityRoot,async(assertFence)=>{
+  assertFence();const outcome=await revokeStaleTrustedRoots(identityRoot);assertFence();return {state:'SCOPED_FILES_STALE_GRANTS_REVOKED',...outcome};
+ })));
  else if(mode==='rebind-base')console.log(JSON.stringify(await rebindMacScopedBase(identityRoot)));
  else if(mode==='apply'){const evidencePath=flags['--evidence'];if(!evidencePath)fail('Apply requires exact reviewed native fixture evidence');const s=await fs.lstat(evidencePath);if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1||s.uid!==process.getuid()||(s.mode&0o077)||s.size>1024*1024)fail('Unsafe fixture evidence');console.log(JSON.stringify(await applyMacScopedFiles(identityRoot,JSON.parse(await fs.readFile(evidencePath,'utf8')))));}
  else if(mode==='apply-recovery'){const archive=flags['--qualification-archive'];if(!archive)fail('Recovery apply requires a qualification archive');const mapping=flags['--recovery-roots']?await readRecoveryMapping(flags['--recovery-roots']):{};console.log(JSON.stringify(await applyMacScopedRecovery(identityRoot,archive,mapping)));}
- else fail('Usage: install-mac-scoped-files.mjs inspect|--dry-run|stage|rebind-base|apply|apply-recovery [options]');
+ else fail('Usage: install-mac-scoped-files.mjs inspect|inspect-stale|revoke-stale|--dry-run|stage|rebind-base|apply|apply-recovery [options]');
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{console.error(error.message);process.exitCode=1;});

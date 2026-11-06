@@ -207,3 +207,34 @@ test("postrename directory-sync failure reports RESULT_UNKNOWN with complete rea
   assert.equal(role(loaded.get("base")!),"workspace");assert.equal(role(loaded.get("next")!),"reference");
   await assert.rejects(fs.lstat(path.join(dir,".trusted-workspaces.lock")),{code:"ENOENT"});
 }));
+
+test("stale-root repair revokes only replaced inode and preserves valid grants and history",async()=>fixture(async(tmp,dir)=>{
+ const old=await mkdir(tmp,"old"),work=await mkdir(tmp,"work"),ref=await mkdir(tmp,"reference");
+ await enroll([{id:"legacy-stale",root:old,role:"workspace"},{id:"work",root:work,role:"workspace"},{id:"reference",root:ref,role:"reference"}],dir);
+ const before=JSON.parse((await bytes(dir)).toString());const entries=Array.isArray(before)?before:before.entries;
+ const stable=entries.filter((e:any)=>e.id!=="legacy-stale");
+ await fs.rename(old,old+"-original");await fs.mkdir(old);
+ await codeIs(grants.loadTrustedRegistry(dir),"SOURCE_UNVERIFIED");
+ assert.deepEqual((await grants.inspectStaleTrustedRoots(dir)).map(x=>x.id),["legacy-stale"]);
+ const outcome=await grants.revokeStaleTrustedRoots(dir);
+ assert.deepEqual(outcome.revoked.map(x=>x.id),["legacy-stale"]);assert.equal(outcome.retained,2);
+ const repaired=JSON.parse((await bytes(dir)).toString());const after=Array.isArray(repaired)?repaired:repaired.entries;
+ assert.deepEqual(after.filter((e:any)=>e.id!=="legacy-stale"),stable);
+ const tomb=after.find((e:any)=>e.id==="legacy-stale");assert.equal(tomb.revoked,true);
+ assert.deepEqual(tomb.permissions,[]);assert.ok(tomb.revision>entries.find((e:any)=>e.id==="legacy-stale").revision);
+ const loaded=await grants.loadTrustedRegistry(dir);assert.deepEqual(loaded.list().map(x=>x.id).sort(),["reference","work"]);
+ assert.equal((await grants.revokeStaleTrustedRoots(dir)).revoked.length,0);
+ assert.deepEqual((await grants.inspectStaleTrustedRoots(dir)),[]);
+}));
+test("stale-root repair revokes missing pinned root while preserving other selected roots",async()=>fixture(async(tmp,dir)=>{
+ const old=await mkdir(tmp,"old"),work=await mkdir(tmp,"work");await enroll([{id:"lost",root:old,role:"reference"},{id:"work",root:work,role:"workspace"}],dir);
+ await fs.rename(old,old+"-renamed");
+ assert.deepEqual((await grants.inspectStaleTrustedRoots(dir)).map(x=>x.id),["lost"]);
+ const outcome=await grants.revokeStaleTrustedRoots(dir);assert.deepEqual(outcome.revoked.map(x=>x.id),["lost"]);
+ assert.equal((await grants.loadTrustedRegistry(dir)).list()[0]?.id,"work");
+}));
+test("stale-root repair is a no-op when all identities match",async()=>fixture(async(tmp,dir)=>{
+ const root=await mkdir(tmp,"work");await enroll([{id:"work",root,role:"workspace"}],dir);
+ const original=await bytes(dir),result=await grants.revokeStaleTrustedRoots(dir);
+ assert.deepEqual(result,{revoked:[],retained:1});assert.deepEqual(await bytes(dir),original);
+}));
