@@ -19,6 +19,65 @@ async function writeFixtureBaseProof(identity:string,live:string){
  const body=JSON.stringify({format:'gsa-scoped-files-v2',hostRelease:os.release(),arch:process.arch,grants:[grant],build:evidence.build,evidence});
  await fs.writeFile(path.join(live,'proof-key'),key,{mode:0o600});await fs.writeFile(path.join(live,'install.json'),JSON.stringify({body,hmac:createHmac('sha256',key).update(body).digest('hex')}),{mode:0o600});return {key,body};
 }
+test('BASE rebind refuses absent installed release without creating an active binding',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl);
+ await assert.rejects(installer.rebindMacScopedBase(f.identity),/No existing qualified BASE installation/);
+ assert.equal(await fs.stat(path.join(f.identity,'scoped-files')).then(()=>true,()=>false),false);
+ assert.equal((await loadTrustedRegistry(f.identity)).list().length,1);
+});
+test('BASE rebind refuses missing qualified release and preserves old signed proof',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files');
+ await fs.mkdir(live,{mode:0o700});await writeFixtureBaseProof(f.identity,live);
+ const before=await fs.readFile(path.join(live,'install.json'));
+ await assert.rejects(installer.rebindMacScopedBase(f.identity),/ENOENT|release-broker/);
+ assert.deepEqual(await fs.readFile(path.join(live,'install.json')),before);
+ assert.equal((await fs.readdir(f.identity)).filter(n=>n.startsWith('.scoped-files.stage-')).length,0);
+});
+test('BASE rebind rejects a changed release digest and preserves the signed installation',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files');
+ await fs.mkdir(live,{mode:0o700});await writeFixtureBaseProof(f.identity,live);
+ await fs.writeFile(path.join(live,'release-broker'),Buffer.from('unqualified replacement'),{mode:0o500,flag:'wx'});
+ const original=await fs.readFile(path.join(live,'install.json'));
+ await assert.rejects(installer.rebindMacScopedBase(f.identity),/Previous qualified BASE release digest differs/);
+ assert.deepEqual(await fs.readFile(path.join(live,'install.json')),original);
+ assert.equal((await fs.readdir(f.identity)).filter(n=>n.startsWith('.scoped-files.stage-')).length,0);
+});
+test('BASE rebind refuses an existing recovery journal before staging or replacing proof',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files');
+ await fs.mkdir(live,{mode:0o700});await writeFixtureBaseProof(f.identity,live);
+ const journal=path.join(live,'file-transactions');await fs.mkdir(journal,{mode:0o700});await fs.writeFile(path.join(journal,'retained'),'retained',{mode:0o600});
+ const before=await fs.readFile(path.join(live,'install.json'));
+ await assert.rejects(installer.rebindMacScopedBase(f.identity),/Recovery journal exists/);
+ assert.deepEqual(await fs.readFile(path.join(live,'install.json')),before);
+ assert.equal(await fs.readFile(path.join(journal,'retained'),'utf8'),'retained');
+});
+test('BASE rebind publishes current workspace and reference grants using unchanged qualified release',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:180000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),reference=path.join(f.temp,'reference');
+ await fs.mkdir(reference,{mode:0o700});await enrollRolesTrustedBatch([{id:'ref',root:reference,role:'reference'}],f.identity);
+ const staged=await installer.stageMacScopedFiles(f.identity);
+ // This uses only the synthetic contract fixture; real release qualification is a separate gate.
+ const evidence=receiptSample(os.release(),process.arch);
+ evidence.build=staged.build;
+ for(const root of evidence.fixture.roots){root.presign_sha256=staged.build.release_sha256;root.code_sha256=staged.build.code_sha256;}
+ const installed=await installer.applyMacScopedFiles(f.identity,evidence);
+ assert.equal(installed.state,'SCOPED_FILES_INSTALLED_PARTIAL');
+ const oldProof=await fs.readFile(path.join(installed.installation,'install.json'));
+ const next=path.join(f.temp,'reference-next');await fs.mkdir(next,{mode:0o700});
+ await enrollRolesTrustedBatch([{id:'ref-next',root:next,role:'reference'}],f.identity);
+ const nextRegistry=await loadTrustedRegistry(f.identity);
+ assert.equal(nextRegistry.list().length,3);
+ const rebound=await installer.rebindMacScopedBase(f.identity);
+ assert.equal(rebound.state,'SCOPED_FILES_REBOUND_BASE_ONLY');
+ assert.equal(rebound.workspaceCount,3);assert.equal(rebound.recovery,false);
+ assert.deepEqual(await fs.readFile(path.join(rebound.previous,'install.json')),oldProof);
+ const newProof=JSON.parse(JSON.parse(await fs.readFile(path.join(rebound.installation,'install.json'),'utf8')).body);
+ assert.equal(newProof.grants.length,3);assert.equal(newProof.grants.find((g:any)=>g.id==='ref-next').role,'reference');
+ assert.deepEqual(newProof.build,staged.build);
+ assert.equal(await fs.stat(path.join(rebound.installation,'ref-next/Broker.app')).then(()=>true,()=>false),true);
+ const {loadMacScopedFiles}=await import('../src/hosts/macos-scoped-files.js');
+ const scoped=await loadMacScopedFiles(nextRegistry,rebound.installation,{ownerLockFD:3,authorize:async()=>{}});
+ assert.ok(scoped.supportedOperations?.includes('copy_file'));
+});
 test('recovery install refuses missing qualification before changing the existing installation',async t=>{
  const f=await fixture(t),installer=await import(moduleUrl),archive=path.join(f.temp,'archive'),live=path.join(f.identity,'scoped-files');
  await fs.mkdir(archive,{mode:0o700});await fs.mkdir(live,{mode:0o700});await fs.writeFile(path.join(live,'keep'),'existing',{mode:0o600});
