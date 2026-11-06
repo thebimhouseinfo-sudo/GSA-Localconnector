@@ -23,4 +23,4 @@ const interruption='scripts/ci-mac-a-interruption-proof.mjs';
 if(!fs.existsSync(interruption))throw Error('BLOCKED C-A: production integrated interruption, physical owned-helper stop and UNKNOWN/no-replay gate missing: '+interruption);
 const p=spawnSync(process.execPath,[interruption],{stdio:'inherit',timeout:180000});
 if(p.error||p.status!==0)throw Error('FAIL C-A interruption/owned-helper gate');
-console.log('PASS C-A complete signed broker + journal + interruption + owner cleanup');
+console.log('PASS C-A signed broker + core journal + direct owned-helper interruption scope; checked installed-loader and escaped-descendant qualification remain separate PRELOCAL findings');
