@@ -14,6 +14,10 @@ process.stdout.write(signed.stdout??'');process.stderr.write(signed.stderr??'');
 let evidence;try{evidence=JSON.parse((signed.stdout??'').trim().split('\n').at(-1));}catch{}
 const required=['native-read','traversal-denied','symlink-denied','hardlink-denied','create-exclusive','create-duplicate-denied','copy-exclusive','hash-conflict','ancestor-relocation','root-identity'];
 if(signed.error||signed.status!==0||evidence?.ok!==true||evidence?.cleanup?.temporary_root_removed!==true||required.some(n=>!evidence.checks?.includes(n))||!evidence?.artifacts?.signature?.code_directory_hash)throw Error('BLOCKED C-A actual signed broker proof incomplete');
+console.log('C-A base signed broker checks PASS; verifying independent recovery-broker candidate on actual Darwin');
+const recovery=spawnSync('python3',['scripts/ci-mac-a-recovery-candidate.py'],{encoding:'utf8',timeout:240000,maxBuffer:8*1024*1024});
+process.stdout.write(recovery.stdout??'');process.stderr.write(recovery.stderr??'');
+if(recovery.error||recovery.status!==0)throw Error('FAIL/BLOCKED C-A real signed recovery candidate proof: '+String(recovery.error?.message??recovery.status));
 console.log('C-A real signed sandbox broker checks PASS; checking interruption/owned-helper production gate');
 const interruption='scripts/ci-mac-a-interruption-proof.mjs';
 if(!fs.existsSync(interruption))throw Error('BLOCKED C-A: production integrated interruption, physical owned-helper stop and UNKNOWN/no-replay gate missing: '+interruption);
