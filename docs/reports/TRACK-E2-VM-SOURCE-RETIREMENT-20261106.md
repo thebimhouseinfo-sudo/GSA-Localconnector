@@ -34,7 +34,7 @@ Preserved the active source-capture helper at `native/macos-source-capture/Sourc
 
 **Run [#42167492972](https://github.com/thebimhouseinfo-sudo/GSA-Localconnector/actions/runs/42167492972) — overall SUCCESS on exact candidate SHA `ab4d7155030183eeb63f28cc0e2f1f7aba0a1501`.**
 
-- `c0-source`: PASS — TypeScript build and compiled tests, reported `# fail 0`; Dart? no. The migrated `native-artifact-paths.test.ts` test now runs, rather than being excluded as a VM-only suite.
+- `c0-source`: PASS — TypeScript build and compiled tests, reported `# fail 0`; The migrated `native-artifact-paths.test.ts` test now runs, rather than being excluded as a VM-only suite.
 - `C-VM`: PASS — `scripts/ci-mac-vm-absence.mjs` returned `zero active Linux VM source/install/test/CI references`. It scans `src`, `native`, `scripts`, `test`, `.github/workflows` and `package.json`, excluding only its own checking script and documentary history.
 - Native source-capture fixture: executed in C0 against the new native-owned path.
 - `g3-preinstall`: PASS — C-A signed broker + journal + direct-owner interruption checks, C-B Darwin command/Git and C-G3 disposable packaging/desktop checks all completed with successful required steps.
