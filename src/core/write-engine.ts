@@ -82,6 +82,14 @@ export async function editFileAsNewVersion(io:NativeScopedFiles,source:ScopedFil
  const reread=await io.read(source,MAX_BYTES);
  requireExpectedHash(reread.bytes,expectedSha256);
  await io.createExclusive(destination,planned.content);
+ // The exclusive effect has occurred. A failed or mismatching readback must
+ // return UNKNOWN; never retry or pretend the created file was rolled back.
+ try{
+  const observed=await io.read(destination,MAX_BYTES);
+  if(sha256(observed.bytes)!==planned.after_sha256)throw Error("VERSION_READBACK_MISMATCH");
+ }catch{
+  throw Object.assign(Error("Version was created but verified readback is unavailable; inspect destination before retrying"),{code:"RESULT_UNKNOWN"});
+ }
  return {...receipt(destination,null,planned.after_sha256),
   source_workspace_id:source.workspace_id,source_path:source.path,source_sha256:planned.before_sha256};
 }
