@@ -65,3 +65,17 @@ test("incomplete native capability cannot enable edit-as-new-version",async()=>f
  const limited:NativeScopedFiles={...io,supportedOperations:["copy_file"]};
  await assert.rejects(dispatchFileMutation("edit_file_as_new_version",argumentsFor(sha256(value)),registry,limited),/SECURITY_BLOCKED/);
 }));
+
+test("unverifiable post-create readback reports RESULT_UNKNOWN without retry or deleting the new version",async()=>fixture(async(registry,io,files)=>{
+ const value=encode("version one");files.set("source/draft.txt",value);
+ const originalRead=io.read.bind(io);
+ let creates=0;
+ const modified:NativeScopedFiles={...io,
+  read:async ref=>{if(ref.workspace_id==="dest")throw Error("READBACK_FAILED");return originalRead(ref,8*1024*1024);},
+  createExclusive:async(ref,bytes)=>{creates++;files.set(ref.workspace_id+"/"+ref.path,Buffer.from(bytes));}
+ };
+ await assert.rejects(dispatchFileMutation("edit_file_as_new_version",argumentsFor(sha256(value)),registry,modified),{code:"RESULT_UNKNOWN"});
+ assert.equal(creates,1);
+ assert.equal(files.get("source/draft.txt")?.toString(),"version one");
+ assert.equal(files.get("dest/draft-v2.txt")?.toString(),"version two");
+}));
