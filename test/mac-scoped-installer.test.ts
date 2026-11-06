@@ -67,7 +67,7 @@ test('BASE rebind publishes current workspace and reference grants using unchang
  assert.equal(await fs.stat(path.join(rebound.installation,'ref-next/Broker.app')).then(()=>true,()=>false),true);
  const {loadMacScopedFiles}=await import('../src/hosts/macos-scoped-files.js');
  const scoped=await loadMacScopedFiles(nextRegistry,rebound.installation,{ownerLockFD:3,authorize:async()=>{}});
- assert.ok(scoped.supportedOperations.includes('copy_file'));
+ assert.ok(scoped.supportedOperations?.includes('copy_file'));
 });
 test('recovery install refuses missing qualification before changing the existing installation',async t=>{
  const f=await fixture(t),installer=await import(moduleUrl),archive=path.join(f.temp,'archive'),live=path.join(f.identity,'scoped-files');
