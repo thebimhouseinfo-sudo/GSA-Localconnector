@@ -222,18 +222,30 @@ async function main() {
   }
   const first = await adapter.status();
   if (first.state === "SETUP_REQUIRED") return;
+  let stopAttempt = 0, stopBlockedReason = null;
   let publishing = false;
   const timer = setInterval(() => {
     if (publishing) return;
     publishing = true;
-    void adapter.publishStatus().then(status => {
+    void adapter.publishStatus().then(async status => {
+    if (stopAttempt > 0) await publish(privateFile, config.statusPath, Buffer.from(JSON.stringify({...status,stopAttempt,stopBlockedReason})));
     if (["STOPPED", "FAILED"].includes(status.state)) clearInterval(timer);
   }).catch(() => {clearInterval(timer); process.exitCode = 1;}).finally(() => {publishing = false;});}, 1000);
   for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => {
     void adapter.stopOwned().then(async result => {
-      await adapter.publishStatus();
+      stopAttempt++;
+      stopBlockedReason = result.stopped ? null : (result.reason ?? "STOP_UNCONFIRMED");
+      const status = await adapter.status();
+      await publish(privateFile, config.statusPath, Buffer.from(JSON.stringify({...status,stopAttempt,stopBlockedReason})));
       if (result.stopped) clearInterval(timer);
-    }).catch(() => {process.exitCode = 1;});
+    }).catch(async () => {
+      stopAttempt++;
+      stopBlockedReason = "STOP_UNCONFIRMED";
+      try {
+        const status = await adapter.status();
+        await publish(privateFile, config.statusPath, Buffer.from(JSON.stringify({...status,stopAttempt,stopBlockedReason})));
+      } catch {process.exitCode = 1;}
+    });
   });
 }
 
