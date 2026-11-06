@@ -48,6 +48,8 @@ jobs:
           set -euo pipefail
           /usr/bin/swiftc -typecheck native/macos-desktop/App.swift
           /usr/bin/plutil -lint native/macos-desktop/Info.plist
+      - name: C-VM no production Linux VM dependencies
+        run: node scripts/ci-mac-vm-absence.mjs
       - name: C0 existing native-safe source capture
         run: python3 scripts/test-native-source-capture.py
       - name: C0 source result notice

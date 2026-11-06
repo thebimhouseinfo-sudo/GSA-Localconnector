@@ -48,7 +48,7 @@ export function withMacDirectoryCopies(base:NativeScopedFiles,directoryCopies:Na
 /** Production native Mac command composition; never launches the legacy product VM.
  * Shell processes run as the logged-in user and are not OS-confined.
  */
-export async function bootstrapMcpTools(registry:WorkspaceRegistry,identityRoot=identityDirectory(),installationRoot=path.join(identityRoot,"native-vm"),owner?:MacOwner,workspaceStartupIssue?:WorkspaceStartupIssue,fileLoaders?:{base:typeof loadMacScopedFiles;directory:typeof loadCheckedMacDirectoryInstallation}){
+export async function bootstrapMcpTools(registry:WorkspaceRegistry,identityRoot=identityDirectory(),installationRoot=identityRoot,owner?:MacOwner,workspaceStartupIssue?:WorkspaceStartupIssue,fileLoaders?:{base:typeof loadMacScopedFiles;directory:typeof loadCheckedMacDirectoryInstallation}){
  if(owner&&owner.identityRoot!==await fs.realpath(identityRoot))throw Error("SERVER_OWNER_IDENTITY_MISMATCH");
  const controls=new ControlLeaseStore(identityRoot);
  const journal=new CiJournalStore(path.join(identityRoot,"ci-runs"));
