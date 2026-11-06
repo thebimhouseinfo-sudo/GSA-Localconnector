@@ -25,7 +25,7 @@ export async function inspectPlatformFixtures(stage,workspace,{command=boundedTo
  if(process.platform!=='darwin'||process.arch!=='arm64')throw fail('APPLE_SILICON_MAC_REQUIRED');
  // No arbitrary path selection: workspace must be an immediate owned child of the private stage.
  const stagePath=await fs.realpath(stage),workspacePath=await fs.realpath(workspace);
- if(stagePath!==stage||!workspacePath.startsWith(stagePath+'/')||path.dirname(workspacePath)!==stagePath)throw fail('PLATFORM_PREFLIGHT_SCOPE_INVALID');
+ if(stagePath!==stage||workspacePath!==path.join(stagePath,'roots','workspace'))throw fail('PLATFORM_PREFLIGHT_SCOPE_INVALID');
  const stageStat=await fs.lstat(stage,{bigint:true}),workspaceStat=await fs.lstat(workspace,{bigint:true});
  for(const st of [stageStat,workspaceStat])if(!st.isDirectory()||st.isSymbolicLink()||st.uid!==BigInt(process.getuid())||(st.mode&0o077n)!==0n)throw fail('PLATFORM_PREFLIGHT_SCOPE_UNSAFE');
  const fifo=path.join(workspace,'case-platform-fifo'),image=path.join(stage,'platform-disk-image.dmg'),mountpoint=path.join(stage,'platform-mount');
