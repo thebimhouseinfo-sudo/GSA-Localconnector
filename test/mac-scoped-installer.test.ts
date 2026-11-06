@@ -33,6 +33,15 @@ test('BASE rebind refuses missing qualified release and preserves old signed pro
  assert.deepEqual(await fs.readFile(path.join(live,'install.json')),before);
  assert.equal((await fs.readdir(f.identity)).filter(n=>n.startsWith('.scoped-files.stage-')).length,0);
 });
+test('BASE rebind rejects a changed release digest and preserves the signed installation',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
+ const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files');
+ await fs.mkdir(live,{mode:0o700});await writeFixtureBaseProof(f.identity,live);
+ await fs.writeFile(path.join(live,'release-broker'),Buffer.from('unqualified replacement'),{mode:0o500,flag:'wx'});
+ const original=await fs.readFile(path.join(live,'install.json'));
+ await assert.rejects(installer.rebindMacScopedBase(f.identity),/Previous qualified BASE release digest differs/);
+ assert.deepEqual(await fs.readFile(path.join(live,'install.json')),original);
+ assert.equal((await fs.readdir(f.identity)).filter(n=>n.startsWith('.scoped-files.stage-')).length,0);
+});
 test('BASE rebind refuses an existing recovery journal before staging or replacing proof',{skip:process.platform!=='darwin'||process.arch!=='arm64',timeout:30000},async t=>{
  const f=await fixture(t),installer=await import(moduleUrl),live=path.join(f.identity,'scoped-files');
  await fs.mkdir(live,{mode:0o700});await writeFixtureBaseProof(f.identity,live);
