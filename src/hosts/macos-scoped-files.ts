@@ -12,6 +12,7 @@ import type {WorkspaceRegistry} from "../core/workspace.js";
 import type {WorkspaceGrant,WorkspacePermission} from "../core/contracts.js";
 import {validateWorkspaceRelative} from "../core/workspace-path.js";
 import {identityDirectory} from "../local/identity.js";
+import {MAC_FILE_RECOVERY_ACTIVATION_BLOCKED} from "./macos-file-recovery.js";
 import {loadCheckedMacRecoveryInstallation} from "./macos-recovery-installation.js";
 import type {NativeRecoverableFileMutations,NativeFileOperation} from "../core/native-io.js";
 
@@ -98,15 +99,13 @@ export interface MacScopedNativeFiles extends NativeScopedFiles {
  renameDirectoryExclusive(source:ScopedFileRef,destination:ScopedFileRef):Promise<void>;
  diffNonGitText(ref:ScopedFileRef,capturedBaseline:Uint8Array):Promise<MacNonGitTextDiff>;
 }
-/** Authorize ONLY attempting the independent, signed installation verifier.
- * This is not itself an enablement of a mutation: requireMacRecoveryQualification,
- * per-root codesign/entitlements, inode+revision pins, owner lock FD3, and the
- * protected durable journal remain mandatory in loadCheckedMacRecoveryInstallation.
- * An absent/stale installation continues to expose the BASE-only subset.
- * Uncertain outcomes must never be silently retried.
- */
+/** Keep one loader/activation boundary. Recovery cannot be enabled by editing a
+ * manifest/check-name list: native evidence and reviewed installation are missing.
+ * A later accepted installation must supply per-root Recovery Broker.app,
+ * workspace/recovery identity+revision+artifact/entitlement checks and its private
+ * journal before this hook may construct createMacFileRecovery. */
 export function macFileRecoveryActivation():Readonly<{available:boolean;reason:string}>{
- return Object.freeze({available:true,reason:"Qualified signed RecoveryBroker installation required"});
+ return Object.freeze({available:false,reason:MAC_FILE_RECOVERY_ACTIVATION_BLOCKED});
 }
 /** Fixed-operation host I/O only. App Sandbox never authorizes a host shell.
  * Compare-and-mutate operations fail closed: APFS provides no content CAS primitive.
