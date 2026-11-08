@@ -129,6 +129,7 @@ onMac("Track B installer inspect returns promptly and does not break command sup
  const selected=path.join(root,"selected");
  await fs.mkdir(selected,{mode:0o700});
  await enrollRolesTrustedBatch([{id:"selected",root:selected,role:"workspace"}],identity);
+ await fs.chmod(identity,0o700); // Installer requires exact private0700, not merely group-inaccessible.
  const script=path.resolve("scripts/install-mac-scoped-files.mjs");
  const inspect=await host.execute(request({
   executable:process.execPath,
