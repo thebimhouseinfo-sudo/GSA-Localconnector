@@ -7,6 +7,7 @@ import {spawn} from "node:child_process";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
 import {MacNativeCommands} from "../src/hosts/macos-host-commands.js";
 import {executeGit} from "../src/core/git-engine.js";
+import {enrollRolesTrustedBatch} from "../src/local/grants.js";
 
 const mac=test.skip; // Platform-specific tests are mandatory on hosted Darwin CI.
 const onMac=process.platform==="darwin"?test:mac;
@@ -119,4 +120,27 @@ onMac("Track B synchronous cancellation confirms physical stop",()=>fixture(asyn
  const receipt=await execution;
  assert.equal(receipt.cancelled,true);
  assert.equal((await host.status(process_id)).stopped,true);
+}));
+
+onMac("Track B installer inspect returns promptly and does not break command supervisor",()=>fixture(async(host,root)=>{
+ // The real inspector is read-only. Run against disposable grant state, never
+ // the machine's active connector identity or installation.
+ const identity=path.join(root,"identity");
+ const selected=path.join(root,"selected");
+ await fs.mkdir(selected,{mode:0o700});
+ await enrollRolesTrustedBatch([{id:"selected",root:selected,role:"workspace"}],identity);
+ const script=path.resolve("scripts/install-mac-scoped-files.mjs");
+ const inspect=await host.execute(request({
+  executable:process.execPath,
+  argv:[script,"inspect","--identity-root",identity],
+  time_limit_ms:8000,
+  max_output_bytes:8192
+ }));
+ assert.equal(inspect.timed_out,false,"inspect must not exhaust command timeout");
+ assert.equal(inspect.exit_code,0,`inspector stderr: ${inspect.stderr}`);
+ assert.equal(JSON.parse(inspect.stdout).state,"SCOPED_FILES_PLAN");
+ const after=await host.execute(request({argv:["-e","process.stdout.write('SUPERVISOR_ALIVE')"]}));
+ assert.equal(after.exit_code,0);
+ assert.equal(after.stdout,"SUPERVISOR_ALIVE");
+ assert.deepEqual(await fs.readdir(identity).then(entries=>entries.filter(name=>name.startsWith(".scoped-files.stage-"))),[]);
 }));
