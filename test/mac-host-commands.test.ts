@@ -125,8 +125,9 @@ onMac("Track B synchronous cancellation confirms physical stop",()=>fixture(asyn
 onMac("Track B installer inspect returns promptly and does not break command supervisor",()=>fixture(async(host,root)=>{
  // The real inspector is read-only. Run against disposable grant state, never
  // the machine's active connector identity or installation.
- const identity=path.join(root,"identity");
- const selected=path.join(root,"selected");
+ const canonicalRoot=await fs.realpath(root);
+ const identity=path.join(canonicalRoot,"identity");
+ const selected=path.join(canonicalRoot,"selected");
  await fs.mkdir(selected,{mode:0o700});
  await enrollRolesTrustedBatch([{id:"selected",root:selected,role:"workspace"}],identity);
  await fs.chmod(identity,0o700); // Installer requires exact private0700, not merely group-inaccessible.
