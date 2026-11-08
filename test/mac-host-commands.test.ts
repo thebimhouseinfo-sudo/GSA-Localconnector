@@ -146,3 +146,15 @@ onMac("Track B installer inspect returns promptly and does not break command sup
  assert.equal(after.stdout,"SUPERVISOR_ALIVE");
  assert.deepEqual(await fs.readdir(identity).then(entries=>entries.filter(name=>name.startsWith(".scoped-files.stage-"))),[]);
 }));
+
+onMac("Track B missing executable never crashes the native command supervisor",()=>fixture(async(host,root)=>{
+ const missing=path.join(root,"definitely-missing-node-executable");
+ await assert.rejects(host.execute(request({
+  executable:missing,argv:["--version"],time_limit_ms:1000
+ })),/PROCESS_SPAWN_UNCONFIRMED/);
+ // ENOENT is emitted asynchronously after spawn returns without a PID.
+ await new Promise<void>(resolve=>setImmediate(resolve));
+ const after=await host.execute(request());
+ assert.equal(after.exit_code,0);
+ assert.equal(after.stdout,"ok");
+}));
