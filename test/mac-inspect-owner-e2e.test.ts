@@ -60,8 +60,15 @@ test("real macOS owner MCP survives installer inspect and accepts the next reque
   assert.equal(inspected.result.state,"SUCCEEDED",JSON.stringify(inspected));
   assert.equal(inspected.result.receipt.exit_code,0);
   assert.equal(JSON.parse(inspected.result.receipt.stdout).state,"SCOPED_FILES_PLAN");
+  // A missing Node executable is plausible in a login-started menu-bar app
+  // with a shorter PATH than Terminal. It must NOT crash the live MCP server.
+  const missing=await call("run_command",{
+   workspace_id,command:path.join(home,"missing-node"),
+   args:["--version"],control_token:lease.result.control_token
+  });
+  assert.notEqual(missing.result?.state,"SUCCEEDED");
   const after=await call("connector_status");
-  assert.equal(after.ok,true,"owner MCP must survive inspector");
+  assert.equal(after.ok,true,"owner MCP must survive inspector and spawn ENOENT");
   assert.equal(after.result.readyForShell,true);
   assert.equal((await call("list_workspaces")).result.length,1);
   assert.equal((await call("release_control",{control_token:lease.result.control_token})).ok,true);
