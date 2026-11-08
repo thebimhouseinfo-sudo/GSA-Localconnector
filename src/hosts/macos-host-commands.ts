@@ -73,16 +73,21 @@ export class MacNativeCommands implements VerifiedNativeSandbox,VerifiedNativePr
   if(this.runs.has(id))throw Error("PROCESS_ID_ALREADY_USED");
   const env:NodeJS.ProcessEnv={PATH:process.env.PATH??"/usr/bin:/bin",LANG:process.env.LANG??"C",TMPDIR:process.env.TMPDIR??"/tmp"};
   const child=spawn(request.executable,[...request.argv],{cwd,env,detached:true,stdio:["ignore","pipe","pipe"],shell:false});
+  // spawn() may return without a PID and emit ENOENT/EACCES asynchronously.
+  // Register the listener BEFORE checking pid: an unhandled child 'error'
+  // would otherwise terminate the entire MCP owner process.
+  let active:Run|undefined;
+  child.on("error",()=>{if(active)active.state="UNKNOWN";});
   const pid=child.pid;
-  if(!pid){child.kill();throw Error("PROCESS_SPAWN_UNCONFIRMED");}
+  if(!pid)throw Error("PROCESS_SPAWN_UNCONFIRMED");
   let resolve!:()=>void;
   const settled=new Promise<void>(done=>{resolve=done;});
   const run:Run={id,workspace:request.workspace_id,child,pid,started_at:new Date().toISOString(),ended_at:null,state:"RUNNING",exit_code:null,signal:null,
    stdout:[],stderr:[],bytes:0,output_limited:false,max:request.max_output_bytes,cancelled:false,timed_out:false,closed:false,stopProof:false,settled,resolve,timer:null};
+  active=run;
   this.runs.set(id,run);
   child.stdout?.on("data",(chunk:Buffer)=>this.record(run,"stdout",chunk));
   child.stderr?.on("data",(chunk:Buffer)=>this.record(run,"stderr",chunk));
-  child.on("error",()=>{run.state="UNKNOWN";});
   child.on("close",(code,signal)=>{
    run.closed=true;run.ended_at=new Date().toISOString();run.exit_code=code;run.signal=signal;
    if(run.timer)clearTimeout(run.timer);
