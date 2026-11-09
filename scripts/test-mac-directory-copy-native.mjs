@@ -14,7 +14,7 @@ import {requireMacDirectoryBuild,requireMacDirectoryEvidence} from '../dist/src/
 import {reserveAttempt} from './mac-recovery-probe-control.mjs';
 import {inspectPlatformFixtures} from './mac-directory-fixture-preflight.mjs';
 
-export const limits=Object.freeze({helperLaunches:24,signedBundles:2,observerInvocations:3,relocations:1,helperMs:20000,commandMs:60000,outputBytes:12_582_912,diagnosticBytes:65536,compilerBytes:268_435_456,receiptBytes:335_544_320});
+export const limits=Object.freeze({helperLaunches:24,signedBundles:2,observerInvocations:3,relocations:1,helperMs:20000,commandMs:60000,outputBytes:12_582_912,diagnosticBytes:65536,compilerBytes:536_870_912,receiptBytes:335_544_320});
 export const protocol='gsa-directory-capture-response-v1';
 export const expectedSourceSha256='b63fa083b40bc23e0863f401c8aff917b8b2e4ecf2d1739c0e9e5bd255ab352d';
 export const signingProfile='gsa-directory-tree-readonly-single-root-v1';
@@ -204,6 +204,36 @@ async function privateDirectory(directory){const info=await fs.lstat(directory);
 async function privateFile(file,bytes,mode=0o600){await fs.mkdir(path.dirname(file),{recursive:true,mode:0o700});await fs.writeFile(file,bytes,{mode,flag:'wx'});}
 async function protectedRead(file,max){const before=await fs.lstat(file);if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||before.uid!==process.getuid()||(before.mode&0o077)!==0||before.size>max)throw fail('FIXTURE_FILE_UNSAFE');const handle=await fs.open(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);try{const opened=await handle.stat();if(opened.dev!==before.dev||opened.ino!==before.ino)throw fail('FIXTURE_FILE_CHANGED');const bytes=await handle.readFile();const after=await handle.stat();if(bytes.length!==before.size||after.ctimeMs!==before.ctimeMs||after.mtimeMs!==before.mtimeMs)throw fail('FIXTURE_FILE_CHANGED');return bytes;}finally{await handle.close();}}
 async function boundedRegularRead(file,max){const real=await fs.realpath(file),info=await fs.lstat(real);if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1||info.size>max)throw fail('BUILD_INPUT_UNSAFE');const bytes=await fs.readFile(real);if(bytes.length!==info.size)throw fail('BUILD_INPUT_CHANGED');return bytes;}
+
+/** Fingerprint a large, regular Apple toolchain executable without allocating
+ * the entire binary in the Node heap. Check the opened inode and named path
+ * both before and after streaming; never accept an incomplete or changed read. */
+export async function hashBoundedRegularFile(file,max){
+ if(!Number.isSafeInteger(max)||max<1||max>536_870_912)throw fail('BUILD_INPUT_LIMIT');
+ const real=await fs.realpath(file),before=await fs.lstat(real,{bigint:true});
+ if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1n||
+    before.size<0n||before.size>BigInt(max))throw fail('BUILD_INPUT_UNSAFE');
+ const fh=await fs.open(real,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
+ try{
+  const opened=await fh.stat({bigint:true});
+  if(opened.dev!==before.dev||opened.ino!==before.ino||opened.size!==before.size)throw fail('BUILD_INPUT_CHANGED');
+  const hash=createHash('sha256'),buffer=Buffer.alloc(131072);
+  let pos=0;
+  while(pos<Number(before.size)){
+   const n=Math.min(buffer.length,Number(before.size)-pos);
+   const {bytesRead}=await fh.read(buffer,0,n,pos);
+   if(bytesRead<=0)throw fail('BUILD_INPUT_CHANGED');
+   hash.update(buffer.subarray(0,bytesRead));pos+=bytesRead;
+  }
+  const after=await fh.stat({bigint:true}),named=await fs.lstat(real,{bigint:true});
+  for(const st of [after,named]){
+   if(st.dev!==before.dev||st.ino!==before.ino||st.size!==before.size||
+      st.mtimeNs!==before.mtimeNs||st.ctimeNs!==before.ctimeNs||st.nlink!==1n)
+    throw fail('BUILD_INPUT_CHANGED');
+  }
+  return hash.digest('hex');
+ }finally{await fh.close();}
+}
 async function fileRecord(file){const stat=await fs.lstat(file,{bigint:true});if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1n)throw fail('CANARY_UNSAFE');return {...ident(stat),sha256:sha(await fs.readFile(file))};}
 async function treeSnapshot(root){const rows=[];async function walk(dir,rel=''){for(const name of (await fs.readdir(dir)).sort()){const file=path.join(dir,name),relative=rel?`${rel}/${name}`:name,stat=await fs.lstat(file,{bigint:true});if(stat.isSymbolicLink()||(!stat.isDirectory()&&!stat.isFile()))throw fail('SOURCE_TREE_UNSAFE');if(stat.isDirectory()){rows.push({path:relative,kind:'directory',...ident(stat)});await walk(file,relative);}else rows.push({path:relative,kind:'file',...ident(stat),sha256:sha(await fs.readFile(file))});}}await walk(root);return rows;}
 async function createFixtures(stage){
@@ -231,14 +261,14 @@ async function buildRelease(stage,budget,report,runCommand=runBounded){
  await runCommand('/usr/bin/xcrun',['--sdk','macosx','swiftc','-sdk',sdkPath,...arguments_,source,'-o',binary],'',1024*1024,limits.commandMs,['pipe','pipe','pipe'],{envOverrides:compilerEnvironment});await fs.chmod(binary,0o500);
  const uuidText=(await runCommand('/usr/bin/dwarfdump',['--uuid',binary])).toString('utf8').trim(),match=/^UUID: ([A-F0-9-]{36}) \(arm64\) /.exec(uuidText);if(!match)throw fail('RELEASE_UUID_INVALID');
  const checkPath=path.join(stage,'.unsigned-code-check');await fs.copyFile(binary,checkPath,fs.constants.COPYFILE_EXCL);await fs.chmod(checkPath,0o700);await runCommand('/usr/bin/codesign',['--remove-signature',checkPath]);const code_sha256=sha(normalizedStrippedMacFileCode(await fs.readFile(checkPath)));await fs.unlink(checkPath);
- const build={uuid:match[1],driver:'xcrun-macosx-swiftc-v1',sdk,source_sha256:sha(sourceBytes),compiler_sha256:sha(await boundedRegularRead(compiler,limits.compilerBytes).catch(async error=>{
+ const build={uuid:match[1],driver:'xcrun-macosx-swiftc-v1',sdk,source_sha256:sha(sourceBytes),compiler_sha256:await hashBoundedRegularFile(compiler,limits.compilerBytes).catch(async error=>{
   error.code='COMPILER_'+(error.code??'READ_FAILED');
   try{
    const st=await fs.lstat(await fs.realpath(compiler),{bigint:true});
    error.detail=JSON.stringify({regular:st.isFile(),symlink:st.isSymbolicLink(),nlink:String(st.nlink),size:String(st.size),limit:String(limits.compilerBytes)});
   }catch{}
   throw error;
- })),code_sha256,release_sha256:sha(await protectedRead(binary,16*1024*1024)),compiler_version:compilerVersion,arguments:arguments_,signing_profile:signingProfile,hostRelease:os.release(),arch:process.arch};
+ }),code_sha256,release_sha256:sha(await protectedRead(binary,16*1024*1024)),compiler_version:compilerVersion,arguments:arguments_,signing_profile:signingProfile,hostRelease:os.release(),arch:process.arch};
  requireMacDirectoryBuild(build);await privateFile(path.join(stage,'build.json'),Buffer.from(JSON.stringify(build,null,2)));return {binary,build,compiler};
 }
 
