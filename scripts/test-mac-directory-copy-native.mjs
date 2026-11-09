@@ -231,7 +231,14 @@ async function buildRelease(stage,budget,report,runCommand=runBounded){
  await runCommand('/usr/bin/xcrun',['--sdk','macosx','swiftc','-sdk',sdkPath,...arguments_,source,'-o',binary],'',1024*1024,limits.commandMs,['pipe','pipe','pipe'],{envOverrides:compilerEnvironment});await fs.chmod(binary,0o500);
  const uuidText=(await runCommand('/usr/bin/dwarfdump',['--uuid',binary])).toString('utf8').trim(),match=/^UUID: ([A-F0-9-]{36}) \(arm64\) /.exec(uuidText);if(!match)throw fail('RELEASE_UUID_INVALID');
  const checkPath=path.join(stage,'.unsigned-code-check');await fs.copyFile(binary,checkPath,fs.constants.COPYFILE_EXCL);await fs.chmod(checkPath,0o700);await runCommand('/usr/bin/codesign',['--remove-signature',checkPath]);const code_sha256=sha(normalizedStrippedMacFileCode(await fs.readFile(checkPath)));await fs.unlink(checkPath);
- const build={uuid:match[1],driver:'xcrun-macosx-swiftc-v1',sdk,source_sha256:sha(sourceBytes),compiler_sha256:sha(await boundedRegularRead(compiler,limits.compilerBytes).catch(error=>{error.code='COMPILER_'+(error.code??'READ_FAILED');throw error;})),code_sha256,release_sha256:sha(await protectedRead(binary,16*1024*1024)),compiler_version:compilerVersion,arguments:arguments_,signing_profile:signingProfile,hostRelease:os.release(),arch:process.arch};
+ const build={uuid:match[1],driver:'xcrun-macosx-swiftc-v1',sdk,source_sha256:sha(sourceBytes),compiler_sha256:sha(await boundedRegularRead(compiler,limits.compilerBytes).catch(async error=>{
+  error.code='COMPILER_'+(error.code??'READ_FAILED');
+  try{
+   const st=await fs.lstat(await fs.realpath(compiler),{bigint:true});
+   error.detail=JSON.stringify({regular:st.isFile(),symlink:st.isSymbolicLink(),nlink:String(st.nlink),size:String(st.size),limit:String(limits.compilerBytes)});
+  }catch{}
+  throw error;
+ })),code_sha256,release_sha256:sha(await protectedRead(binary,16*1024*1024)),compiler_version:compilerVersion,arguments:arguments_,signing_profile:signingProfile,hostRelease:os.release(),arch:process.arch};
  requireMacDirectoryBuild(build);await privateFile(path.join(stage,'build.json'),Buffer.from(JSON.stringify(build,null,2)));return {binary,build,compiler};
 }
 
