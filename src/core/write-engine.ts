@@ -106,9 +106,44 @@ export async function copyFile(io:NativeScopedFiles,source:ScopedFileRef,dest:Sc
  validate(source);validate(dest);const snap=await io.read(source,MAX_BYTES);requireExpectedHash(snap.bytes,expectedSha256);
  await io.copyExclusive(source,dest,expectedSha256);return receipt(dest,null,expectedSha256);
 }
-export async function moveFile(io:NativeScopedFiles,source:ScopedFileRef,dest:ScopedFileRef,expectedSha256:string):Promise<MutationReceipt>{
- validate(source);validate(dest);const snap=await io.read(source,MAX_BYTES);requireExpectedHash(snap.bytes,expectedSha256);
- await io.moveExclusive(source,dest,expectedSha256);return receipt(dest,null,expectedSha256);
+/** A verified destination copy followed by a separately journaled, recoverable
+ * source trash. This is NOT an atomic cross-root rename. Partial effects are
+ * reported explicitly, and no uncertain step is ever retried automatically. */
+export type RecoverableMoveResult=MutationReceipt|{
+ readonly operation:"move";readonly status:"APPLIED"|"CONFLICT"|"UNKNOWN";
+ readonly source:ScopedFileRef;readonly destination:ScopedFileRef;
+ readonly expected_sha256:string;readonly destination_created:true;
+ readonly source_transaction:FileTransactionOutcome|null;
+ readonly reason:"VERIFIED_READBACK"|"SOURCE_CONFLICT"|"SOURCE_UNKNOWN"|"SOURCE_ERROR"|"DESTINATION_UNKNOWN";
+};
+export async function moveFile(io:NativeScopedFiles,source:ScopedFileRef,dest:ScopedFileRef,expectedSha256:string):Promise<RecoverableMoveResult>{
+ source=captureRef(source);dest=captureRef(dest);
+ if(source.workspace_id===dest.workspace_id&&source.path===dest.path)
+  throw new MutationError("INVALID_ARGUMENTS","Move destination must differ from source");
+ const snap=await io.read(source,MAX_BYTES);requireExpectedHash(snap.bytes,expectedSha256);
+ if(!io.recoverableMutations){
+  await io.moveExclusive(source,dest,expectedSha256);return receipt(dest,null,expectedSha256);
+ }
+ // Exclusive copy must be fully acknowledged before source removal is attempted.
+ await io.copyExclusive(source,dest,expectedSha256);
+ const base={operation:"move" as const,source,destination:dest,expected_sha256:expectedSha256,destination_created:true as const};
+ let verified=false;
+ try{
+  const observed=await io.read(dest,MAX_BYTES);
+  verified=sha256(observed.bytes)===expectedSha256;
+ }catch{/* Preserve created destination, keep source and report uncertainty. */}
+ if(!verified)return {...base,status:"UNKNOWN",source_transaction:null,reason:"DESTINATION_UNKNOWN"};
+ let sourceTransaction:FileTransactionOutcome;
+ try{
+  sourceTransaction=observedOutcome(await io.recoverableMutations.trashIfHash(source,expectedSha256),source,"trash",expectedSha256,null);
+ }catch{
+  // The destination is verified, but the source may have been captured.
+  // Never claim a successful move or undo the destination on uncertainty.
+  return {...base,status:"UNKNOWN",source_transaction:null,reason:"SOURCE_ERROR"};
+ }
+ return {...base,source_transaction:sourceTransaction,
+  status:sourceTransaction.status,
+  reason:sourceTransaction.status==="APPLIED"?"VERIFIED_READBACK":sourceTransaction.status==="CONFLICT"?"SOURCE_CONFLICT":"SOURCE_UNKNOWN"};
 }
 
 export async function applyPatch(io:NativeScopedFiles,ref:ScopedFileRef,patch:string,expectedSha256:string):Promise<RecoverableMutationResult>{
