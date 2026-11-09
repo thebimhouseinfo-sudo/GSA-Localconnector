@@ -71,7 +71,12 @@ export class MacNativeCommands implements VerifiedNativeSandbox,VerifiedNativePr
   }
   const cwd=await this.cwd(request),id=request.process_id??randomUUID();
   if(this.runs.has(id))throw Error("PROCESS_ID_ALREADY_USED");
-  const env:NodeJS.ProcessEnv={PATH:process.env.PATH??"/usr/bin:/bin",LANG:process.env.LANG??"C",TMPDIR:process.env.TMPDIR??"/tmp"};
+  // The menu-bar app starts its bundled Node by absolute path but launchd may
+  // provide a minimal PATH without that Node directory. Allow project commands
+  // to find the same runtime by name without changing workspace permissions.
+  const runtimeBin=path.dirname(process.execPath);
+  const currentPath=process.env.PATH??"/usr/bin:/bin";
+  const env:NodeJS.ProcessEnv={PATH:[runtimeBin,...currentPath.split(path.delimiter).filter(p=>p&&p!==runtimeBin)].join(path.delimiter),LANG:process.env.LANG??"C",TMPDIR:process.env.TMPDIR??"/tmp"};
   const child=spawn(request.executable,[...request.argv],{cwd,env,detached:true,stdio:["ignore","pipe","pipe"],shell:false});
   // spawn() may return without a PID and emit ENOENT/EACCES asynchronously.
   // Register the listener BEFORE checking pid: an unhandled child 'error'
