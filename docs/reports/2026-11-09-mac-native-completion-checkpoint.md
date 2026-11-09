@@ -32,3 +32,30 @@
 - Do not modify untracked local files, refresh historical native attempts, forge qualification reports, grant broad network capability, or bypass signed loader/source-blocked activation.
 - `UNKNOWN` means observations insufficient, not an automatic retry or success. Keep retained recovery versions.
 - G4/M4/M5 remain not accepted until the matching installed source generation and interrupted runtime tests pass on Mac.
+
+
+## Follow-up real-Mac acceptance — 2026-11-09 (reboot explicitly deferred)
+
+**Live installed Mac BASE/Recovery status observed:** `fileBackendAvailable=true`, `fileTransactionReadbackAvailable=true`; enabled native operations `create_file, update_file, edit_file, apply_patch, create_directory, delete_file, copy_file, move_file`. `directoryCopyAvailable=false`; network Git still `local-only; network-blocked`.
+
+**Direct selected-plugin acceptance on disposable Test files:**
+- Root: `/Users/nam/Desktop/Test/gsa-lc-final-acceptance-20261109` (existing authorized workspace `ws-b152c830eed2592c`).
+- `update_file` — `APPLIED`, retained transaction `4e19ae73-50e7-4524-a50c-598f065ea6e8`; content verified as `after update\n`.
+- `delete_file` — `APPLIED`, retained transaction `f005056d-e691-43ef-abee-3e0ef1583ad8`; original entry removed via native recovery capture.
+- `move_file` — `APPLIED`, destination content readback verified; source-trash transaction `2d24fb91-9447-435f-83f4-62e0be16606f`.
+- `apply_patch` — `APPLIED`, retained transaction `b3460e74-8c50-4442-8177-77a46ba3e24e`; content readback verified as `hello\npatched\n`.
+- Explicit `get_file_transaction` readback for **all four IDs** returned `APPLIED / VERIFIED_READBACK` with retained handles.
+- `update_file` with an intentionally stale SHA-256 returned `HASH_CONFLICT`; a fresh read confirmed the existing content remained unchanged.
+- Native process test: a disposable `node` process produced `GSA_PROCESS_LIFECYCLE_READY`, `stop_process` returned `stopped=true, state=CANCELLED`, and `process_status` confirmed `CANCELLED`. No unrelated process was targeted.
+- `launchctl list` included login job `com.gsa-localconnector.mac` and Desktop app process. Local Git HEAD observed `8ed9840` before the latest PR #15 installation; untracked `docs/proposals/` was left intact.
+
+**Desktop source delivery:** PR #15 merged to `main` as `42ae0b1`. The design exposes Pause/Resume controls using signals to the retained desktop adapter; privately writes owner-only pause state, and rejects **new** effectful MCP calls without interrupting in-flight commands. The PR's exact HEAD GitHub macOS C0/G3 passed, as did the merge commit run `42594472378`. **Actual UI Pause/Resume/Quit acceptance against that installed generation remains pending**. No disconnect/installer replacement was attempted from inside the live MCP owner.
+
+**Remaining non-reboot work and precise blocking conditions:**
+1. **Directory copy/inspect/readback:** Signed TreeReader native evidence and checked production installation remain unqualified. Source activation remains intentionally false, and the plugin truthfully reports `directoryCopyAvailable=false`. Do not turn it on using synthetic fixtures or descriptor-only reads as a substitute for required native boundary evidence.
+2. **Git fetch/pull/push from the Mac plugin:** `src/core/git-engine.ts` requires a **separately authorized restricted network capability**. Current native command runner has `command_confinement: none (user account)` and does not provide a verified network restriction. Do not run remote Git through `run_command` to evade this guard. Local Git/status/commit tools and GitHub connector remote APIs remain separate.
+3. **Desktop install + human-visible controls:** New commit `42ae0b1` has not been installed on the active user Mac. The desktop launcher owns the tunnel and replacement requires an exclusive stop/install gate; preserving active tasks is mandatory.
+4. **Quit/continuity without reboot:** The Desktop adapter currently cannot reliably prove work is idle (`ownedWorkState` may return `UNKNOWN`); Quit must refuse to kill active/uncertain work. Full UI Pause/Resume/Quit and reconnect after a safe app restart require live verification.
+5. **Reboot test:** Explicitly deferred by the user; **not an acceptance requirement for this iteration**. Do not claim it passed.
+
+**Milestone status:** Native core Recovery operations and process lifecycle: PASS in the bounded observed paths. Full Mac M5: **NOT ACCEPTED**, pending directory-copy qualification, restricted network Git if required by selected workflow, installed Desktop UI and safe Quit/restart.
