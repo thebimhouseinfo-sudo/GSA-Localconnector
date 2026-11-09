@@ -35,6 +35,11 @@ export function macDirectoryCopyActivation(evidence?:Uint8Array,build?:unknown):
   // mock installation. This is the exact independently reviewed Swift source.
   if((build as {source_sha256:string}).source_sha256!=="b63fa083b40bc23e0863f401c8aff917b8b2e4ecf2d1739c0e9e5bd255ab352d")
    throw Error("UNREVIEWED_TREE_SOURCE");
+  // Immutable native evidence captured on the selected Darwin 27 Mac,
+  // independently from this source change. Synthetic HMAC/signatures cannot
+  // authorize activation by supplying a self-declared report.
+  if(sha(evidence)!=="a363b50613b044a79b92d10967f3b92f11ba339b7364eda5dffa0822936adf91")
+   throw Error("UNPINNED_NATIVE_EVIDENCE");
   const text=new TextDecoder("utf-8",{fatal:true}).decode(evidence);
   requireMacDirectoryEvidence(JSON.parse(text),build as Parameters<typeof requireMacDirectoryEvidence>[1]);
   if((build as {hostRelease:string;arch:string}).hostRelease!==os.release()||
