@@ -203,7 +203,7 @@ async function constructMacScopedFiles(registry:WorkspaceRegistry,installationRo
   try{recoverableMutations=await loadCheckedMacRecoveryInstallation(registry,installationRoot,{ownerLockFD:3,authorize:id=>options.authorize!(id,"write"),protectedRead,protectedDirectory,command,normalizedCodeSha256});}
   catch{/* Missing/stale recovery installation must preserve the legacy subset. */}
  }
- const supportedOperations:readonly NativeFileOperation[]=Object.freeze(["create_file","create_directory","copy_file",...(recoverableMutations?["update_file","edit_file","apply_patch","delete_file"] as const:[])]);
+ const supportedOperations:readonly NativeFileOperation[]=Object.freeze(["create_file","create_directory","copy_file",...(recoverableMutations?["update_file","edit_file","apply_patch","delete_file","move_file"] as const:[])]);
  return {
   supportedOperations,...(recoverableMutations?{recoverableMutations}:{}),
   read:readSnapshot,
