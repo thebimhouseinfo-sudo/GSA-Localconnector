@@ -59,7 +59,12 @@ async function protectedRead(file:string,max:number):Promise<Buffer>{
  for(const dir of ancestors){const st=await fs.lstat(dir);if(!st.isDirectory()||st.isSymbolicLink()||![0,uid].includes(st.uid)||((st.mode&0o022)!==0&&!(st.uid===0&&(st.mode&0o1000)!==0)))fail();}
  if(await fs.realpath(path.dirname(file))!==path.dirname(file))fail();
  const before=await fs.lstat(file,{bigint:true});
- if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1n||before.uid!==BigInt(process.getuid!())||(before.mode&0o077n)!==0n||before.size>BigInt(max))fail();
+ // The checked-in Swift source is public code (usually 0644), not a proof
+ // or key. Only this one fixed compiled-source path may be group/world readable;
+ // it must still be owner-owned, regular, non-writable and inode-pinned.
+ const publicSource=file===fileURLToPath(new URL("../../../native/macos-files/tree-broker.swift",import.meta.url));
+ if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1n||before.uid!==BigInt(process.getuid!())||
+  (publicSource?(before.mode&0o022n)!==0n:(before.mode&0o077n)!==0n)||before.size>BigInt(max))fail();
  const fd=await fs.open(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
  try{const opened=await fd.stat({bigint:true});if(opened.dev!==before.dev||opened.ino!==before.ino)fail();const bytes=Buffer.alloc(Number(before.size)+1);let count=0;while(count<bytes.length){const r=await fd.read(bytes,count,bytes.length-count,count);if(!r.bytesRead)break;count+=r.bytesRead;}const after=await fd.stat({bigint:true}),named=await fs.lstat(file,{bigint:true});if(count!==Number(before.size)||after.ctimeNs!==before.ctimeNs||after.mtimeNs!==before.mtimeNs||after.nlink!==1n||named.dev!==before.dev||named.ino!==before.ino)fail();return bytes.subarray(0,count);}finally{await fd.close();}
 }
