@@ -158,3 +158,16 @@ onMac("Track B missing executable never crashes the native command supervisor",(
  assert.equal(after.exit_code,0);
  assert.equal(after.stdout,"ok");
 }));
+
+onMac("Track B menu-bar minimal PATH can resolve the connector's Node runtime",()=>fixture(async host=>{
+ const original=process.env.PATH;
+ try{
+  // Simulate launchd PATH which does not include Homebrew or packaged Node.
+  process.env.PATH="/usr/bin:/bin:/usr/sbin:/sbin";
+  const result=await host.execute(request({executable:"node",argv:["--version"]}));
+  assert.equal(result.exit_code,0);
+  assert.equal(result.stdout.trim(),process.version);
+ }finally{
+  if(original===undefined)delete process.env.PATH;else process.env.PATH=original;
+ }
+}));
