@@ -35,6 +35,8 @@ func privateJSON(_ filename: String) throws -> [String: Any] {
 final class DesktopApp: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private let statusLine = NSMenuItem(title: "Đang khởi động connector…", action: nil, keyEquivalent: "")
+    private var pauseItem: NSMenuItem?
+    private var resumeItem: NSMenuItem?
     private var supervisor: Process?
     private var configPath: String?
     private var config: [String: Any] = [:]
@@ -107,6 +109,15 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(statusLine)
         menu.addItem(.separator())
+        let pause = menu.addItem(withTitle: "Tạm dừng tác vụ mới", action: #selector(requestPause(_:)), keyEquivalent: "")
+        pause.target = self
+        pause.isEnabled = false
+        pauseItem = pause
+        let resume = menu.addItem(withTitle: "Tiếp tục", action: #selector(requestResume(_:)), keyEquivalent: "")
+        resume.target = self
+        resume.isEnabled = false
+        resumeItem = resume
+        menu.addItem(.separator())
         let quit = menu.addItem(withTitle: "Thoát", action: #selector(requestQuit(_:)), keyEquivalent: "")
         quit.target = self
         item.menu = menu
@@ -168,6 +179,13 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
             setStatus("Chưa đọc được trạng thái connector.")
             return
         }
+        let paused = status["desktopPaused"] as? Bool ?? false
+        pauseItem?.isEnabled = state == "RUNNING" && supervisor?.isRunning == true && !paused
+        resumeItem?.isEnabled = state == "RUNNING" && supervisor?.isRunning == true && paused
+        if state == "RUNNING" && paused {
+            setStatus("Đã tạm dừng nhận tác vụ mới.")
+            return
+        }
         switch state {
         case "SETUP_REQUIRED": setStatus("Cần thiết lập tunnel và API key qua Terminal.")
         case "RUNNING":
@@ -184,6 +202,22 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
                 setStatus("Tunnel tự kết thúc (mã " + String(code) + ").")
             } else { setStatus("Connector gặp lỗi khởi động.") }
         }
+    }
+
+    // Signals target only the retained adapter Process object, never arbitrary PIDs.
+    // The adapter updates the private admission flag; existing work continues.
+    @objc private func requestPause(_ sender: Any?) {
+        guard let process = supervisor, process.isRunning else { return }
+        if kill(pid_t(process.processIdentifier), SIGUSR2) == 0 {
+            setStatus("Đang tạm dừng nhận tác vụ mới…")
+        } else { setStatus("Không gửi được yêu cầu tạm dừng.") }
+    }
+
+    @objc private func requestResume(_ sender: Any?) {
+        guard let process = supervisor, process.isRunning else { return }
+        if kill(pid_t(process.processIdentifier), SIGHUP) == 0 {
+            setStatus("Đang tiếp tục nhận tác vụ…")
+        } else { setStatus("Không gửi được yêu cầu tiếp tục.") }
     }
 
     @objc private func requestQuit(_ sender: Any?) {
