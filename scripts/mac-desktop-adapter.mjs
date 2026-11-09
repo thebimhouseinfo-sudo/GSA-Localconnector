@@ -117,7 +117,7 @@ function safeEnvironment() {
 }
 
 export class MacDesktopAdapter {
-  constructor({configPath}) {this.configPath = configPath; this.privateFile = createMacPrivateFile(); this.runtime = null; this.quitOutcome = null;}
+  constructor({configPath}) {this.configPath = configPath; this.privateFile = createMacPrivateFile(); this.runtime = null; this.quitOutcome = null; this.paused = false; this.pauseQueue = Promise.resolve();}
   ensureLogin(options) {return ensureLogin(options);}
   async start() {
     if (this.runtime) return this.runtime;
@@ -148,6 +148,12 @@ export class MacDesktopAdapter {
       runFlag: "--config", // Characterized tunnel-client 0.0.14; package verification pins this binary.
       baseEnvironment: env,
       prepareProfile: async ({tunnelId}) => {
+        // A fresh owner session starts unpaused, before the tunnel is spawned.
+        // The sealed directory is never a workspace; only the menu supervisor
+        // publishes this local admission flag.
+        await publish(this.privateFile,path.join(config.directory,"pause-state.json"),
+          Buffer.from(JSON.stringify({format:"gsa-desktop-pause-v1",paused:false})));
+        this.paused=false;
         // Reset the owned private locator before launch: never accept a previous
         // session's readiness, or probe the default port of another connector.
         await publish(this.privateFile, healthFile, Buffer.alloc(0));
@@ -179,11 +185,26 @@ export class MacDesktopAdapter {
   }
   async status() {return this.runtime ? this.runtime.status() : {state: "STOPPED", connection: "UNKNOWN", installationId: null, sessionId: null};}
   async stopOwned() {return this.runtime ? this.runtime.stopOwned() : {stopped: true};}
+  /** Serialize local menu requests; no signal terminates an active task. */
+  async setPaused(paused) {
+    if(typeof paused!=="boolean")throw fail("DESKTOP_PAUSE_INVALID");
+    const request=this.pauseQueue.then(async()=>{
+      if(!this.runtime||!this.config)throw fail("DESKTOP_NOT_RUNNING");
+      const observed=await this.runtime.status();
+      if(observed.state!=="RUNNING")throw fail("DESKTOP_NOT_RUNNING");
+      await publish(this.privateFile,path.join(this.config.directory,"pause-state.json"),
+        Buffer.from(JSON.stringify({format:"gsa-desktop-pause-v1",paused})));
+      this.paused=paused;
+      return this.publishStatus();
+    });
+    this.pauseQueue=request.then(()=>{},()=>{});
+    return request;
+  }
   async publishStatus() {
     if (this.statusPublication) return this.statusPublication;
     this.statusPublication = (async () => {
       const status = await this.status();
-      const published = this.quitOutcome ? {...status,...this.quitOutcome} : status;
+      const published = {...status,desktopPaused:this.paused,...(this.quitOutcome??{})};
       await publish(this.privateFile, this.config.statusPath, Buffer.from(JSON.stringify(published)));
       return published;
     })();
@@ -231,6 +252,10 @@ async function main() {
     void adapter.publishStatus().then(status => {
     if (["STOPPED", "FAILED"].includes(status.state)) clearInterval(timer);
   }).catch(() => {clearInterval(timer); process.exitCode = 1;}).finally(() => {publishing = false;});}, 1000);
+  // UI-owned signals affect only admission of NEW MCP mutations. SIGUSR1
+  // is deliberately unused because Node reserves it for debugging.
+  process.on("SIGUSR2",()=>{void adapter.setPaused(true).catch(()=>{});});
+  process.on("SIGHUP",()=>{void adapter.setPaused(false).catch(()=>{});});
   for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => {
     void adapter.stopOwned().then(async result => {
       stopAttempt++;
