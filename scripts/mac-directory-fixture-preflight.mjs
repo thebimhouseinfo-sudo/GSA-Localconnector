@@ -46,7 +46,9 @@ export async function inspectPlatformFixtures(stage,workspace,{command=boundedTo
   outcome.fifoFixture={state:'VERIFIED',kind:'fifo'};
   await fs.unlink(fifo);
   await fs.mkdir(mountpoint,{mode:0o700});
-  await command('/usr/bin/hdiutil',['create','-size','64m','-fs','HFS+','-volname','GSA-Tree-Disposable','-format','UDRW','-o',image],{timeout:60000});
+  // Blank image creation uses -size/-fs; -format requires -srcfolder or
+  // -srcdevice on current macOS hdiutil and is not valid here.
+  await command('/usr/bin/hdiutil',['create','-size','64m','-fs','HFS+','-volname','GSA-Tree-Disposable','-o',image],{timeout:60000});
   await command('/usr/bin/hdiutil',['attach','-nobrowse','-mountpoint',mountpoint,image],{timeout:60000});
   attached=true;
   const mount=await fs.stat(mountpoint,{bigint:true});
