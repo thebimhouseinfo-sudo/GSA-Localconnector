@@ -5,9 +5,9 @@ import {identityDirectory} from "./identity.js";
 
 /** Local desktop Pause only stops admission of NEW tool effects.
  * In-flight commands and recovery journals remain untouched. */
-export async function isDesktopPaused(identityRoot=identityDirectory()):Promise<boolean>{
+export async function isDesktopPaused(identityRoot?:string):Promise<boolean>{
  if(process.platform!=="darwin")return false;
- const file=path.join(identityRoot,"desktop","pause-state.json");
+ const file=path.join(identityRoot??identityDirectory(),"desktop","pause-state.json");
  let stat;
  try{stat=await fs.lstat(file,{bigint:true});}
  catch(error){
