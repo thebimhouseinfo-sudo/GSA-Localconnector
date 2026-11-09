@@ -10,8 +10,17 @@ test("Recovery stays disabled without the exact independently pinned report",()=
  assert.equal(macFileRecoveryActivation(Buffer.from("{}"),{}).available,false);
  assert.equal(macFileRecoveryActivation(Buffer.alloc(0),{}).available,false);
 });
-test("only exact host-bound native qualification qualifies for checked Recovery",async()=>{
- const report=await fs.readFile(archive);
+test("Recovery qualification denies invalid evidence; private positive archive is host-local",async t=>{
+ const report=await fs.readFile(archive).catch(error=>{
+  if((error as NodeJS.ErrnoException).code==="ENOENT")return null;
+  throw error;
+ });
+ if(!report){
+  assert.equal(macFileRecoveryActivation(Buffer.from("not-qualified"),{}).available,false);
+  assert.equal(macFileRecoveryActivation(Buffer.from("{}"),{}).available,false);
+  t.diagnostic("Exact signed native archive is retained on the real Mac, not checked into source; host-specific positive proof must be verified on that Mac.");
+  return;
+ }
  const source=JSON.parse(report.toString("utf8"));
  const build=source.builds.production;
  const eligible=macFileRecoveryActivation(report,build);
