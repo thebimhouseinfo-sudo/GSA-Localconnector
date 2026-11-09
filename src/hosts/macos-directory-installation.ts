@@ -23,7 +23,30 @@ export interface DirectoryInstallationIO {
  readonly command:(executable:string,args:string[],input:string,max:number,ownerLockFD?:3)=>Promise<Buffer>;
 }
 const REASON="Exact tree-reader native proof and installation review pending";
-export function macDirectoryCopyActivation():Readonly<{available:false;reason:typeof REASON}>{return Object.freeze({available:false,reason:REASON});}
+/** Eligibility alone is never the reader authority. The enclosing loader
+ * authenticates the installed HMAC, per-root signed entitlements, code digest,
+ * current grant identity/revision and owner FD3 before using this result. */
+export function macDirectoryCopyActivation(evidence?:Uint8Array,build?:unknown):Readonly<{available:boolean;reason:string}>{
+ if(!evidence||process.platform!=="darwin"||process.arch!=="arm64")
+  return Object.freeze({available:false,reason:REASON});
+ try{
+  requireMacDirectoryBuild(build);
+  // Source authorization must not be self-asserted by an arbitrary signed
+  // mock installation. This is the exact independently reviewed Swift source.
+  if((build as {source_sha256:string}).source_sha256!=="b63fa083b40bc23e0863f401c8aff917b8b2e4ecf2d1739c0e9e5bd255ab352d")
+   throw Error("UNREVIEWED_TREE_SOURCE");
+  // Immutable native evidence captured on the selected Darwin 27 Mac,
+  // independently from this source change. Synthetic HMAC/signatures cannot
+  // authorize activation by supplying a self-declared report.
+  if(sha(evidence)!=="a363b50613b044a79b92d10967f3b92f11ba339b7364eda5dffa0822936adf91")
+   throw Error("UNPINNED_NATIVE_EVIDENCE");
+  const text=new TextDecoder("utf-8",{fatal:true}).decode(evidence);
+  requireMacDirectoryEvidence(JSON.parse(text),build as Parameters<typeof requireMacDirectoryEvidence>[1]);
+  if((build as {hostRelease:string;arch:string}).hostRelease!==os.release()||
+     (build as {hostRelease:string;arch:string}).arch!==process.arch)throw Error("HOST_MISMATCH");
+  return Object.freeze({available:true,reason:"Checked native qualification for this macOS host"});
+ }catch{return Object.freeze({available:false,reason:REASON});}
+}
 const sha=(v:Uint8Array)=>createHash("sha256").update(v).digest("hex");
 function fail(message="Unsafe or stale directory installation"):never {throw Object.assign(Error(message),{code:"SECURITY_BLOCKED"});}
 function exact(v:any,keys:readonly string[]):void {if(!v||typeof v!=="object"||Array.isArray(v)||Object.keys(v).length!==keys.length||Object.keys(v).some(k=>!keys.includes(k)))fail();}
@@ -36,7 +59,12 @@ async function protectedRead(file:string,max:number):Promise<Buffer>{
  for(const dir of ancestors){const st=await fs.lstat(dir);if(!st.isDirectory()||st.isSymbolicLink()||![0,uid].includes(st.uid)||((st.mode&0o022)!==0&&!(st.uid===0&&(st.mode&0o1000)!==0)))fail();}
  if(await fs.realpath(path.dirname(file))!==path.dirname(file))fail();
  const before=await fs.lstat(file,{bigint:true});
- if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1n||before.uid!==BigInt(process.getuid!())||(before.mode&0o077n)!==0n||before.size>BigInt(max))fail();
+ // The checked-in Swift source is public code (usually 0644), not a proof
+ // or key. Only this one fixed compiled-source path may be group/world readable;
+ // it must still be owner-owned, regular, non-writable and inode-pinned.
+ const publicSource=file===fileURLToPath(new URL("../../../native/macos-files/tree-broker.swift",import.meta.url));
+ if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1n||before.uid!==BigInt(process.getuid!())||
+  (publicSource?(before.mode&0o022n)!==0n:(before.mode&0o077n)!==0n)||before.size>BigInt(max))fail();
  const fd=await fs.open(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
  try{const opened=await fd.stat({bigint:true});if(opened.dev!==before.dev||opened.ino!==before.ino)fail();const bytes=Buffer.alloc(Number(before.size)+1);let count=0;while(count<bytes.length){const r=await fd.read(bytes,count,bytes.length-count,count);if(!r.bytesRead)break;count+=r.bytesRead;}const after=await fd.stat({bigint:true}),named=await fs.lstat(file,{bigint:true});if(count!==Number(before.size)||after.ctimeNs!==before.ctimeNs||after.mtimeNs!==before.mtimeNs||after.nlink!==1n||named.dev!==before.dev||named.ino!==before.ino)fail();return bytes.subarray(0,count);}finally{await fd.close();}
 }
@@ -112,7 +140,12 @@ async function load(registry:WorkspaceRegistry,installationRoot:string,base:Nati
   return {binding:b,binary};
  }
  for(const g of initialGrants)await checked(g.id);
- const activation=macDirectoryCopyActivation();if(!activation.available)fail(activation.reason);
+ // Re-read the authenticated evidence after all signed per-root checks.
+ // This only confirms eligibility; no synthetic caller input can activate it.
+ const evidenceBytes=await io.protectedRead(path.join(installationRoot,"native-evidence.json"),1_048_576);
+ if(sha(evidenceBytes)!==initial.evidence_sha256)fail("Directory evidence changed");
+ const activation=macDirectoryCopyActivation(evidenceBytes,initial.build);
+ if(!activation.available)fail(activation.reason);
  // This private constructor is reachable only after a future reviewed source activation.
  return construct(registry,base,records,options.authorize,async source=>{
   const ref=Object.freeze({workspace_id:source.workspace_id,path:source.path});validateWorkspaceRelative(ref.path,true);
