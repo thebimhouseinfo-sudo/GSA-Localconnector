@@ -23,7 +23,21 @@ export interface DirectoryInstallationIO {
  readonly command:(executable:string,args:string[],input:string,max:number,ownerLockFD?:3)=>Promise<Buffer>;
 }
 const REASON="Exact tree-reader native proof and installation review pending";
-export function macDirectoryCopyActivation():Readonly<{available:false;reason:typeof REASON}>{return Object.freeze({available:false,reason:REASON});}
+/** Eligibility alone is never the reader authority. The enclosing loader
+ * authenticates the installed HMAC, per-root signed entitlements, code digest,
+ * current grant identity/revision and owner FD3 before using this result. */
+export function macDirectoryCopyActivation(evidence?:Uint8Array,build?:unknown):Readonly<{available:boolean;reason:string}>{
+ if(!evidence||process.platform!=="darwin"||process.arch!=="arm64")
+  return Object.freeze({available:false,reason:REASON});
+ try{
+  requireMacDirectoryBuild(build);
+  const text=new TextDecoder("utf-8",{fatal:true}).decode(evidence);
+  requireMacDirectoryEvidence(JSON.parse(text),build as Parameters<typeof requireMacDirectoryEvidence>[1]);
+  if((build as {hostRelease:string;arch:string}).hostRelease!==os.release()||
+     (build as {hostRelease:string;arch:string}).arch!==process.arch)throw Error("HOST_MISMATCH");
+  return Object.freeze({available:true,reason:"Checked native qualification for this macOS host"});
+ }catch{return Object.freeze({available:false,reason:REASON});}
+}
 const sha=(v:Uint8Array)=>createHash("sha256").update(v).digest("hex");
 function fail(message="Unsafe or stale directory installation"):never {throw Object.assign(Error(message),{code:"SECURITY_BLOCKED"});}
 function exact(v:any,keys:readonly string[]):void {if(!v||typeof v!=="object"||Array.isArray(v)||Object.keys(v).length!==keys.length||Object.keys(v).some(k=>!keys.includes(k)))fail();}
@@ -112,7 +126,12 @@ async function load(registry:WorkspaceRegistry,installationRoot:string,base:Nati
   return {binding:b,binary};
  }
  for(const g of initialGrants)await checked(g.id);
- const activation=macDirectoryCopyActivation();if(!activation.available)fail(activation.reason);
+ // Re-read the authenticated evidence after all signed per-root checks.
+ // This only confirms eligibility; no synthetic caller input can activate it.
+ const evidenceBytes=await io.protectedRead(path.join(installationRoot,"native-evidence.json"),1_048_576);
+ if(sha(evidenceBytes)!==initial.evidence_sha256)fail("Directory evidence changed");
+ const activation=macDirectoryCopyActivation(evidenceBytes,initial.build);
+ if(!activation.available)fail(activation.reason);
  // This private constructor is reachable only after a future reviewed source activation.
  return construct(registry,base,records,options.authorize,async source=>{
   const ref=Object.freeze({workspace_id:source.workspace_id,path:source.path});validateWorkspaceRelative(ref.path,true);
