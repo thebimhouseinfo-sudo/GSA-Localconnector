@@ -24,6 +24,13 @@ export async function packageNativeTreeEvidence(summaryFile,destination){
  const report=JSON.parse(await fs.readFile(path.join(stage,"result.json"),"utf8"));
  if(report.stage!==stage||report.state!==summary.state||report.activation!==false||!Array.isArray(report.receipts)||report.receipts.length>100)throw fail("TREE_REPORT_UNSAFE");
  const items=new Map([["result.json",null]]);
+ if(summary.state==="TREE_NATIVE_CAPTURE_SUITE_OBSERVED"){
+  const build=JSON.parse(await fs.readFile(path.join(stage,"build.json"),"utf8"));
+  if(typeof build.release_sha256!=="string"||!/^[a-f0-9]{64}$/.test(build.release_sha256))throw fail("TREE_BUILD_HASH_MISSING");
+  // Preserve exact executable bytes for later host-specific signed rebind.
+  // Never compile again during an installation from qualified evidence.
+  items.set("candidate-tree-broker",build.release_sha256);
+ }
  for(const rel of ["native-evidence.json","build.json"])if(await fs.stat(path.join(stage,rel)).then(()=>true,()=>false))items.set(rel,null);
  for(const receipt of report.receipts){
   if(!receipt||typeof receipt!=="object"||!receipt.files||typeof receipt.files!=="object")throw fail("TREE_RECEIPT_UNSAFE");
