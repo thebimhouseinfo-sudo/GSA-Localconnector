@@ -1,0 +1,62 @@
+name: macOS Disposable Native Directory Qualification
+on:
+  push:
+    branches:
+      - feature/qualified-native-recovery-activation-20261106
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mac-directory-native-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  native-reader-one-pass:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Exact source, host and immutable driver scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(uname -s)" = Darwin
+          uname -m
+          sw_vers
+          shasum -a 256 native/macos-files/tree-broker.swift scripts/test-mac-directory-copy-native.mjs
+      - name: Compile without project lifecycle scripts
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+      - name: Show read-only native plan
+        run: node scripts/test-mac-directory-copy-native.mjs --plan
+      - name: One native execution on isolated GitHub macOS runner
+        timeout-minutes: 22
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/test-mac-directory-copy-native.mjs --run-native --ack-disposable-directory-v1 | tee "$RUNNER_TEMP/gsa-tree-summary.jsonl"
+      - name: Copy bounded receipts to GitHub artifact workspace
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f "$RUNNER_TEMP/gsa-tree-summary.jsonl"; then
+            node scripts/ci-package-mac-tree-evidence.mjs "$RUNNER_TEMP/gsa-tree-summary.jsonl" "$RUNNER_TEMP/gsa-tree-artifact"
+          fi
+      - name: Retain bounded tree native evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: disposable-macos-tree-native-evidence
+          if-no-files-found: error
+          retention-days: 14
+          include-hidden-files: true
+          path: ${{ runner.temp }}/gsa-tree-artifact
+      - name: No activation or host installation
+        if: ${{ always() }}
+        run: echo 'Disposable native evidence only. Real Mac installation and source activation remain separately gated.'
