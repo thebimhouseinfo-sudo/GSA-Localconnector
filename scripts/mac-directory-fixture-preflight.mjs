@@ -18,7 +18,13 @@ export async function boundedTool(exe,args,{timeout=30000}={}){
    stream.on('data',chunk=>{let value=isErr?err:out;value+=chunk.toString('utf8');if(value.length>MAX_LOG){failure=fail('PLATFORM_PREFLIGHT_OUTPUT_LIMIT');child.kill('SIGTERM');}else if(isErr)err=value;else out=value;});
   }
   child.once('error',error=>{failure=error;});
-  child.once('close',code=>{clearTimeout(timer);if(failure||code!==0)reject(failure??fail('PLATFORM_PREFLIGHT_COMMAND_FAILED'));else resolve({stdout:out,stderr:err});});
+  child.once('close',code=>{clearTimeout(timer);if(failure||code!==0){
+   // Diagnostics are from two fixed system executables and fixed verbs only.
+   // Never echo arguments (they can contain host-specific temporary paths).
+   const tool=exe.endsWith('/mkfifo')?'MKFIFO':'HDIUTIL';
+   const verb=tool==='MKFIFO'?'CREATE':({'create':'CREATE','attach':'ATTACH','detach':'DETACH'}[args[0]]??'UNKNOWN');
+   reject(failure??fail('PLATFORM_PREFLIGHT_'+tool+'_'+verb+'_EXIT_'+String(code)));
+  }else resolve({stdout:out,stderr:err});});
  });
 }
 export async function inspectPlatformFixtures(stage,workspace,{command=boundedTool}={}){
