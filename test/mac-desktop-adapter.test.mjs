@@ -80,3 +80,25 @@ test('blocked Quit status is published without changing runtime state; retry can
   assert.deepEqual(await adapter.publishStatus(),{state:'STOPPED',connection:'DISCONNECTED',stopAttempt:3,stopBlockedReason:null});
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
+
+test('menu Pause/Resume only changes private admission state; no process is killed',async()=>{
+ const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-menu-pause-')));
+ await fs.chmod(root,0o700);
+ try{
+  const statusPath=path.join(root,'status.json');
+  const adapter=new MacDesktopAdapter({configPath:path.join(root,'config.json')});
+  adapter.config={directory:root,statusPath};
+  const events=[];
+  adapter.runtime={status:async()=>({state:'RUNNING',connection:'CONNECTED'})};
+  const paused=await adapter.setPaused(true);
+  assert.equal(paused.desktopPaused,true);
+  assert.equal(JSON.parse(await fs.readFile(path.join(root,'pause-state.json'),'utf8')).paused,true);
+  assert.equal(JSON.parse(await fs.readFile(statusPath,'utf8')).desktopPaused,true);
+  const resumed=await adapter.setPaused(false);
+  assert.equal(resumed.desktopPaused,false);
+  assert.equal(JSON.parse(await fs.readFile(path.join(root,'pause-state.json'),'utf8')).paused,false);
+  adapter.runtime={status:async()=>({state:'STOPPED',connection:'DISCONNECTED'})};
+  await assert.rejects(adapter.setPaused(true),/DESKTOP_NOT_RUNNING/);
+  assert.equal(JSON.parse(await fs.readFile(path.join(root,'pause-state.json'),'utf8')).paused,false);
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
