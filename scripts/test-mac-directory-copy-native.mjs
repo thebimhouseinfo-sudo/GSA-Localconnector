@@ -309,7 +309,19 @@ export async function prepareReaderRun(context,{inputs,writeInvalidName=fs.write
  // All filesystem-only probes precede compilation, signing, processes and reservation.
  // Probe names are owned only after exclusive mkdir, so collision never removes a prior entry.
  const probe=async(name,setup)=>{const dir=path.join(root,name);await fs.mkdir(dir,{mode:0o700});try{await setup(dir);}finally{await fs.rm(dir,{recursive:true,force:true});}};
- await probe('case-invalid-utf8',async dir=>{const name=Buffer.concat([Buffer.from(path.join(dir,'invalid-')),Buffer.from([0xff])]);await writeInvalidName(name,Buffer.from('synthetic invalid UTF-8 filename'),{mode:0o600,flag:'wx'});});
+ // APFS/Node on some macOS kernels refuses undecodable names at creation
+ // (EILSEQ) before a TreeReader can encounter them. Record that actual
+ // filesystem denial, not a synthetic TreeReader denial or missing test.
+ await probe('case-invalid-utf8',async dir=>{
+  const name=Buffer.concat([Buffer.from(path.join(dir,'invalid-')),Buffer.from([0xff])]);
+  try{
+   await writeInvalidName(name,Buffer.from('synthetic invalid UTF-8 filename'),{mode:0o600,flag:'wx'});
+   report.invalidUtf8Fixture='CREATED';
+  }catch(error){
+   if(error?.code!=='EILSEQ')throw error;
+   report.invalidUtf8Fixture='FILESYSTEM_REJECTED_EILSEQ';
+  }
+ });
  await probe('case-symlink',dir=>fs.symlink(context.fixture.canaries[0],path.join(dir,'link')));
  await probe('case-hardlink',async dir=>{await privateFile(path.join(dir,'a'),Buffer.from('hardlink fixture'));await fs.link(path.join(dir,'a'),path.join(dir,'b'));});
  for(const model of [{depth:16},{depth:17},{entries:1023},{entries:1024},{bytes:8*1024*1024},{bytes:8*1024*1024+1}]){let area;try{area=await createLimitCase(root,model);}finally{if(area)await fs.rm(area,{recursive:true,force:true});}}
@@ -384,7 +396,17 @@ async function runNative(context,options={}){
   await deny('unsafeSymlink','case-symlink',async()=>{const dir=path.join(workspace.binding.root,'case-symlink');await fs.mkdir(dir,{mode:0o700});await fs.symlink(path.join(fixture.outside,'canary.txt'),path.join(dir,'link'));return dir;},'UNSAFE_FILE_TYPE');
   await deny('unsafeHardlink','case-hardlink',async()=>{const dir=path.join(workspace.binding.root,'case-hardlink');await fs.mkdir(dir,{mode:0o700});await fs.writeFile(path.join(dir,'a'),Buffer.from('hardlink fixture'),{mode:0o600,flag:'wx'});await fs.link(path.join(dir,'a'),path.join(dir,'b'));return dir;},'UNSAFE_FILE_TYPE');
   await deny('unsafeSpecial','case-fifo',async()=>{const dir=path.join(workspace.binding.root,'case-fifo');await fs.mkdir(dir,{mode:0o700});await runBounded('/usr/bin/mkfifo',[path.join(dir,'pipe')]);return dir;},'UNSAFE_FILE_TYPE');
-  await deny('invalidUtf8Name','case-invalid-utf8',async()=>{const dir=path.join(workspace.binding.root,'case-invalid-utf8');await fs.mkdir(dir,{mode:0o700});const raw=Buffer.from(path.join(dir,'invalid-'), 'utf8'),name=Buffer.concat([raw,Buffer.from([0xff])]);await fs.writeFile(name,Buffer.from('synthetic invalid UTF-8 filename'),{mode:0o600,flag:'wx'});return dir;},'UNSUPPORTED_NAME');
+  if(report.invalidUtf8Fixture==='FILESYSTEM_REJECTED_EILSEQ'){
+   report.cases.push({name:'invalidUtf8Name',state:'FILESYSTEM_DENIED',error:'EILSEQ'});
+   observations.invalidUtf8Name={fixture:'FILESYSTEM_REJECTED_EILSEQ',helperInvoked:false};
+  }else{
+   await deny('invalidUtf8Name','case-invalid-utf8',async()=>{
+    const dir=path.join(workspace.binding.root,'case-invalid-utf8');await fs.mkdir(dir,{mode:0o700});
+    const raw=Buffer.from(path.join(dir,'invalid-'),'utf8'),name=Buffer.concat([raw,Buffer.from([0xff])]);
+    await fs.writeFile(name,Buffer.from('synthetic invalid UTF-8 filename'),{mode:0o600,flag:'wx'});
+    return dir;
+   },'UNSUPPORTED_NAME');
+  }
   await deny('staleBinding','.',async()=>undefined,'GRANT_BINDING_MISMATCH','capture_tree',workspace.binding.revision+1);
   await deny('ungrantedPath','../outside/canary.txt',async()=>undefined,'PATH_OUTSIDE_SCOPE');
   await deny('invalidWriteRequest','.',async()=>undefined,'INVALID_REQUEST','create');
