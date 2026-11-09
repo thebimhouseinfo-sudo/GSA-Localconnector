@@ -13,6 +13,7 @@ import type {WorkspaceGrant,WorkspacePermission} from "../core/contracts.js";
 import {validateWorkspaceRelative} from "../core/workspace-path.js";
 import {identityDirectory} from "../local/identity.js";
 import {MAC_FILE_RECOVERY_ACTIVATION_BLOCKED} from "./macos-file-recovery.js";
+import {requireMacRecoveryQualification} from "./macos-recovery-evidence.js";
 import {loadCheckedMacRecoveryInstallation} from "./macos-recovery-installation.js";
 import type {NativeRecoverableFileMutations,NativeFileOperation} from "../core/native-io.js";
 
@@ -99,13 +100,20 @@ export interface MacScopedNativeFiles extends NativeScopedFiles {
  renameDirectoryExclusive(source:ScopedFileRef,destination:ScopedFileRef):Promise<void>;
  diffNonGitText(ref:ScopedFileRef,capturedBaseline:Uint8Array):Promise<MacNonGitTextDiff>;
 }
-/** Keep one loader/activation boundary. Recovery cannot be enabled by editing a
- * manifest/check-name list: native evidence and reviewed installation are missing.
- * A later accepted installation must supply per-root Recovery Broker.app,
- * workspace/recovery identity+revision+artifact/entitlement checks and its private
- * journal before this hook may construct createMacFileRecovery. */
-export function macFileRecoveryActivation():Readonly<{available:boolean;reason:string}>{
- return Object.freeze({available:false,reason:MAC_FILE_RECOVERY_ACTIVATION_BLOCKED});
+/** This is only the outer ELIGIBILITY check, never the native authority.
+ * The exact independently pinned native report must match this Darwin kernel.
+ * Actual activation still requires the signed per-root RecoveryBroker apps,
+ * current workspace identities/revisions, owner FD3, private journal and
+ * successful loadCheckedMacRecoveryInstallation. BASE-only remains disabled.
+ */
+export function macFileRecoveryActivation(report?:Uint8Array,build?:unknown):Readonly<{available:boolean;reason:string}>{
+ if(!report||process.platform!=="darwin"||process.arch!=="arm64")
+  return Object.freeze({available:false,reason:MAC_FILE_RECOVERY_ACTIVATION_BLOCKED});
+ try{
+  const proof=requireMacRecoveryQualification(report,build);
+  if(proof.host_release!==os.release()||proof.arch!==process.arch)throw Error("HOST_MISMATCH");
+  return Object.freeze({available:true,reason:"Eligible for checked signed recovery installation"});
+ }catch{return Object.freeze({available:false,reason:MAC_FILE_RECOVERY_ACTIVATION_BLOCKED});}
 }
 /** Fixed-operation host I/O only. App Sandbox never authorizes a host shell.
  * Compare-and-mutate operations fail closed: APFS provides no content CAS primitive.
@@ -197,7 +205,12 @@ async function constructMacScopedFiles(registry:WorkspaceRegistry,installationRo
  for(const grant of registry.list())await validateInstalled(pin(grant.id,"read"));
  // The checked constructor is concretely wired, but production activation is a
  // source-controlled decision requiring native evidence and reviewed installation.
- const recovery=macFileRecoveryActivation();
+ // Proof bytes are HMAC-pinned above. Eligibility never alone enables a write;
+ // the checked recovery constructor revalidates the full signed installation.
+ const recovery=macFileRecoveryActivation(
+  typeof proof.recoveryQualification==="string"?Buffer.from(proof.recoveryQualification,"utf8"):undefined,
+  proof.recoveryBuild
+ );
  let recoverableMutations:NativeRecoverableFileMutations|undefined;
  if(recovery.available&&options.ownerLockFD===3&&options.authorize){
   try{recoverableMutations=await loadCheckedMacRecoveryInstallation(registry,installationRoot,{ownerLockFD:3,authorize:id=>options.authorize!(id,"write"),protectedRead,protectedDirectory,command,normalizedCodeSha256});}
