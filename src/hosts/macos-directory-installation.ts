@@ -31,6 +31,10 @@ export function macDirectoryCopyActivation(evidence?:Uint8Array,build?:unknown):
   return Object.freeze({available:false,reason:REASON});
  try{
   requireMacDirectoryBuild(build);
+  // Source authorization must not be self-asserted by an arbitrary signed
+  // mock installation. This is the exact independently reviewed Swift source.
+  if((build as {source_sha256:string}).source_sha256!=="b63fa083b40bc23e0863f401c8aff917b8b2e4ecf2d1739c0e9e5bd255ab352d")
+   throw Error("UNREVIEWED_TREE_SOURCE");
   const text=new TextDecoder("utf-8",{fatal:true}).decode(evidence);
   requireMacDirectoryEvidence(JSON.parse(text),build as Parameters<typeof requireMacDirectoryEvidence>[1]);
   if((build as {hostRelease:string;arch:string}).hostRelease!==os.release()||
