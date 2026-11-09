@@ -16,6 +16,15 @@ test("only exact host-bound native qualification qualifies for checked Recovery"
  const build=source.builds.production;
  const eligible=macFileRecoveryActivation(report,build);
  assert.equal(eligible.available,process.platform==="darwin"&&process.arch==="arm64"&&os.release()==="27.0.0");
+ // Exercise a positive qualification path on macOS CI even when the runner
+ // kernel is newer/older than the recorded real-Mac release.
+ if(process.platform==="darwin"&&process.arch==="arm64"){
+  const previous=os.release;
+  try{
+   (os as typeof os & {release:()=>string}).release=()=> "27.0.0";
+   assert.equal(macFileRecoveryActivation(report,build).available,true);
+  }finally{(os as typeof os & {release:()=>string}).release=previous;}
+ }
  const changed=Buffer.from(report);changed[0]^=1;
  assert.equal(macFileRecoveryActivation(changed,build).available,false,"changed evidence denied");
  assert.equal(macFileRecoveryActivation(report,{...build,release_sha256:"0".repeat(64)}).available,false,"different release denied");
