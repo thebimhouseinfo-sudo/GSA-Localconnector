@@ -25,7 +25,7 @@ export async function boundedTool(exe,args,{timeout=30000}={}){
    const verb=tool==='MKFIFO'?'CREATE':({'create':'CREATE','attach':'ATTACH','detach':'DETACH'}[args[0]]??'UNKNOWN');
    const rejected=failure??fail('PLATFORM_PREFLIGHT_'+tool+'_'+verb+'_EXIT_'+String(code));
    // Only bounded system utility diagnostics, with absolute paths redacted.
-   rejected.detail=(err||out).slice(0,640).replace(/\\/[^\\s\"']+/g,'[PATH]').replace(/[\\r\\n]+/g,' ').slice(0,320);
+   rejected.detail=(err||out).slice(0,640).replace(/\/[^\s"']+/g,'[PATH]').replace(/[\r\n]+/g,' ').slice(0,320);
    reject(rejected);
   }else resolve({stdout:out,stderr:err});});
  });
