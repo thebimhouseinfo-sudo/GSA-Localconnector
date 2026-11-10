@@ -36,6 +36,14 @@ Mỗi lần chọn 1–16 thư mục có sẵn bằng đường dẫn tuyệt đ
 
 Role workspace mô tả phạm vi toàn quyền dự kiến, không chứng minh backend đã ghi file/chạy shell/Git được. Đọc `connector_status` để biết khả năng thực tế; các backend còn thiếu vẫn bị chặn. Các phép thử source không thay thế gọi plugin đang cài hoặc kiểm chứng native.
 
+### Scoped files: trạng thái đọc và ghi khi thay đổi grants
+
+- `fileBackendAvailable` giữ ý nghĩa cũ: signed native mutation backend, không phải khả năng của tất cả API đọc.
+- `fileReadAvailable` và `fileReadOperations` mô tả read API và phạm vi có grant đọc; đọc từng đường dẫn vẫn kiểm tra root identity và không được vượt scope.
+- `fileWriteBackendAvailable` và `fileOperations` biểu thị backend ghi native có thể dùng; ghi thực tế vẫn phụ thuộc role, revision, authorization và protected state.
+- `fileGrantSyncRequired=true` / `fileGrantSyncState=REQUIRES_SIGNED_REINSTALL` nghĩa là tập grants đã khác chứng thực native. Phải dừng connector owner an toàn, đồng bộ signed installation theo đúng generation rồi restart; không dùng shell để bypass file broker.
+- `node scripts/install-mac-scoped-files.mjs rebind-base` chỉ hợp lệ với BASE, không có Recovery journal. Nếu đang dùng Recovery, phải theo qualified `apply-recovery` và bảo toàn journal.
+- Khi role trái nhau chồng lấn thật, lỗi phải nêu ID, role và canonical path của cả hai grant; không tự thu hồi grant cũ.
 `src/local/workspace-cli.ts` vẫn có `list`, `enroll-read`, `enroll-execute`, `revoke` cho quản trị cũ; đây không phải bước bắt buộc trước mỗi dự án. Các API đăng ký cũ không được làm mất role trên ID đã gán rõ ràng; dùng dạng role để chọn lại phạm vi đó.
 
 Nếu quyền đã được lưu nhưng đọc lại/cập nhật registry không chắc chắn, API trả `RESULT_UNKNOWN`, không tự chạy lại và chặn các thao tác phụ thuộc scope trong dispatcher đó. Dùng status/control để kiểm tra rồi nạp lại dispatcher từ trạng thái đã xác minh; root đổi danh tính vẫn cần được sửa hoặc chọn lại rõ ràng. Lệnh dừng/hủy công việc đang sở hữu giữ nguyên kiểm tra quyền và token.

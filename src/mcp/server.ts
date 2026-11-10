@@ -168,7 +168,24 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
        if(outcome.copy_id!==copyId)throw Error("INVALID_DIRECTORY_COPY");
        return { ...(outcome.status!=="APPLIED"?{isError:true}:{}),content:[{type:"text",text:JSON.stringify(outcome.status==="APPLIED"?{ok:true,result:outcome}:{ok:false,code:outcome.status==="UNKNOWN"?"RESULT_UNKNOWN":"DIRECTORY_COPY_CONFLICT",result:outcome})}]};
       };
-      const fileCapabilities=()=>({directoryCopyAvailable:directoryAvailable(),directoryInspectAvailable:directoryAvailable(),directoryCopyReadbackAvailable:directoryAvailable(),directoryCopyBlockedReason:directoryAvailable()?null:backend.directoryCopyBlockedReason??"Verified directory copy installation and controller required",fileTransactionReadbackAvailable:fileTransactionReadbackAvailable(),fileBackendAvailable:!!nativeFiles,fileOperations,hostFileWrites:fullFileWrites,fileBlockedReason:backend.fileBlockedReason??(nativeFiles&&!fullFileWrites?"Partial native backend; compare-and-mutate operations remain blocked":nativeFiles?null:"Verified native file installation unavailable")});
+      const fileCapabilities=()=>{
+        const grantSetChanged=backend.fileBlockedReason==="Scoped file grant set changed";
+        // Preserve legacy fileBackendAvailable as the signed native mutation backend,
+        // while read APIs use their separate, grant-scoped WorkspaceReadSession.
+        const fileReadOperations=["list_directory","get_file_info","fetch_file","fetch_file_bytes","search","glob"];
+        return {
+          directoryCopyAvailable:directoryAvailable(),directoryInspectAvailable:directoryAvailable(),directoryCopyReadbackAvailable:directoryAvailable(),
+          directoryCopyBlockedReason:directoryAvailable()?null:backend.directoryCopyBlockedReason??"Verified directory copy installation and controller required",
+          fileTransactionReadbackAvailable:fileTransactionReadbackAvailable(),fileBackendAvailable:!!nativeFiles,fileOperations,
+          fileReadAvailable:!scopeDesynchronized&&registry.list().some(grant=>grant.permissions.includes("read")),
+          fileReadOperations,
+          fileWriteBackendAvailable:protectedStateCapability().available&&controlStore!==null&&fileOperations.some(name=>name!=="copy_directory"),
+          fileGrantSyncRequired:grantSetChanged,
+          fileGrantSyncState:grantSetChanged?"REQUIRES_SIGNED_REINSTALL":nativeFiles?"CURRENT":"UNAVAILABLE",
+          hostFileWrites:fullFileWrites,
+          fileBlockedReason:backend.fileBlockedReason??(nativeFiles&&!fullFileWrites?"Partial native backend; compare-and-mutate operations remain blocked":nativeFiles?null:"Verified native file installation unavailable")
+        };
+      };
       const args=call.arguments??{};
       const desktopPaused=await isDesktopPaused();
       // Pause rejects NEW effects. Readback/diagnostics/stopping owned work stay
