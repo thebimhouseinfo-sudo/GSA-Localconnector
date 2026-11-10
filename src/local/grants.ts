@@ -89,7 +89,7 @@ async function validatedRegistry(entries:Entry[],privateRoot?:string):Promise<Wo
    const a=grants[i]!,b=grants[j]!;
    if(a.canonicalRoot===b.canonicalRoot||(a.rootIdentity.device===b.rootIdentity.device&&a.rootIdentity.inode===b.rootIdentity.inode)||
     authority(a)!==authority(b)&&(contains(a.canonicalRoot,b.canonicalRoot)||contains(b.canonicalRoot,a.canonicalRoot)))
-    throw new ConnectorError("PERMISSION_DENIED","Workspace/reference roots overlap or alias another selected root");
+    throw new ConnectorError("PERMISSION_DENIED",`Workspace/reference roots overlap or alias another selected root: ${a.id} (${authority(a)}: ${a.canonicalRoot}) conflicts with ${b.id} (${authority(b)}: ${b.canonicalRoot})`);
   }
  }
  return registry;

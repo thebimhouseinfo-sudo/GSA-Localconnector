@@ -63,6 +63,29 @@ test("mixed explicit roles survive reload with exact permissions and persisted w
   const checked=await grants.requirePersistedGrant(loaded,"app",dir);assert.equal(role(checked),"workspace");assert.deepEqual(sorted(checked.permissions),workspacePerms);
 }));
 
+test("BUG-01: sibling roots bind, while a true ancestor grant is reported without mutation",async()=>fixture(async(tmp,dir)=>{
+  const parent=await mkdir(tmp,"Kid eschool"),work=await mkdir(parent,"Ke-chinhta"),ref=await mkdir(parent,"KE-dictation");
+  await fs.writeFile(path.join(ref,"README.md"),"reference read only\n");
+  await enroll([{id:"legacy-parent",root:parent,role:"workspace"}],dir);
+  const before=await bytes(dir);
+  await assert.rejects(enroll([{id:"work",root:work,role:"workspace"},{id:"ref",root:ref,role:"reference"}],dir),(error:any)=>
+    error?.code==="PERMISSION_DENIED"&&error.message.includes("legacy-parent")&&error.message.includes(parent)&&error.message.includes("ref")&&error.message.includes(ref));
+  assert.deepEqual(await bytes(dir),before,"failed bind must be atomic");
+  await grants.revokeTrusted("legacy-parent",dir); // Test fixture only; never revoke a live grant automatically.
+  const bound=await enroll([{id:"work",root:work,role:"workspace"},{id:"ref",root:ref,role:"reference"}],dir);
+  assert.deepEqual(bound.map(v=>v.id),["work","ref"]);
+  const registry=await grants.loadTrustedRegistry(dir);
+  assert.equal(await fs.readFile(await registry.resolveExistingRead("ref","README.md"),"utf8"),"reference read only\n");
+  assert.throws(()=>registry.requireGrant("ref","write"),{code:"PERMISSION_DENIED"});
+  const outside=await mkdir(tmp,"not-granted");await fs.symlink(outside,path.join(ref,"escape"));
+  await assert.rejects(registry.resolveExistingRead("ref","escape"),{code:"PATH_OUTSIDE_SCOPE"});
+}));
+
+test("BUG-01: lexical path prefixes are not mistaken for ancestry",async()=>fixture(async(tmp,dir)=>{
+  const work=await mkdir(tmp,"Ke-chinhta"),ref=await mkdir(tmp,"Ke-chinhta-backup");
+  const result=await enroll([{id:"work",root:work,role:"workspace"},{id:"ref",root:ref,role:"reference"}],dir);
+  assert.equal(result.length,2);
+}));
 test("legacy pinned grants remain role-less and explicit selection alone promotes with a new epoch",async()=>fixture(async(tmp,dir)=>{
   const readRoot=await mkdir(tmp,"read"),execRoot=await mkdir(tmp,"exec"),promotedRoot=await mkdir(tmp,"promoted");
   await grants.enrollReadOnly("read",readRoot,dir);await grants.enrollExecute("exec",execRoot,dir);await grants.enrollReadOnly("promote",promotedRoot,dir);

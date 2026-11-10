@@ -55,9 +55,12 @@ export class WorkspaceRegistry {
     };
     for(let i=0;i<values.length;i++)for(let j=i+1;j<values.length;j++){
       const a=values[i]!,b=values[j]!;
-      if(a.canonicalRoot===b.canonicalRoot||sameIdentity(a,b))throw new ConnectorError("PERMISSION_DENIED","Different workspace IDs cannot select the same directory");
+      // Component-aware canonical ancestry already allows sibling roots.
+      const identify=(grant:WorkspaceGrant)=>`${grant.id} (${authority(grant)}: ${grant.canonicalRoot})`;
+      if(a.canonicalRoot===b.canonicalRoot||sameIdentity(a,b))
+        throw new ConnectorError("PERMISSION_DENIED",`Different workspace IDs cannot select the same directory: ${identify(a)} conflicts with ${identify(b)}`);
       if(authority(a)!==authority(b)&&(contains(a.canonicalRoot,b.canonicalRoot)||contains(b.canonicalRoot,a.canonicalRoot)))
-        throw new ConnectorError("PERMISSION_DENIED","Workspace and reference roots must not overlap");
+        throw new ConnectorError("PERMISSION_DENIED",`Workspace and reference roots must not overlap: ${identify(a)} conflicts with ${identify(b)}`);
     }
   }
   /** Atomic explicit selection. Metadata checks detect observed replacement, not filesystem TOCTOU confinement. */

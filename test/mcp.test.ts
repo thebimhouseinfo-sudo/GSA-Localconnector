@@ -3,6 +3,34 @@ import assert from "node:assert/strict";
 import {test} from "node:test";
 import {createReadOnlyTools,toolDefinitions} from "../src/mcp/server.js";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+test("BUG-02: signed backend may be blocked while grant-scoped file reads work",async()=>{
+  const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-file-read-status-"));
+  try{
+    const work=path.join(tmp,"Ke-chinhta"),ref=path.join(tmp,"KE-dictation");
+    await fs.mkdir(work);await fs.mkdir(ref);
+    await fs.writeFile(path.join(ref,"README.md"),"reference\n");
+    const registry=new WorkspaceRegistry();
+    await registry.enrollRolesTrusted([{id:"work",root:work,role:"workspace"},{id:"ref",root:ref,role:"reference"}]);
+    const invoke=createReadOnlyTools(registry,null,null,null,null,null,null,null,null,null,null,{fileBlockedReason:"Scoped file grant set changed"});
+    const capabilities=JSON.parse((await invoke({name:"list_capabilities"})).content[0]!.text).result;
+    assert.equal(capabilities.fileBackendAvailable,false);
+    assert.equal(capabilities.fileReadAvailable,true);
+    assert.equal(capabilities.fileWriteBackendAvailable,false);
+    assert.equal(capabilities.fileGrantSyncRequired,true);
+    assert.equal(capabilities.fileGrantSyncState,"REQUIRES_SIGNED_REINSTALL");
+    assert.ok(capabilities.fileReadOperations.includes("fetch_file"));
+    assert.deepEqual(capabilities.fileOperations,[]);
+    assert.notEqual((await invoke({name:"list_directory",arguments:{workspace_id:"ref",path:"."}})).isError,true);
+    assert.notEqual((await invoke({name:"fetch_file",arguments:{workspace_id:"ref",path:"README.md"}})).isError,true);
+    assert.equal(registry.get("ref")!.permissions.includes("write"),false);
+    assert.equal((await invoke({name:"fetch_file",arguments:{workspace_id:"ungranted",path:"README.md"}})).isError,true);
+  }finally{await fs.rm(tmp,{recursive:true,force:true});}
+});
+
 
 test("full direct tool catalog is discoverable but unsafe operations are blocked",()=>{
  const names: string[]=toolDefinitions().map(t=>t.name);
