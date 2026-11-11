@@ -40,7 +40,7 @@ function detectedType(bytes:Buffer):DownloadedImage["mime_type"]{
  if(bytes.length>=4&&bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff&&bytes.at(-2)===0xff&&bytes.at(-1)===0xd9)return "image/jpeg";
  if(bytes.length>=16&&bytes.toString("ascii",0,4)==="RIFF"&&bytes.toString("ascii",8,12)==="WEBP"&&
     bytes.readUInt32LE(4)+8===bytes.length)return "image/webp";
- fail("INVALID_IMAGE_BYTES");
+ return fail("INVALID_IMAGE_BYTES");
 }
 function assertMatchingExtension(target:string,mime:DownloadedImage["mime_type"]){
  const ext=path.posix.extname(target).toLowerCase();
@@ -64,10 +64,11 @@ export async function downloadChatGptImage(
   method:"GET",redirect:"manual",signal:AbortSignal.timeout(30000),
   headers:{Accept:"image/png, image/jpeg, image/webp, application/octet-stream"}
  });
- if(response.status!==200||!response.body)fail("IMAGE_DOWNLOAD_FAILED");
+ if(response.status!==200||!response.body)throw Object.assign(new Error("IMAGE_DOWNLOAD_FAILED"),{code:"IMAGE_DOWNLOAD_FAILED"});
+ const body=response.body;
  const length=response.headers.get("content-length");
  if(length!==null&&(!/^\d+$/.test(length)||Number(length)>MAX_IMAGE_BYTES))fail("FILE_TOO_LARGE");
- const reader=response.body.getReader(),parts:Buffer[]=[];let total=0;
+ const reader=body.getReader(),parts:Buffer[]=[];let total=0;
  try{
   for(;;){
    const {done,value}=await reader.read();
