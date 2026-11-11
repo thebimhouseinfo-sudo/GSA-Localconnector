@@ -122,6 +122,9 @@ test("workspace recovery: unrelated stale root is retired only by explicit contr
  const invoke=createTools(new WorkspaceRegistry(),identity),before=await fs.readFile(path.join(identity,"trusted-workspaces.json"),"utf8");
  const missing=await call(invoke,"bind_workspaces",{roots:[{path:work,role:"workspace"}]});
  assert.equal(missing.code,"WORKSPACE_REAUTH_REQUIRED");
+ assert.match(missing.message,/stale.*ROOT_INODE_CHANGED/);
+ assert.ok(missing.message.includes(old),"Authenticated recovery error identifies the actual stale root");
+ assert.ok(!missing.message.includes("ref ["),"An active reference must not be offered for retirement");
  assert.equal(await fs.readFile(path.join(identity,"trusted-workspaces.json"),"utf8"),before);
  const invalid=await call(invoke,"bind_workspaces",{roots:[{path:work,role:"workspace"}],revoke_stale_ids:["ref"]});
  assert.equal(invalid.code,"PERMISSION_DENIED");

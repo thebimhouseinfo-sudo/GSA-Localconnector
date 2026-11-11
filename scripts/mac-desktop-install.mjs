@@ -85,7 +85,9 @@ export async function createMacInstaller({home=os.homedir(),sourceRoot=path.dirn
  }
  async function inspectCurrent({action='install'}={}){
   if(action!=='doctor'&&!await acquireInstall())return {state:'UNKNOWN_ACTIVE'};
-  if(await loaded()||await ownerBusy())return {state:'UNKNOWN_ACTIVE'};
+  // Doctor is read-only: verify pinned release files even while the app holds its
+  // owner lock. Mutating maintenance still refuses any active/unknown owner.
+  if(action!=='doctor'&&(await loaded()||await ownerBusy()))return {state:'UNKNOWN_ACTIVE'};
   let value;
   try{value=await readJSON(pointer);}catch(e){
    if(!missing(e))return {state:'STALE_POINTER'};
