@@ -6,12 +6,13 @@ import path from "node:path";
 import {createHash} from "node:crypto";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
 import {createReadOnlyTools,toolDefinitions} from "../src/mcp/server.js";
+import {downloadChatGptImage} from "../src/mcp/image-file-transfer.js";
 import {ControlLeaseStore} from "../src/local/control-lease.js";
 
 const test=(name:string,fn:()=>Promise<void>)=>platformTest(name,{skip:process.platform==="win32"?"POSIX controller fixture":false},fn);
 const png=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/t1sAAAAASUVORK5CYII=","base64");
 const sha=createHash("sha256").update(png).digest("hex");
-const source={file_id:"file_test_asset_123456",download_url:"https://files.oaiusercontent.com/temporary?token=REDACT"};
+const source={file_id:"file_test_asset_123456",download_url:"https://files.oaiusercontent.com/temporary?token=REDACT",mime_type:"image/png",file_name:"test.png"};
 const body=(r:{content:{text:string}[]})=>JSON.parse(r.content[0]!.text);
 
 test("image file tool requires current controller, imports only to active workspace and roundtrips bytes",async()=>{
@@ -30,13 +31,16 @@ test("image file tool requires current controller, imports only to active worksp
   };
   const tools=createReadOnlyTools(registry,backend,null,null,null,null,null,null,null,null,new ControlLeaseStore(identity),{
    grantDirectory:identity,
-   downloadImageFile:async()=>{downloads++;return {bytes:png,size:png.length,sha256:sha,mime_type:"image/png"};}
+   downloadImageFile:async(file,target)=>{downloads++;return downloadChatGptImage(file,target,(async()=>new Response(Uint8Array.from(png).buffer as ArrayBuffer,{status:200})) as typeof fetch);}
   });
   const call=async(name:string,args:Record<string,unknown>={})=>body(await tools({name,arguments:args}));
   const schema=toolDefinitions().find(x=>x.name==="import_image_file") as any;
   assert.deepEqual(schema?._meta?.["openai/fileParams"],["file"]);
   assert.ok(schema.inputSchema.required.includes("control_token"));
   assert.deepEqual(schema.inputSchema.properties.file.required,["download_url","file_id"]);
+  assert.deepEqual(Object.keys(schema.inputSchema.properties.file.properties).sort(),["download_url","file_id","file_name","mime_type"].sort());
+  assert.equal(schema.inputSchema.properties.file.additionalProperties,false);
+  assert.deepEqual(schema.annotations,{readOnlyHint:false,destructiveHint:false,openWorldHint:false,idempotentHint:false});
   assert.equal((await call("import_image_file",{workspace_id:"workspace",path:"test.png",file:source})).code,"SESSION_INVALID");
   const acquired=await call("acquire_control"),token=acquired.result.control_token;
   const noWrite=await call("import_image_file",{workspace_id:"reference",path:"bad.png",file:source,control_token:token});
