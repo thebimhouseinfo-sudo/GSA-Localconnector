@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {spawnSync} from 'node:child_process';
 const moduleUrl=pathToFileURL(path.resolve('scripts/install-mac-scoped-files.mjs')).href;
 test('recovery archive rejects missing, linked and unprotected evidence without modifying it',async t=>{
  const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-recovery-archive-test-')));t.after(()=>fs.rm(root,{recursive:true,force:true}));
@@ -47,4 +48,19 @@ test('BASE archive bytes must match the exact hashes in the qualification report
  assert.doesNotThrow(()=>installer.requireMacRecoveryBaseInputs(report,build,evidence,release));
  for(const args of [[Buffer.from('changed'),evidence,release],[build,Buffer.from('changed'),release],[build,evidence,Buffer.from('changed')]])assert.throws(()=>installer.requireMacRecoveryBaseInputs(report,...args));
  assert.throws(()=>installer.requireMacRecoveryBaseInputs({sourceHashes:{}},build,evidence,release));
+});
+
+test('read-only recovery archive preflight requires a qualified archive and never touches active grant state',async t=>{
+ const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-qualified-recovery-cli-')));
+ t.after(()=>fs.rm(root,{recursive:true,force:true}));
+ const protectedState=path.join(root,'trusted-workspaces.json');
+ await fs.writeFile(protectedState,'SENTINEL-DO-NOT-CHANGE',{mode:0o600});
+ const script=path.resolve('scripts/install-mac-scoped-files.mjs');
+ const noArchive=spawnSync(process.execPath,[script,'verify-recovery-archive'],{encoding:'utf8'});
+ assert.notEqual(noArchive.status,0);
+ const badArchive=spawnSync(process.execPath,[script,'verify-recovery-archive','--qualification-archive',root],{encoding:'utf8'});
+ assert.notEqual(badArchive.status,0);
+ assert.ok(!badArchive.stdout.includes('RECOVERY_ARCHIVE_VERIFIED_READ_ONLY'));
+ assert.equal(await fs.readFile(protectedState,'utf8'),'SENTINEL-DO-NOT-CHANGE');
+ assert.equal((await fs.readdir(root)).length,1,'preflight does not create staging or owner files');
 });
