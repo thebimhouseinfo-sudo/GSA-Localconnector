@@ -157,13 +157,17 @@ test("final-set root swaps succeed while stale selected roots can be explicitly 
   assert.deepEqual(swapped.map(x=>x.root),[await fs.realpath(b),await fs.realpath(a)]);
   assert.deepEqual(swapped.map(x=>x.grant.revision),[2,2]);
   await fs.rename(a,a+"-old");await fs.mkdir(a);
-  await assert.rejects(grants.loadTrustedRegistry(dir),/identity changed|SOURCE_UNVERIFIED/);
+  assert.deepEqual((await grants.loadTrustedRegistry(dir)).list().map(g=>g.id),["A"],"the replaced B pin is not ACTIVE");
   const repaired=await enroll([{id:"B",root:a,role:"workspace"}],dir);assert.equal(repaired[0]!.grant.revision,3);
   const [c]=await enroll([{id:"C",root:await mkdir(tmp,"c"),role:"workspace"}],dir);
   await fs.rename(b,b+"-old");await fs.mkdir(b);
-  const before=await bytes(dir);
-  await assert.rejects(enroll([{id:"C",root:await fs.realpath(c!.root),role:"reference"}],dir));
-  assert.deepEqual(await bytes(dir),before);
+  const before=JSON.parse((await bytes(dir)).toString("utf8"));
+  const independent=await enroll([{id:"C",root:await fs.realpath(c!.root),role:"reference"}],dir);
+  assert.equal(independent[0]!.grant.role,"reference","another stale root cannot block a separate valid root");
+  const current=JSON.parse((await bytes(dir)).toString("utf8"));
+  const priorB=(Array.isArray(before)?before:before.entries).find((x:any)=>x.id==="A");
+  const afterB=(Array.isArray(current)?current:current.entries).find((x:any)=>x.id==="A");
+  assert.deepEqual(afterB,priorB,"unrelated stale pin remains durable and unchanged");
 }));
 
 test("malformed explicit entries fail closed and tombstones need no live root",async()=>fixture(async(tmp,dir)=>{
@@ -237,7 +241,7 @@ test("stale-root repair revokes only replaced inode and preserves valid grants a
  const before=JSON.parse((await bytes(dir)).toString());const entries=Array.isArray(before)?before:before.entries;
  const stable=entries.filter((e:any)=>e.id!=="legacy-stale");
  await fs.rename(old,old+"-original");await fs.mkdir(old);
- await codeIs(grants.loadTrustedRegistry(dir),"SOURCE_UNVERIFIED");
+ assert.deepEqual((await grants.loadTrustedRegistry(dir)).list().map(g=>g.id).sort(),["reference","work"],"stale pin is excluded from ACTIVE grant set");
  assert.deepEqual((await grants.inspectStaleTrustedRoots(dir)).map(x=>x.id),["legacy-stale"]);
  const outcome=await grants.revokeStaleTrustedRoots(dir);
  assert.deepEqual(outcome.revoked.map(x=>x.id),["legacy-stale"]);assert.equal(outcome.retained,2);

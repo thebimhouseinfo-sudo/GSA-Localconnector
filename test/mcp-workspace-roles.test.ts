@@ -146,15 +146,16 @@ test("workspace recovery: unrelated stale root is retired only by explicit contr
  await enrollRolesTrustedBatch([{id:"work",root:work,role:"workspace"},{id:"stale",root:old,role:"workspace"},{id:"ref",root:ref,role:"reference"}],identity);
  await fs.rename(old,old+"-old");await fs.mkdir(old);
  const invoke=createTools(new WorkspaceRegistry(),identity),before=await fs.readFile(path.join(identity,"trusted-workspaces.json"),"utf8");
- const missing=await call(invoke,"bind_workspaces",{roots:[{path:work,role:"workspace"}]});
- assert.equal(missing.code,"WORKSPACE_REAUTH_REQUIRED");
- assert.match(missing.message,/stale.*ROOT_INODE_CHANGED/);
- assert.ok(missing.message.includes(old),"Authenticated recovery error identifies the actual stale root");
- assert.ok(!missing.message.includes("ref ["),"An active reference must not be offered for retirement");
- assert.equal(await fs.readFile(path.join(identity,"trusted-workspaces.json"),"utf8"),before);
+ const reselected=await call(invoke,"bind_workspaces",{roots:[{path:work,role:"workspace"}]});
+ assert.equal(reselected.ok,true,"unrelated stale grant must not block independent rebind");
+ const afterRebind=JSON.parse(await fs.readFile(path.join(identity,"trusted-workspaces.json"),"utf8"));
+ assert.deepEqual(afterRebind.find((x:any)=>x.id==="stale"),JSON.parse(before).find((x:any)=>x.id==="stale"));
+ assert.deepEqual((await call(invoke,"list_workspaces")).result.map((x:any)=>x.workspace_id).sort(),["ref","work"]);
+ assert.equal((await call(invoke,"get_workspace",{workspace_id:"stale"})).code,"WORKSPACE_NOT_FOUND");
+ const activeStore=await fs.readFile(path.join(identity,"trusted-workspaces.json"),"utf8");
  const invalid=await call(invoke,"bind_workspaces",{roots:[{path:work,role:"workspace"}],revoke_stale_ids:["ref"]});
  assert.equal(invalid.code,"PERMISSION_DENIED");
- assert.equal(await fs.readFile(path.join(identity,"trusted-workspaces.json"),"utf8"),before);
+ assert.equal(await fs.readFile(path.join(identity,"trusted-workspaces.json"),"utf8"),activeStore);
  const repaired=await call(invoke,"bind_workspaces",{roots:[{path:work,role:"workspace"}],revoke_stale_ids:["stale"]});
  assert.equal(repaired.ok,true);
  const observed=(await call(invoke,"inspect_workspace_recovery")).result;
@@ -163,6 +164,48 @@ test("workspace recovery: unrelated stale root is retired only by explicit contr
  const reloaded=await loadTrustedRegistry(identity);
  assert.deepEqual(reloaded.list().map(g=>g.id).sort(),["ref","work"]);
  assert.throws(()=>reloaded.requireGrant("ref","write"),{code:"PERMISSION_DENIED"});
+}));
+
+test("regression: seven ROOT_DEVICE_CHANGED retained pins allow selected-only child recovery with no grant deletion",async()=>isolated(async root=>{
+ const identity=path.join(root,"identity"),projects=await dir(root,"Kid eschool"),target=await dir(projects,"Ke-chinhta");
+ const roots=[
+  {id:"reference",root:await dir(root,"Browser Use copy"),role:"reference" as const},
+  {id:"source",root:await dir(root,"GSA-Localconnector"),role:"workspace" as const},
+  {id:"test",root:await dir(root,"Desktop-Test"),role:"workspace" as const},
+  {id:"parent",root:projects,role:"workspace" as const},
+  {id:"english",root:await dir(projects,"Ke-kidenglish"),role:"workspace" as const},
+  {id:"chinhta",root:target,role:"workspace" as const},
+  {id:"computer",root:await dir(projects,"Ke-computer-science"),role:"workspace" as const}
+ ];
+ await enrollRolesTrustedBatch(roots,identity);
+ const storePath=path.join(identity,"trusted-workspaces.json"),raw=JSON.parse(await fs.readFile(storePath,"utf8"));
+ const entries=Array.isArray(raw)?raw:raw.entries;
+ for(const e of entries){e.rootIdentity.device=(BigInt(e.rootIdentity.device)+1n).toString();}
+ await fs.writeFile(storePath,JSON.stringify(raw));
+ const prior=JSON.parse(JSON.stringify(entries));
+ assert.deepEqual((await loadTrustedRegistry(identity)).list(),[]);
+ const controls=new ControlLeaseStore(path.join(root,"controller")),invoke=createTools(new WorkspaceRegistry(),identity,controls);
+ const lease=await controls.acquire();
+ try{
+  const inspection=await call(invoke,"bind_workspaces",{inspect_recovery:true,control_token:lease.control_token});
+  assert.equal(inspection.ok,true);
+  assert.equal(inspection.result.grants.filter((g:any)=>g.state==="STALE"&&g.reason==="ROOT_DEVICE_CHANGED").length,7);
+  const bound=await call(invoke,"bind_workspaces",{roots:[{path:target,role:"workspace"}],control_token:lease.control_token});
+  assert.equal(bound.ok,true);
+  assert.equal(bound.result[0].workspace_id,"chinhta");
+  const listed=await call(invoke,"list_workspaces");assert.deepEqual(listed.result.map((x:any)=>x.workspace_id),["chinhta"]);
+  assert.equal((await call(invoke,"get_workspace",{workspace_id:"parent"})).code,"WORKSPACE_NOT_FOUND");
+  assert.equal((await call(invoke,"get_workspace",{workspace_id:"reference"})).code,"WORKSPACE_NOT_FOUND");
+  const nextRaw=JSON.parse(await fs.readFile(storePath,"utf8")),next=Array.isArray(nextRaw)?nextRaw:nextRaw.entries;
+  for(const id of ["reference","source","test","parent","english","computer"])
+    assert.deepEqual(next.find((x:any)=>x.id===id),prior.find((x:any)=>x.id===id),"unselected durable grant was modified: "+id);
+  const fresh=await loadTrustedRegistry(identity);
+  assert.deepEqual(fresh.list().map(g=>g.id),["chinhta"],"selected-only grant remains valid after a restart");
+  assert.equal(fresh.requireGrant("chinhta","write").rootIdentity.device, (await fs.stat(target,{bigint:true})).dev.toString());
+  assert.throws(()=>fresh.requireGrant("parent","read"),{code:"WORKSPACE_NOT_FOUND"});
+  const overlap=await call(invoke,"bind_workspaces",{roots:[{path:projects,role:"reference"}],control_token:lease.control_token});
+  assert.equal(overlap.code,"PERMISSION_DENIED","active child workspace must reject conflicting parent reference");
+ }finally{await controls.release(lease.control_token);}
 }));
 
 test("workspace recovery: stale removal requires an active controller, and malformed IDs are denied",async()=>isolated(async root=>{

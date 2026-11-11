@@ -35,7 +35,7 @@ test("restart rejects a replaced root until explicit enrollment and preserves re
   await enrollReadOnly("A",root,dir);
   const second=(await loadTrustedRegistry(dir)).requireGrant("A","read");assert.equal(second.revision,2);
   await fs.rename(root,root+"-original");await fs.mkdir(root);
-  await assert.rejects(loadTrustedRegistry(dir),/identity changed|SOURCE_UNVERIFIED/);
+  assert.deepEqual((await loadTrustedRegistry(dir)).list(),[],"replaced root is inactive without removing its durable pin");
   await enrollReadOnly("A",root,dir);
   const third=(await loadTrustedRegistry(dir)).requireGrant("A","read");
   assert.equal(third.revision,3);assert.notEqual(third.rootIdentity.inode,first.rootIdentity.inode);

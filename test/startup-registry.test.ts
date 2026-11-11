@@ -22,7 +22,7 @@ test('valid startup registry preserves the explicitly enrolled authority',{skip:
 test('changed root keeps transport bootstrap possible with zero workspace authority and unchanged pins',{skip:process.platform!=='darwin'},async t=>{
  const {root,identity,workspace}=await fixture(t),before=await fs.readFile(grantPath(identity));
  await fs.rename(workspace,path.join(root,'old-root'));await fs.mkdir(workspace,{mode:0o700});
- await assert.rejects(loadTrustedRegistry(identity),/Workspace root identity changed: ROOT_INODE_CHANGED/);
+ assert.deepEqual((await loadTrustedRegistry(identity)).list(),[],"stale pin never becomes ACTIVE");
  const loaded=await loadStartupRegistry(identity);
  assert.equal(loaded.workspaceStartupIssue,'WORKSPACE_ROOT_CHANGED');assert.deepEqual(loaded.registry.list(),[]);
  assert.throws(()=>loaded.registry.requireGrant('fixture','read'));assert.throws(()=>loaded.registry.requireGrant('fixture','write'));
@@ -39,7 +39,7 @@ test('unsafe store permissions never become a recoverable workspace-selection is
 test('missing root degrades without modifying persisted selection; malformed stores still refuse',{skip:process.platform!=='darwin'},async t=>{
  const {identity,workspace}=await fixture(t),before=await fs.readFile(grantPath(identity));
  await fs.rmdir(workspace);
- await assert.rejects(loadTrustedRegistry(identity),/Workspace root identity unavailable: ROOT_NOT_FOUND/);
+ assert.deepEqual((await loadTrustedRegistry(identity)).list(),[],"missing pin never becomes ACTIVE");
  const loaded=await loadStartupRegistry(identity);assert.equal(loaded.workspaceStartupIssue,'WORKSPACE_ROOT_UNAVAILABLE');
  assert.deepEqual(loaded.registry.list(),[]);assert.deepEqual(await fs.readFile(grantPath(identity)),before);
  await fs.writeFile(grantPath(identity),'invalid JSON');
