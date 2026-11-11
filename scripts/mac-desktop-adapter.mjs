@@ -117,7 +117,7 @@ function safeEnvironment() {
 }
 
 export class MacDesktopAdapter {
-  constructor({configPath}) {this.configPath = configPath; this.privateFile = createMacPrivateFile(); this.runtime = null; this.quitOutcome = null; this.paused = false; this.pauseQueue = Promise.resolve(); this.registrationPruneAttempt = 0; this.registrationPruneOutcome = null; this.registrationPruneQueue = Promise.resolve();}
+  constructor({configPath,registrationPruner=null}) {this.configPath = configPath; this.privateFile = createMacPrivateFile(); this.runtime = null; this.quitOutcome = null; this.paused = false; this.pauseQueue = Promise.resolve(); this.registrationPruneAttempt = 0; this.registrationPruneOutcome = null; this.registrationPruneQueue = Promise.resolve(); this.registrationPruner = registrationPruner;}
   ensureLogin(options) {return ensureLogin(options);}
   async start() {
     if (this.runtime) return this.runtime;
@@ -209,8 +209,11 @@ export class MacDesktopAdapter {
       try {
         const status=await this.status();
         if(!this.runtime||!this.config||status.state!=="RUNNING")throw fail("DESKTOP_NOT_RUNNING");
-        const {pruneInactiveWorkspaceRegistrations}=await import("../dist/src/local/grants.js");
-        const summary=await pruneInactiveWorkspaceRegistrations();
+        const prune=this.registrationPruner??(async()=>{
+          const {pruneInactiveWorkspaceRegistrations}=await import("../dist/src/local/grants.js");
+          return pruneInactiveWorkspaceRegistrations();
+        });
+        const summary=await prune();
         outcome={registrationPruneStatus:"DONE",registrationPruneSummary:summary};
       } catch(error) {
         outcome={registrationPruneStatus:"FAILED",registrationPruneReason:error?.code==="GRANT_STORE_BUSY"?"GRANT_STORE_BUSY":"REGISTRATION_PRUNE_FAILED"};
