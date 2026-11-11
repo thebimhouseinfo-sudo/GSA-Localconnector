@@ -275,7 +275,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
                enrollRolesTrustedBatch(requests.map(request=>({...request,role:request.role!})),directory,beforePublish,(args.revoke_stale_ids as string[]|undefined)??[]),
                (durable,items)=>{for(const item of items){const active=durable.get(item.id);if(!active||grantKey(active)!==grantKey(item.grant))throw Error("Bound grant changed after publication");}});
              await durable.initialize();
-             const retiredProcesses=[];
+             const retiredProcesses:Array<{workspace_id:string;state:string}>=[];
              for(const id of retiring){
                const stopped=await stopManaged(id);
                retiredProcesses.push({workspace_id:id,state:stopped.state});
