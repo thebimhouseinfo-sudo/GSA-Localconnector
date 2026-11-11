@@ -146,7 +146,12 @@ test('doctor is read-only: validates active owner installation but refuses tampe
  const owner=path.join(options.installRoot,'server-owner.lock');
  await fs.writeFile(owner,'',{mode:0o600,flag:'wx'});
  // The lock is held by another process, as in an installed running connector.
- const script="import fcntl,os,sys\\nfd=os.open(sys.argv[1],os.O_RDWR|os.O_NOFOLLOW)\\nfcntl.flock(fd,fcntl.LOCK_EX)\\nprint('LOCKED',flush=True)\\nsys.stdin.buffer.read()\\n";
+ const script=`import fcntl,os,sys
+fd=os.open(sys.argv[1],os.O_RDWR|os.O_NOFOLLOW)
+fcntl.flock(fd,fcntl.LOCK_EX)
+print('LOCKED',flush=True)
+sys.stdin.buffer.read()
+`;
  const child=spawn('/usr/bin/python3',['-I','-u','-c',script,owner],{stdio:['pipe','pipe','pipe']});
  try{
   await new Promise((resolve,reject)=>{
