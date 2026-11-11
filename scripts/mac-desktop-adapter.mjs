@@ -117,7 +117,7 @@ function safeEnvironment() {
 }
 
 export class MacDesktopAdapter {
-  constructor({configPath}) {this.configPath = configPath; this.privateFile = createMacPrivateFile(); this.runtime = null; this.quitOutcome = null; this.paused = false; this.pauseQueue = Promise.resolve();}
+  constructor({configPath}) {this.configPath = configPath; this.privateFile = createMacPrivateFile(); this.runtime = null; this.quitOutcome = null; this.paused = false; this.pauseQueue = Promise.resolve(); this.registrationPruneAttempt = 0; this.registrationPruneOutcome = null; this.registrationPruneQueue = Promise.resolve();}
   ensureLogin(options) {return ensureLogin(options);}
   async start() {
     if (this.runtime) return this.runtime;
@@ -200,11 +200,34 @@ export class MacDesktopAdapter {
     this.pauseQueue=request.then(()=>{},()=>{});
     return request;
   }
+  /** A menu-only maintenance request. Never revokes ACTIVE workspaces, sessions,
+   * controller leases or signed installation. The grant store owns its lock.
+   */
+  async pruneInactiveRegistrations() {
+    const request=this.registrationPruneQueue.then(async()=>{
+      let outcome;
+      try {
+        const status=await this.status();
+        if(!this.runtime||!this.config||status.state!=="RUNNING")throw fail("DESKTOP_NOT_RUNNING");
+        const {pruneInactiveWorkspaceRegistrations}=await import("../dist/src/local/grants.js");
+        const summary=await pruneInactiveWorkspaceRegistrations();
+        outcome={registrationPruneStatus:"DONE",registrationPruneSummary:summary};
+      } catch(error) {
+        outcome={registrationPruneStatus:"FAILED",registrationPruneReason:error?.code==="GRANT_STORE_BUSY"?"GRANT_STORE_BUSY":"REGISTRATION_PRUNE_FAILED"};
+      }
+      this.registrationPruneAttempt++;
+      this.registrationPruneOutcome={registrationPruneAttempt:this.registrationPruneAttempt,...outcome};
+      await this.publishStatus();
+      return this.registrationPruneOutcome;
+    });
+    this.registrationPruneQueue=request.then(()=>{},()=>{});
+    return request;
+  }
   async publishStatus() {
     if (this.statusPublication) return this.statusPublication;
     this.statusPublication = (async () => {
       const status = await this.status();
-      const published = {...status,desktopPaused:this.paused,...(this.quitOutcome??{})};
+      const published = {...status,desktopPaused:this.paused,...(this.quitOutcome??{}),...(this.registrationPruneOutcome??{})};
       await publish(this.privateFile, this.config.statusPath, Buffer.from(JSON.stringify(published)));
       return published;
     })();
@@ -256,6 +279,9 @@ async function main() {
   // is deliberately unused because Node reserves it for debugging.
   process.on("SIGUSR2",()=>{void adapter.setPaused(true).catch(()=>{});});
   process.on("SIGHUP",()=>{void adapter.setPaused(false).catch(()=>{});});
+  // A dedicated menu signal asks the retained adapter to prune only inactive
+  // registrations. No arbitrary PID, process kill or active-grant revocation.
+  process.on("SIGWINCH",()=>{void adapter.pruneInactiveRegistrations().catch(()=>{});});
   for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => {
     void adapter.stopOwned().then(async result => {
       stopAttempt++;
