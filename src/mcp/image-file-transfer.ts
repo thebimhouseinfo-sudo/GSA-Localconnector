@@ -60,10 +60,16 @@ export async function downloadChatGptImage(
 ):Promise<DownloadedImage>{
  const file=source(value),url=approvedUrl(file.download_url);
  if(typeof targetRelativePath!=="string"||!targetRelativePath)fail("INVALID_ARGUMENTS");
- const response=await fetcher(url.toString(),{
-  method:"GET",redirect:"manual",signal:AbortSignal.timeout(30000),
-  headers:{Accept:"image/png, image/jpeg, image/webp, application/octet-stream"}
- });
+ let response:Response;
+ try{
+  response=await fetcher(url.toString(),{
+   method:"GET",redirect:"manual",signal:AbortSignal.timeout(30000),
+   headers:{Accept:"image/png, image/jpeg, image/webp, application/octet-stream"}
+  });
+ }catch{
+  // Never expose signed URLs, query parameters, or transport diagnostics.
+  return fail("IMAGE_DOWNLOAD_FAILED");
+ }
  if(response.status!==200||!response.body)throw Object.assign(new Error("IMAGE_DOWNLOAD_FAILED"),{code:"IMAGE_DOWNLOAD_FAILED"});
  const body=response.body;
  const length=response.headers.get("content-length");
@@ -77,6 +83,9 @@ export async function downloadChatGptImage(
    if(total>MAX_IMAGE_BYTES)fail("FILE_TOO_LARGE");
    parts.push(Buffer.from(value));
   }
+ }catch(error){
+  await reader.cancel().catch(()=>undefined);
+  throw error;
  }finally{reader.releaseLock();}
  const bytes=Buffer.concat(parts,total),mime=detectedType(bytes);
  assertMatchingExtension(targetRelativePath,mime);
