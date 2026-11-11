@@ -18,6 +18,7 @@ import {validateWorkflow} from "../core/ci-dag.js";
 import {parseCiManifest} from "../core/ci-manifest.js";
 import {dispatchFileMutation,directoryPath} from "./write-dispatch.js";
 import {batchFileOperations} from "./batch-dispatch.js";
+import {downloadChatGptImage,type DownloadedImage} from "./image-file-transfer.js";
 import {CiJournalStore} from "../local/ci-store.js";
 import {CiArtifactStore} from "../local/ci-artifacts.js";
 import {CiLogStore} from "../local/ci-log-store.js";
@@ -83,11 +84,17 @@ function publicDirectoryManifest(value:unknown):DirectoryManifest {
  return Object.freeze({format:"gsa-directory-manifest-v1",entries:Object.freeze(entries),total_bytes:total,sha256:m.sha256 as string});
 }
 export function toolDefinitions() {return [...definitions,...plannedTools].map(definition=>({
- ...definition,inputSchema:{...definition.inputSchema,
+ ...definition,
+ ...(definition.name==="import_image_file"?{
+  _meta:{"openai/fileParams":["file"]},
+  annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false,idempotentHint:false}
+ }:{}),
+ inputSchema:{...definition.inputSchema,
   properties:{...definition.inputSchema.properties,...(controlledToolNames.has(definition.name)?{control_token:{type:"string"}}:{})},
   required:[...("required" in definition.inputSchema?definition.inputSchema.required:[]),...(controlledToolNames.has(definition.name)?["control_token"]:[])]}
  }));}
-export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null, logs:CiLogStore|null=null, nativeProcesses:VerifiedNativeProcessController|null=null, snapshots:CiSnapshotStore|null=null, sourceCapture:VerifiedWorkspaceSourceCapture|null=null, ciExecutor:VerifiedCiExecutor|null=null, controlStore:ControlLeaseStore|null=null,options:{grantDirectory?:string;fileBlockedReason?:string;directoryCopyBlockedReason?:string;fileBackendState?:()=>{files:NativeScopedFiles|null;fileBlockedReason?:string;directoryCopyBlockedReason?:string};onScopeChanged?:(kind:"bind"|"unbind")=>Promise<void>;processPersistence?:ProcessPersistence}={}) {
+export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null, logs:CiLogStore|null=null, nativeProcesses:VerifiedNativeProcessController|null=null, snapshots:CiSnapshotStore|null=null, sourceCapture:VerifiedWorkspaceSourceCapture|null=null, ciExecutor:VerifiedCiExecutor|null=null, controlStore:ControlLeaseStore|null=null,options:{grantDirectory?:string;fileBlockedReason?:string;directoryCopyBlockedReason?:string;fileBackendState?:()=>{files:NativeScopedFiles|null;fileBlockedReason?:string;directoryCopyBlockedReason?:string};onScopeChanged?:(kind:"bind"|"unbind")=>Promise<void>;processPersistence?:ProcessPersistence;
+ downloadImageFile?:(file:unknown,targetRelativePath:string)=>Promise<DownloadedImage>}={}) {
   const allFileOperations:readonly NativeFileOperation[]=["create_file","update_file","edit_file","apply_patch","create_directory","delete_file","copy_file","move_file","copy_directory"];
   const fileBackendState=options.fileBackendState??(()=>({files:nativeFiles,fileBlockedReason:options.fileBlockedReason,directoryCopyBlockedReason:options.directoryCopyBlockedReason}));
   let resolvedGrantDirectory=options.grantDirectory;
@@ -468,7 +475,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            if(sourceCapture?.verified)ci.push("ci_prepare_source");
            if(fileTransactionReadbackAvailable())read.push("get_file_transaction");
            if(directoryAvailable())read.push("inspect_directory","get_directory_copy");
-           const files=protectedStorage.available?[...fileOperations,...(fileOperations.includes("create_file")&&controlStore?["create_file_bytes","edit_file_as_new_version"]:fileOperations.includes("create_file")?["create_file_bytes"]:[]),...(fileOperations.includes("update_file")?["update_file_bytes"]:[]),...(batchFileWrites?["batch_file_operations"]:[])]:[];
+           const files=protectedStorage.available?[...fileOperations,...(fileOperations.includes("create_file")&&controlStore?["create_file_bytes","import_image_file","edit_file_as_new_version"]:fileOperations.includes("create_file")?["create_file_bytes"]:[]),...(fileOperations.includes("update_file")?["update_file_bytes"]:[]),...(batchFileWrites?["batch_file_operations"]:[])]:[];
            const enabled=new Set([...read,...files,...execution,...ci,...(controlStore&&protectedStorage.available?["acquire_control","renew_control","release_control"]:[])]);
            result={desktopPaused,workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,read,files,execution,ci,blocked:plannedTools.map(t=>t.name).filter(n=>!enabled.has(n)),shellIsolation:sandbox?.verified?"none (user account)":"blocked",...fileCapabilities(),...processHistory(),git:sandbox?.verified?"local-only; network-blocked":"blocked",command_confinement:sandbox?.verified?"none (user account)":null,state_integrity_vs_commands:sandbox?.verified?"not_protected":null,executionEnvironment:sandbox?.verified?"macos-native":null,workspaceMode:sandbox?.verified?"host-workspace":null,restartRecovery:options.processPersistence?.store.health?.().admission_blocked?"degraded-process-journal":"blocked"};
           }break;
@@ -586,6 +593,22 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           if(!fileOperations.includes("create_file"))fileMutationDenied();
           if(!protectedStateCapability().available||!controlStore)throw Error("SECURITY_BLOCKED");
           result=await dispatchFileMutation(call.name,args,registry,nativeFiles);break;
+        case "import_image_file": {
+          if(!fileOperations.includes("create_file"))fileMutationDenied();
+          if(!protectedStateCapability().available||!controlStore)throw Error("SECURITY_BLOCKED");
+          if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||
+             Object.keys(args).length!==3||!Object.hasOwn(args,"file"))throw Error("INVALID_ARGUMENTS");
+          registry.requireGrant(args.workspace_id,"write");
+          const relative=directoryPath(args.path,false);
+          const downloaded=await (options.downloadImageFile??downloadChatGptImage)(args.file,relative);
+          const saved=await dispatchFileMutation("create_file_bytes",{
+            workspace_id:args.workspace_id,path:relative,base64:downloaded.bytes.toString("base64")
+          },registry,nativeFiles);
+          // Native result is the write acknowledgement. The Skill performs an
+          // independent get_file_info/fetch_file_bytes readback before PASS.
+          result={...saved,mime_type:downloaded.mime_type,bytes:downloaded.size,source_sha256:downloaded.sha256};
+          break;
+        }
         case "create_file_bytes":case "update_file_bytes":case "create_file":case "update_file":case "edit_file":case "apply_patch":case "create_directory":case "delete_file":case "copy_file":case "move_file":
           if(!fileOperations.includes(call.name==="create_file_bytes"?"create_file":call.name==="update_file_bytes"?"update_file":call.name))fileMutationDenied();
           result=await dispatchFileMutation(call.name,args,registry,nativeFiles);
