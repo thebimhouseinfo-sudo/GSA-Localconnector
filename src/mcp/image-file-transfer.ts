@@ -85,7 +85,8 @@ export async function downloadChatGptImage(
   }
  }catch(error){
   await reader.cancel().catch(()=>undefined);
-  throw error;
+  if(error&&typeof error==="object"&&"code" in error&&error.code==="FILE_TOO_LARGE")throw error;
+  return fail("IMAGE_DOWNLOAD_FAILED"); // never echo network/internal errors or signed URL
  }finally{reader.releaseLock();}
  const bytes=Buffer.concat(parts,total),mime=detectedType(bytes);
  assertMatchingExtension(targetRelativePath,mime);
