@@ -10,7 +10,7 @@ function def(name:string,description:string,properties:Record<string,unknown>,re
  return {name,description,inputSchema:{type:"object",properties,required,additionalProperties:false}};
 }
 export const controlledToolNames=new Set([
- "inspect_workspace_recovery","bind_workspaces","unbind_workspace","create_file","update_file","create_file_bytes","update_file_bytes","edit_file","apply_patch",
+ "inspect_workspace_recovery","bind_workspaces","unbind_workspace","create_file","update_file","create_file_bytes","import_image_file","update_file_bytes","edit_file","apply_patch",
  "delete_file","create_directory","copy_file","move_file","edit_file_as_new_version","batch_file_operations","run_command",
  "start_process","stop_process","git_status","git_diff","git_log","git_show","compare_commits",
  "git_fetch","git_pull","git_add","git_commit","git_push","create_branch","git_checkout",
@@ -31,6 +31,11 @@ export const plannedTools=[
  def("get_file_transaction","Explicitly inspect a file transaction; never retry a mutation or restore files",{transaction_id:{type:"string",pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}}),
  def("glob","Find files by a bounded relative glob",{...target,pattern:str}),
  def("create_file_bytes","Create a new file from canonical base64 bytes",{...target,base64:str}),
+ def("import_image_file","Import a ChatGPT image file into an already bound writable workspace through the signed native file backend; requires a host-provided file input",{...target,
+  file:{type:"object",properties:{
+   download_url:str,file_id:str,mime_type:str,file_name:str
+  },required:["download_url","file_id"],additionalProperties:false}
+ }),
  def("update_file_bytes","Replace a file with canonical base64 bytes and expected SHA256",{...target,base64:str,expected_sha256:str}),
  def("create_file","Create a new file under a writable workspace, fail on conflict",{...target,content:str}),
  def("update_file","Replace an existing file with expected SHA256 guard",{...target,content:str,expected_sha256:str}),
