@@ -23,7 +23,7 @@ test("image file tool requires current controller, imports only to active worksp
   const saved=new Map<string,Buffer>();
   let downloads=0;
   const backend={
-   supportedOperations:["create_file"],
+   supportedOperations:["create_file"] as const,
    read:async(_r:unknown)=>{throw Error("UNUSED");},
    createExclusive:async(r:{path:string},b:Uint8Array)=>{saved.set(r.path,Buffer.from(b));await fs.writeFile(path.join(work,r.path),b,{flag:"wx"});},
    replaceIfHash:async()=>{},makeDirectory:async()=>{},copyExclusive:async()=>{},moveExclusive:async()=>{},trashIfHash:async()=>{}
