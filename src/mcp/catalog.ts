@@ -10,7 +10,7 @@ function def(name:string,description:string,properties:Record<string,unknown>,re
  return {name,description,inputSchema:{type:"object",properties,required,additionalProperties:false}};
 }
 export const controlledToolNames=new Set([
- "bind_workspaces","unbind_workspace","create_file","update_file","create_file_bytes","update_file_bytes","edit_file","apply_patch",
+ "inspect_workspace_recovery","bind_workspaces","unbind_workspace","create_file","update_file","create_file_bytes","update_file_bytes","edit_file","apply_patch",
  "delete_file","create_directory","copy_file","move_file","edit_file_as_new_version","batch_file_operations","run_command",
  "start_process","stop_process","git_status","git_diff","git_log","git_show","compare_commits",
  "git_fetch","git_pull","git_add","git_commit","git_push","create_branch","git_checkout",

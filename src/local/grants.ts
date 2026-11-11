@@ -122,6 +122,28 @@ async function stalePinnedEntries(entries:readonly Entry[]):Promise<Entry[]>{
  }
  return result;
 }
+/** Diagnostics only: old pins never authorize access to the currently named path. */
+export async function inspectTrustedWorkspaceRecovery(dir=identityDirectory()):Promise<readonly {workspace_id:string;root:string;role:WorkspaceRole|null;revision:number|null;state:"ACTIVE"|"STALE"|"REAUTH_REQUIRED"|"REVOKED";reason:string}[]>{
+ requireProtectedState();
+ const entries=await readEntries(dir),status=[];
+ for(const entry of entries){
+  const common={workspace_id:entry.id,root:entry.root,role:entry.role??null,revision:entry.revision??null};
+  if(entry.revoked){status.push({...common,state:"REVOKED" as const,reason:"GRANT_REVOKED"});continue;}
+  if(!pinned(entry)){status.push({...common,state:"REAUTH_REQUIRED" as const,reason:"UNPINNED_LEGACY_GRANT"});continue;}
+  try{
+   const canonical=await fs.realpath(entry.root),stat=await fs.lstat(entry.root,{bigint:true});
+   const reason=canonical!==entry.root?"ROOT_CANONICAL_CHANGED":!stat.isDirectory()?"ROOT_NOT_DIRECTORY":
+    String(stat.dev)!==entry.rootIdentity.device?"ROOT_DEVICE_CHANGED":String(stat.ino)!==entry.rootIdentity.inode?"ROOT_INODE_CHANGED":null;
+   status.push({...common,state:reason?"STALE" as const:"ACTIVE" as const,reason:reason??"IDENTITY_VERIFIED"});
+  }catch(error){
+   const code=(error as NodeJS.ErrnoException).code;
+   if(["ENOENT","ENOTDIR"].includes(code??""))status.push({...common,state:"STALE" as const,reason:"ROOT_NOT_FOUND"});
+   else if(["EACCES","EPERM"].includes(code??""))status.push({...common,state:"REAUTH_REQUIRED" as const,reason:"ROOT_PERMISSION_DENIED"});
+   else throw error; // Unknown I/O failure is not proof of stale authority.
+  }
+ }
+ return Object.freeze(status.map(item=>Object.freeze(item)));
+}
 export async function inspectStaleTrustedRoots(dir=identityDirectory()):Promise<readonly {id:string;root:string;revision:number}[]>{
  requireProtectedState();
  const entries=(await readStore(dir)).entries;
@@ -229,7 +251,7 @@ export async function enrollExecute(id:string,root:string,dir=identityDirectory(
  return (await enrollBatch([{id,root}],["read","execute"],dir))[0].grant;
 }
 /** Explicit trusted role selection; never reinterpret an ordinary read-only binding as workspace consent. */
-export async function enrollRolesTrustedBatch(requests:readonly WorkspaceRoleRequest[],dir=identityDirectory(),beforePublish?:BeforePublish):Promise<Array<{id:string;root:string;grant:WorkspaceGrant}>>{
+export async function enrollRolesTrustedBatch(requests:readonly WorkspaceRoleRequest[],dir=identityDirectory(),beforePublish?:BeforePublish,revokeStaleIds:readonly string[]=[]):Promise<Array<{id:string;root:string;grant:WorkspaceGrant}>>{
  if(!Array.isArray(requests)||requests.length<1||requests.length>16)throw new ConnectorError("SOURCE_UNVERIFIED","Select one through sixteen roots");
  const selections=Array.from(requests,request=>{
   if(!request||typeof request.id!=="string"||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(request.id)||!["workspace","reference"].includes(request.role))
@@ -237,24 +259,45 @@ export async function enrollRolesTrustedBatch(requests:readonly WorkspaceRoleReq
   if(typeof request.root!=="string"||!path.isAbsolute(request.root)||request.root.includes("\0"))throw new ConnectorError("PATH_OUTSIDE_SCOPE","Root must be absolute");
   return {id:request.id,root:request.root,role:request.role};
  });
+ if(!Array.isArray(revokeStaleIds)||revokeStaleIds.length>16||new Set(revokeStaleIds).size!==revokeStaleIds.length||
+  revokeStaleIds.some(id=>typeof id!=="string"||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(id)))
+  throw new ConnectorError("SOURCE_UNVERIFIED","Invalid explicit stale-grant IDs");
  return withGrantLock(dir,async publication=>{
   const stored=await readStore(dir),previous=stored.entries,requestedIds=new Set(selections.map(request=>request.id));
-  // Selected old roots may have disappeared. Only retained active roots need their old identity verified.
-  const retained=previous.filter(entry=>!requestedIds.has(entry.id));
+  const retiredIds=new Set(revokeStaleIds);
+  if([...retiredIds].some(id=>requestedIds.has(id)))throw new ConnectorError("PERMISSION_DENIED","Cannot bind and retire the same workspace ID");
+  const retired=previous.filter(entry=>retiredIds.has(entry.id));
+  if(retired.length!==retiredIds.size||retired.some(entry=>entry.revoked||!pinned(entry))||
+    (await stalePinnedEntries(retired)).length!==retired.length)
+   throw new ConnectorError("PERMISSION_DENIED","Only verified stale and explicitly identified workspace IDs may be retired");
+  let floor=stored.revisionFloor;
+  const tombstones=retired.map(entry=>{
+   floor=Math.max(floor,entry.revision!)+1;
+   if(!Number.isSafeInteger(floor))throw Error("INVALID_GRANT_STORE");
+   return {...entry,revoked:true as const,permissions:[] as WorkspacePermission[],revision:floor};
+  });
+  // The caller must reselect the changed root explicitly. Unmentioned grants stay untouched.
+  const retained=previous.filter(entry=>!requestedIds.has(entry.id)&&!retiredIds.has(entry.id));
   const observed=await new WorkspaceRegistry(path,[dir]).enrollRolesTrusted(selections);
   const chosen=observed.map(grant=>{
    const old=previous.find(entry=>entry.id===grant.id);
    const identical=old&&!old.revoked&&old.role===grant.role&&old.root===grant.canonicalRoot&&
     old.rootIdentity?.device===grant.rootIdentity.device&&old.rootIdentity?.inode===grant.rootIdentity.inode&&
     new Set(old.permissions).size===new Set(grant.permissions).size&&old.permissions.every(permission=>grant.permissions.includes(permission));
-   const revision=identical?old.revision!:Math.max(old?.revision??0,stored.revisionFloor)+1;
+   const revision=identical?old.revision!:Math.max(old?.revision??0,floor)+1;
    if(!Number.isSafeInteger(revision))throw Error("INVALID_GRANT_STORE");
    return {...grant,revision};
   });
-  const next:Entry[]=[...retained,...chosen.map(grant=>({id:grant.id,root:grant.canonicalRoot,role:grant.role,permissions:[...grant.permissions],rootIdentity:{...grant.rootIdentity},revision:grant.revision}))];
-  const registry=await validatedRegistry(next,dir);
+  const next:Entry[]=[...retained,...tombstones,...chosen.map(grant=>({id:grant.id,root:grant.canonicalRoot,role:grant.role,permissions:[...grant.permissions],rootIdentity:{...grant.rootIdentity},revision:grant.revision}))];
+  let registry:WorkspaceRegistry;
+  try{registry=await validatedRegistry(next,dir);}
+  catch(error){
+   if(error instanceof ConnectorError&&error.code==="SOURCE_UNVERIFIED")
+    throw new ConnectorError("WORKSPACE_REAUTH_REQUIRED","Other retained roots need reauthorization; inspect_workspace_recovery then explicitly rebind or retire verifiably stale IDs");
+   throw error;
+  }
   const bound=chosen.map(grant=>({id:grant.id,root:grant.canonicalRoot,grant:registry.get(grant.id)!}));
-  await persistEntries(dir,next,publication,beforePublish,stored.revisionFloor);return bound;
+  await persistEntries(dir,next,publication,beforePublish,floor);return bound;
  });
 }
 async function enrollBatch(requests:ReadonlyArray<{id:string;root:string}>,permissions:WorkspacePermission[],dir:string,beforePublish?:BeforePublish):Promise<Array<{id:string;root:string;grant:WorkspaceGrant}>>{

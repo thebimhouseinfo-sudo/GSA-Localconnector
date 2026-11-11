@@ -36,6 +36,14 @@ Mỗi lần chọn 1–16 thư mục có sẵn bằng đường dẫn tuyệt đ
 
 Role workspace mô tả phạm vi toàn quyền dự kiến, không chứng minh backend đã ghi file/chạy shell/Git được. Đọc `connector_status` để biết khả năng thực tế; các backend còn thiếu vẫn bị chặn. Các phép thử source không thay thế gọi plugin đang cài hoặc kiểm chứng native.
 
+### Workspace reauthorization — P1
+
+`inspect_workspace_recovery(control_token:"...")` reads a diagnostic inventory from the protected grant store, requiring the **current controller lease** because it reveals prior explicitly selected private root names. It reports `ACTIVE`, `STALE`, `REAUTH_REQUIRED`, `REVOKED`, with reasons such as `ROOT_INODE_CHANGED`, `ROOT_DEVICE_CHANGED`, `ROOT_CANONICAL_CHANGED`, `ROOT_NOT_FOUND` and `ROOT_PERMISSION_DENIED`. This inventory never grants authority.
+
+When a user explicitly selects the current absolute root with `bind_workspaces({roots:[{path:"/absolute/root",role:"workspace"}],control_token:"..."})`, its new device/inode can replace an old pin for the **same canonical root and trusted ID**, with revision advanced. If another old root remains stale, binding fails atomically with `WORKSPACE_REAUTH_REQUIRED`. The user can select every required root, or explicitly retire only confirmed stale IDs in the same operation: `bind_workspaces({roots:[...],revoke_stale_ids:["old-id"],control_token:"..."})`. No active or unverifiable grant can be retired this way.
+
+After durable readback, `list_workspaces` and a restart reflect the newly selected workspace. Native write operations remain **blocked** until the signed grant set has been qualified and reinstalled with the **connector owner stopped**. If `fileGrantSyncRequired` is true and `fileGrantSyncAction=STOP_OWNER_AND_APPLY_QUALIFIED_RECOVERY`, follow the reviewed `apply-recovery` flow; do not bypass the signed broker, replace Recovery with BASE, or delete the journal. A successful bind is not proof of available native writes.
+
 ### Scoped files: trạng thái đọc và ghi khi thay đổi grants
 
 - `fileBackendAvailable` giữ ý nghĩa cũ: signed native mutation backend, không phải khả năng của tất cả API đọc.

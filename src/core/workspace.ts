@@ -155,9 +155,17 @@ export class WorkspaceRegistry {
     const generation=this.mutationGeneration,prior=new Map([[grant.id,[this.grants.get(grant.id),this.revisions.get(grant.id)] as const]]);
     let canonical:string,info;
     try {canonical=await fs.realpath(grant.canonicalRoot);info=await fs.lstat(grant.canonicalRoot,{bigint:true});}
-    catch {throw new ConnectorError("SOURCE_UNVERIFIED","Workspace root identity unavailable");}
-    if(canonical!==grant.canonicalRoot||!info.isDirectory()||String(info.dev)!==grant.rootIdentity.device||String(info.ino)!==grant.rootIdentity.inode)
-      throw new ConnectorError("SOURCE_UNVERIFIED","Workspace root identity changed");
+    catch(error){
+      const code=(error as NodeJS.ErrnoException).code;
+      const reason=code==="ENOENT"||code==="ENOTDIR"?"ROOT_NOT_FOUND":
+        code==="EACCES"||code==="EPERM"?"ROOT_PERMISSION_DENIED":"ROOT_UNVERIFIED";
+      throw new ConnectorError("SOURCE_UNVERIFIED",`Workspace root identity unavailable: ${reason}`);
+    }
+    if(canonical!==grant.canonicalRoot||!info.isDirectory()||String(info.dev)!==grant.rootIdentity.device||String(info.ino)!==grant.rootIdentity.inode){
+      const reason=canonical!==grant.canonicalRoot?"ROOT_CANONICAL_CHANGED":!info.isDirectory()?"ROOT_NOT_DIRECTORY":
+        String(info.dev)!==grant.rootIdentity.device?"ROOT_DEVICE_CHANGED":"ROOT_INODE_CHANGED";
+      throw new ConnectorError("SOURCE_UNVERIFIED",`Workspace root identity changed: ${reason}`);
+    }
     await this.allowedRoot(canonical);
     this.checkPreparedState(generation,prior);
     const revision=this.revisions.get(grant.id)??0,active=this.grants.get(grant.id);
