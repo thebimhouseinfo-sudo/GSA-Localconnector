@@ -262,11 +262,24 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
                const id=existing?.id??"ws-"+createHash("sha256").update(canonical).digest("hex").slice(0,16);
                requests.push({id,root:canonical,...(selection.role===undefined?{}:{role:selection.role})});
              }
+             const retiring=(args.revoke_stale_ids as string[]|undefined)??[];
+             if(retiring.length){
+               const inventory=await inspectTrustedWorkspaceRecovery(directory);
+               if(retiring.some(id=>!inventory.some(item=>item.workspace_id===id&&item.state==="STALE")))
+                 throw new ConnectorError("PERMISSION_DENIED","Only currently verified stale IDs can be retired");
+               // Fence old process admission BEFORE the durable revocation publication.
+               for(const id of retiring){processes.fenceWorkspace(id);durable.fenceWorkspace(id);}
+             }
              const bound=await publishScope(beforePublish=>selections[0]!.role===undefined?
                enrollReadOnlyBatch(requests,directory,beforePublish):
                enrollRolesTrustedBatch(requests.map(request=>({...request,role:request.role!})),directory,beforePublish,(args.revoke_stale_ids as string[]|undefined)??[]),
                (durable,items)=>{for(const item of items){const active=durable.get(item.id);if(!active||grantKey(active)!==grantKey(item.grant))throw Error("Bound grant changed after publication");}});
              await durable.initialize();
+             const retiredProcesses=[];
+             for(const id of retiring){
+               const stopped=await stopManaged(id);
+               retiredProcesses.push({workspace_id:id,state:stopped.state});
+             }
              const admission=new Map<string,boolean>();
              for(const item of bound){
                const prior=[...processRevocations.entries()].filter(([id,value])=>id===item.id||sameProcessRoot(value.grant,item.grant));
@@ -284,6 +297,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
              }
              await options.onScopeChanged?.("bind");
              return bound.map(item=>({workspace_id:item.id,root:item.root,role:item.grant.role??null,permissions:item.grant.permissions,revision:item.grant.revision,
+               ...(retiredProcesses.length?{retired_stale_processes:retiredProcesses}:{ }),
                ...(admission.get(item.id)===false?{managed_processes:{state:"UNKNOWN",reason:"Process admission remains fenced: previous managed work is not confirmed stopped"}}:{})}));
            });
           }break;
