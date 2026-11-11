@@ -58,6 +58,16 @@ When a user explicitly selects the current absolute root with `bind_workspaces({
 
 After durable readback, `list_workspaces` and a restart reflect the newly selected workspace. Native write operations remain **blocked** until the signed grant set has been qualified and reinstalled with the **connector owner stopped**. If `fileGrantSyncRequired` is true and `fileGrantSyncAction=STOP_OWNER_AND_APPLY_QUALIFIED_RECOVERY`, follow the reviewed `apply-recovery` flow; do not bypass the signed broker, replace Recovery with BASE, or delete the journal. A successful bind is not proof of available native writes.
 
+### Kiểm tra signed Recovery archive trước khi dừng owner (read-only)
+
+Nếu File Backend báo `REQUIRES_SIGNED_REINSTALL`, không suy diễn rằng archive đã mất hoặc không hợp lệ. Một **đường dẫn tuyệt đối** tới archive hợp lệ phải được cung cấp từ người vận hành/cấu hình đã được phê duyệt. Để kiểm tra tất cả chữ ký/chứng thực nguồn/host và input bytes **mà không thay đổi grants, owner, journal hoặc bản cài**, chạy trên Mac:
+
+```bash
+node scripts/install-mac-scoped-files.mjs verify-recovery-archive --qualification-archive "/absolute/path/to/approved/recovery-archive"
+```
+
+Chỉ kết quả `RECOVERY_ARCHIVE_VERIFIED_READ_ONLY` mới xác nhận archive đủ điều kiện ở thời điểm đọc. Đây **không phải** xác nhận File Backend đã được kích hoạt. Sau khi workspace cần sử dụng đã được rebind rõ ràng, phải chuẩn bị mapping recovery root chính xác cho từng workspace ACTIVE có quyền ghi, dừng owner bằng Quit và theo quy trình `apply-recovery --qualification-archive ... --recovery-roots ...` đã được kiểm duyệt. Phải bảo toàn signed installation cũ và journal. Không tự tìm đường dẫn archive, không tự chọn vùng ghi phụ và không chạy `rebind-base` nếu có Recovery.
+
 ### Scoped files: trạng thái đọc và ghi khi thay đổi grants
 
 - `fileBackendAvailable` giữ ý nghĩa cũ: signed native mutation backend, không phải khả năng của tất cả API đọc.
