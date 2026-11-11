@@ -78,7 +78,7 @@ export async function readTrustedRootBindings(dir=identityDirectory()):Promise<r
 /** Validate the complete active set, with explicit entries last so legacy imports cannot hide overlaps. */
 async function validatedRegistry(entries:Entry[],privateRoot?:string):Promise<WorkspaceRegistry>{
  validateEntries(entries);
- const registry=new WorkspaceRegistry(path,privateRoot?[privateRoot]:[]),active=entries.filter(entry=>!entry.revoked&&pinned(entry));
+ const registry=new WorkspaceRegistry(path,privateRoot?[privateRoot]:[]),active=await verifiedActiveEntries(entries);
  for(const entry of [...active.filter(entry=>entry.role===undefined),...active.filter(entry=>entry.role!==undefined)])
   if(pinned(entry))await registry.importTrusted(asGrant(entry));
  if(entries.some(entry=>entry.role!==undefined)){
@@ -105,43 +105,41 @@ export async function loadTrustedRegistry(dir=identityDirectory()):Promise<Works
  * Never grant authority from this read: the caller must separately use
  * loadTrustedRegistry for any operation requiring a valid current root.
  */
-async function stalePinnedEntries(entries:readonly Entry[]):Promise<Entry[]>{
- const result:Entry[]=[];
- for(const entry of entries){
-  if(entry.revoked||!pinned(entry))continue;
-  let canonical:string,stat;
-  try{
-   canonical=await fs.realpath(entry.root);
-   stat=await fs.lstat(entry.root,{bigint:true});
-  }catch(error){
-   if(["ENOENT","ENOTDIR"].includes((error as NodeJS.ErrnoException).code??"")){result.push(entry);continue;}
-   throw error; // EACCES/IO errors are unknown, never permission for revocation
-  }
-  if(canonical!==entry.root||!stat.isDirectory()||
-    String(stat.dev)!==entry.rootIdentity.device||String(stat.ino)!==entry.rootIdentity.inode)result.push(entry);
+type RecoveryState="ACTIVE"|"STALE"|"REAUTH_REQUIRED"|"REVOKED";
+type RecoveryAssessment={state:RecoveryState;reason:string};
+/** Only an exact current realpath, device and inode may enter the ACTIVE
+ * registry. Persisted stale roots are retained for explicit reauthorization. */
+async function assessGrant(entry:Entry):Promise<RecoveryAssessment>{
+ if(entry.revoked)return {state:"REVOKED",reason:"GRANT_REVOKED"};
+ if(!pinned(entry))return {state:"REAUTH_REQUIRED",reason:"UNPINNED_LEGACY_GRANT"};
+ try{
+  const canonical=await fs.realpath(entry.root),stat=await fs.lstat(entry.root,{bigint:true});
+  const reason=canonical!==entry.root?"ROOT_CANONICAL_CHANGED":!stat.isDirectory()?"ROOT_NOT_DIRECTORY":
+   String(stat.dev)!==entry.rootIdentity.device?"ROOT_DEVICE_CHANGED":String(stat.ino)!==entry.rootIdentity.inode?"ROOT_INODE_CHANGED":null;
+  return reason?{state:"STALE",reason}:{state:"ACTIVE",reason:"IDENTITY_VERIFIED"};
+ }catch(error){
+  const code=(error as NodeJS.ErrnoException).code;
+  if(["ENOENT","ENOTDIR"].includes(code??""))return {state:"STALE",reason:"ROOT_NOT_FOUND"};
+  if(["EACCES","EPERM"].includes(code??""))return {state:"REAUTH_REQUIRED",reason:"ROOT_PERMISSION_DENIED"};
+  throw error; // Unknown filesystem errors are never accepted as valid pins.
  }
- return result;
 }
-/** Diagnostics only: old pins never authorize access to the currently named path. */
-export async function inspectTrustedWorkspaceRecovery(dir=identityDirectory()):Promise<readonly {workspace_id:string;root:string;role:WorkspaceRole|null;revision:number|null;state:"ACTIVE"|"STALE"|"REAUTH_REQUIRED"|"REVOKED";reason:string}[]>{
+async function verifiedActiveEntries(entries:readonly Entry[]):Promise<Entry[]>{
+ const valid:Entry[]=[];
+ for(const entry of entries)if(!entry.revoked&&pinned(entry)&&(await assessGrant(entry)).state==="ACTIVE")valid.push(entry);
+ return valid;
+}
+/** Permission-denied or otherwise unverifiable pins are never safe to retire. */
+async function stalePinnedEntries(entries:readonly Entry[]):Promise<Entry[]>{
+ const stale:Entry[]=[];
+ for(const entry of entries)if(!entry.revoked&&pinned(entry)&&(await assessGrant(entry)).state==="STALE")stale.push(entry);
+ return stale;
+}
+/** Read-only metadata; does not grant authority on the named directory. */
+export async function inspectTrustedWorkspaceRecovery(dir=identityDirectory()):Promise<readonly {workspace_id:string;root:string;role:WorkspaceRole|null;revision:number|null;state:RecoveryState;reason:string}[]>{
  requireProtectedState();
  const entries=await readEntries(dir),status=[];
- for(const entry of entries){
-  const common={workspace_id:entry.id,root:entry.root,role:entry.role??null,revision:entry.revision??null};
-  if(entry.revoked){status.push({...common,state:"REVOKED" as const,reason:"GRANT_REVOKED"});continue;}
-  if(!pinned(entry)){status.push({...common,state:"REAUTH_REQUIRED" as const,reason:"UNPINNED_LEGACY_GRANT"});continue;}
-  try{
-   const canonical=await fs.realpath(entry.root),stat=await fs.lstat(entry.root,{bigint:true});
-   const reason=canonical!==entry.root?"ROOT_CANONICAL_CHANGED":!stat.isDirectory()?"ROOT_NOT_DIRECTORY":
-    String(stat.dev)!==entry.rootIdentity.device?"ROOT_DEVICE_CHANGED":String(stat.ino)!==entry.rootIdentity.inode?"ROOT_INODE_CHANGED":null;
-   status.push({...common,state:reason?"STALE" as const:"ACTIVE" as const,reason:reason??"IDENTITY_VERIFIED"});
-  }catch(error){
-   const code=(error as NodeJS.ErrnoException).code;
-   if(["ENOENT","ENOTDIR"].includes(code??""))status.push({...common,state:"STALE" as const,reason:"ROOT_NOT_FOUND"});
-   else if(["EACCES","EPERM"].includes(code??""))status.push({...common,state:"REAUTH_REQUIRED" as const,reason:"ROOT_PERMISSION_DENIED"});
-   else throw error; // Unknown I/O failure is not proof of stale authority.
-  }
- }
+ for(const entry of entries)status.push({workspace_id:entry.id,root:entry.root,role:entry.role??null,revision:entry.revision??null,...await assessGrant(entry)});
  return Object.freeze(status.map(item=>Object.freeze(item)));
 }
 export async function inspectStaleTrustedRoots(dir=identityDirectory()):Promise<readonly {id:string;root:string;revision:number}[]>{
@@ -223,7 +221,7 @@ async function persistEntries(dir:string,entries:Entry[],publication:Publication
  try{
   try{await handle.writeFile(payload);await handle.sync();}finally{await handle.close();}
   if(beforePublish){
-   const active=entries.filter(entry=>!entry.revoked&&pinned(entry)).map(entry=>{
+   const active=(await verifiedActiveEntries(entries)).map(entry=>{
     const grant=asGrant(entry as Entry&{rootIdentity:NonNullable<Entry['rootIdentity']>;revision:number});
     return Object.freeze({...grant,rootIdentity:Object.freeze({...grant.rootIdentity}),permissions:Object.freeze([...grant.permissions])});
    });
@@ -289,23 +287,9 @@ export async function enrollRolesTrustedBatch(requests:readonly WorkspaceRoleReq
    return {...grant,revision};
   });
   const next:Entry[]=[...retained,...tombstones,...chosen.map(grant=>({id:grant.id,root:grant.canonicalRoot,role:grant.role,permissions:[...grant.permissions],rootIdentity:{...grant.rootIdentity},revision:grant.revision}))];
-  let registry:WorkspaceRegistry;
-  try{registry=await validatedRegistry(next,dir);}
-  catch(error){
-   if(error instanceof ConnectorError&&error.code==="SOURCE_UNVERIFIED"){
-    // This path is reached only after authenticated controller selection. Return
-    // bounded metadata to MCP clients whose cached catalog omits the inspector.
-    const retainedIds=new Set(retained.map(entry=>entry.id));
-    const blockers=(await inspectTrustedWorkspaceRecovery(dir)).filter(item=>
-      retainedIds.has(item.workspace_id)&&(item.state==="STALE"||item.state==="REAUTH_REQUIRED"));
-    if(!blockers.length)throw error; // Preserve other validation failure causes.
-    const details=blockers.slice(0,16).map(item=>
-      `${item.workspace_id} [${item.role??"legacy"}; ${item.reason}; ${item.root.slice(0,240)}]`).join("; ");
-    throw new ConnectorError("WORKSPACE_REAUTH_REQUIRED",
-      `Retained roots require reauthorization; no changes committed: ${details}. Reselect needed roots or explicitly retire only verified STALE IDs via revoke_stale_ids; permission-denied REAUTH_REQUIRED roots cannot be retired.`);
-   }
-   throw error;
-  }
+  // Unselected stale pins stay in the durable store without ACTIVE authority.
+  // Cross-role and parent-child checks still apply to all verified active pins.
+  const registry=await validatedRegistry(next,dir);
   const bound=chosen.map(grant=>({id:grant.id,root:grant.canonicalRoot,grant:registry.get(grant.id)!}));
   await persistEntries(dir,next,publication,beforePublish,floor);return bound;
  });

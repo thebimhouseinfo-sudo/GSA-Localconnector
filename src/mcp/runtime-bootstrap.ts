@@ -18,7 +18,7 @@ import {CiArtifactStore} from "../local/ci-artifacts.js";
 import {requireCurrentControl} from "./control-context.js";
 import {type MacOwner} from "../local/mac-owner.js";
 import {createReadOnlyTools,type ToolCall,type ToolResult} from "./server.js";
-import type {WorkspaceStartupIssue} from './startup-registry.js';
+import {inspectStartupIssue,type WorkspaceStartupIssue} from './startup-registry.js';
 
 
 /** A concurrent durable lease read/renew may briefly own the exclusive lock.
@@ -100,8 +100,9 @@ export async function bootstrapMcpTools(registry:WorkspaceRegistry,identityRoot=
   grantDirectory:identityRoot,
   processPersistence,
   fileBackendState:()=>({files,fileBlockedReason,directoryCopyBlockedReason}),
-  onScopeChanged:async kind=>{
-   if(kind==="bind")workspaceStartupIssue=undefined;
+  onScopeChanged:async _kind=>{
+   // Successful selected rebind does not silently hide unrelated retained pins.
+   workspaceStartupIssue=await inspectStartupIssue(identityRoot);
    await reloadFiles();
   }
  });
