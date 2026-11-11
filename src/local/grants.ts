@@ -190,8 +190,9 @@ export async function pruneInactiveWorkspaceRegistrations(dir=identityDirectory(
     case "STALE":removed_stale++;break;
     case "ACTIVE":retained.push(entry);retained_active++;break;
     case "REAUTH_REQUIRED":retained.push(entry);retained_reauth_required++;break;
-  }
-  if(removed_stale+removed_revoked){
+    }
+   }
+   if(removed_stale+removed_revoked){
    const floor=Math.max(store.revisionFloor,...store.entries.map(entry=>entry.revision??0));
    if(!Number.isSafeInteger(floor)||floor>=Number.MAX_SAFE_INTEGER)throw Error("INVALID_GRANT_STORE");
    // The removed ids are no longer active. A future explicit enrollment must
