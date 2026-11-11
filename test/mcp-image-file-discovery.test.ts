@@ -16,7 +16,7 @@ test("authenticated tools/list advertises image importer as model-visible filePa
  const address=server.address();
  assert.ok(address&&typeof address!=="string");
  const url="http://127.0.0.1:"+address.port+"/mcp";
- const call=async bearer=>{
+ const call=async (bearer:string)=>{
   const response=await fetch(url,{method:"POST",
    headers:{"content-type":"application/json","accept":"application/json, text/event-stream",
     "mcp-protocol-version":"2025-03-26",authorization:"Bearer "+bearer},
