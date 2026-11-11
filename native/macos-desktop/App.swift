@@ -280,6 +280,16 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
         process.terminate()
     }
 
+    // Provide the same bounded cleanup from the actual macOS Dock context menu,
+    // in addition to the status-bar icon menu.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        let prune = menu.addItem(withTitle: "Dọn đăng ký cũ…", action: #selector(requestPrune(_:)), keyEquivalent: "")
+        prune.target = self
+        prune.isEnabled = pruneItem?.isEnabled ?? false
+        return menu
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { false }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
