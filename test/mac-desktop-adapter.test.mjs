@@ -81,6 +81,48 @@ test('blocked Quit status is published without changing runtime state; retry can
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
 
+
+test('menu registration cleanup reports stale/revoked counts and preserves running session',async()=>{
+ const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-menu-prune-')));
+ try{
+  const statusPath=path.join(root,'status.json');
+  let runs=0;
+  const adapter=new MacDesktopAdapter({configPath:path.join(root,'config.json'),registrationPruner:async()=>{
+    runs++;
+    return {removed_stale:6,removed_revoked:2,retained_active:2,retained_reauth_required:0};
+  }});
+  adapter.config={directory:root,statusPath};
+  adapter.runtime={status:async()=>({state:'RUNNING',connection:'CONNECTED'})};
+  const first=await adapter.pruneInactiveRegistrations();
+  assert.equal(first.registrationPruneStatus,'DONE');
+  assert.equal(first.registrationPruneAttempt,1);
+  assert.deepEqual(first.registrationPruneSummary,{removed_stale:6,removed_revoked:2,retained_active:2,retained_reauth_required:0});
+  assert.equal(JSON.parse(await fs.readFile(statusPath,'utf8')).registrationPruneStatus,'DONE');
+  assert.equal(runs,1,'no owner process or tunnel is stopped by this operation');
+  const second=await adapter.pruneInactiveRegistrations();
+  assert.equal(second.registrationPruneAttempt,2);
+  assert.equal(runs,2,'each explicit menu request has one serial pruner invocation');
+  adapter.runtime={status:async()=>({state:'STOPPED',connection:'DISCONNECTED'})};
+  const stopped=await adapter.pruneInactiveRegistrations();
+  assert.equal(stopped.registrationPruneStatus,'FAILED');
+  assert.equal(stopped.registrationPruneAttempt,3);
+  assert.equal(runs,2,'stopped app must not mutate protected registrations');
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+
+test('menu registration cleanup fail-closed result is reported without leaking private errors',async()=>{
+ const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-menu-prune-denied-')));
+ try{
+  const adapter=new MacDesktopAdapter({configPath:path.join(root,'config.json'),registrationPruner:async()=>{throw Object.assign(Error('private folder path'),{code:'GRANT_STORE_BUSY'});}});
+  adapter.config={directory:root,statusPath:path.join(root,'status.json')};
+  adapter.runtime={status:async()=>({state:'RUNNING',connection:'CONNECTED'})};
+  const result=await adapter.pruneInactiveRegistrations();
+  assert.equal(result.registrationPruneStatus,'FAILED');
+  assert.equal(result.registrationPruneReason,'GRANT_STORE_BUSY');
+  assert.doesNotMatch(JSON.stringify(result),/private folder path/);
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+
 test('menu Pause/Resume only changes private admission state; no process is killed',async()=>{
  const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-menu-pause-')));
  await fs.chmod(root,0o700);
