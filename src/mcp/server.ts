@@ -204,6 +204,13 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           fileBlockedReason:backend.fileBlockedReason??(nativeFiles&&!fullFileWrites?"Partial native backend; compare-and-mutate operations remain blocked":nativeFiles?null:"Verified native file installation unavailable")
         };
       };
+      // A changed, signed grant set cannot be repaired by a successful registry bind.
+      // Report the required offline recovery without constructing a backend or granting writes.
+      const fileMutationDenied=():never=>{
+        if(backend.fileBlockedReason==="Scoped file grant set changed")
+          throw Object.assign(Error("Scoped file grant set changed; qualified signed recovery is required"),{code:"FILE_GRANT_RECOVERY_REQUIRED"});
+        throw Error("SECURITY_BLOCKED");
+      };
       const args=call.arguments??{};
       const desktopPaused=await isDesktopPaused();
       // Pause rejects NEW effects. Readback/diagnostics/stopping owned work stay
@@ -561,10 +568,11 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           result=outcome;break;
         }
         case "edit_file_as_new_version":
-          if(!fileOperations.includes("create_file")||!protectedStateCapability().available||!controlStore)throw Error("SECURITY_BLOCKED");
+          if(!fileOperations.includes("create_file"))fileMutationDenied();
+          if(!protectedStateCapability().available||!controlStore)throw Error("SECURITY_BLOCKED");
           result=await dispatchFileMutation(call.name,args,registry,nativeFiles);break;
         case "create_file_bytes":case "update_file_bytes":case "create_file":case "update_file":case "edit_file":case "apply_patch":case "create_directory":case "delete_file":case "copy_file":case "move_file":
-          if(!fileOperations.includes(call.name==="create_file_bytes"?"create_file":call.name==="update_file_bytes"?"update_file":call.name))throw Error("SECURITY_BLOCKED");
+          if(!fileOperations.includes(call.name==="create_file_bytes"?"create_file":call.name==="update_file_bytes"?"update_file":call.name))fileMutationDenied();
           result=await dispatchFileMutation(call.name,args,registry,nativeFiles);
           if(result&&typeof result==="object"&&"transaction_id" in result&&"status" in result&&(result.status==="CONFLICT"||result.status==="UNKNOWN")){
             return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:result.status==="UNKNOWN"?"RESULT_UNKNOWN":"FILE_TRANSACTION_CONFLICT",result})}]};
@@ -609,7 +617,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           if(!durableHistory&&(args.cursor!==undefined||args.limit!==undefined))throw Error("SECURITY_BLOCKED");
           result=durableHistory?(call.name==="process_status"?await durable.status(args.workspace_id,args.process_id):await durable.output(args.workspace_id,args.process_id,Number(args.cursor??0),Number(args.limit??65536))):processes.get(args.workspace_id,args.process_id);break;
         case "batch_file_operations":
-          if(!batchFileWrites)throw Error("SECURITY_BLOCKED");
+          if(!batchFileWrites)fileMutationDenied();
           if(typeof args.workspace_id!=="string"||Object.keys(args).some(k=>!["workspace_id","operations"].includes(k)))throw Error("INVALID_ARGUMENTS");
           result=await batchFileOperations(registry,nativeFiles,args.workspace_id,args.operations);break;
         default: if(plannedToolNames.has(call.name))throw Error("SECURITY_BLOCKED"); else throw Error("UNKNOWN_TOOL");
@@ -617,7 +625,16 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
       if(readSession)await (readSession as WorkspaceReadSession).finish();
       return {content:[{type:"text",text:JSON.stringify({ok:true,result})}]};
     } catch(e) {
-      return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:e&&typeof e==="object"&&"code" in e&&typeof e.code==="string"?e.code:e instanceof Error?e.message:"UNKNOWN_ERROR",...(e instanceof Error?{message:e.message}:{})})}]};
+      const code=e&&typeof e==="object"&&"code" in e&&typeof e.code==="string"?e.code:e instanceof Error?e.message:"UNKNOWN_ERROR";
+      return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code,
+        ...(code==="FILE_GRANT_RECOVERY_REQUIRED"?{
+          operation:call.name,
+          backend_state:"REQUIRES_SIGNED_REINSTALL",
+          required_action:"STOP_OWNER_AND_APPLY_QUALIFIED_RECOVERY",
+          retryable_before_recovery:false
+        }:{}),
+        ...(e instanceof Error?{message:e.message}:{})
+      })}]};
     } finally {
       if(readSession)try{await (readSession as WorkspaceReadSession).dispose();}
       catch(e){return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:"READ_CLEANUP_UNCONFIRMED",message:e instanceof Error?e.message:"READ_CLEANUP_UNCONFIRMED"})}]};}
