@@ -204,14 +204,29 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           fileBlockedReason:backend.fileBlockedReason??(nativeFiles&&!fullFileWrites?"Partial native backend; compare-and-mutate operations remain blocked":nativeFiles?null:"Verified native file installation unavailable")
         };
       };
-      // A changed, signed grant set cannot be repaired by a successful registry bind.
-      // Report the required offline recovery without constructing a backend or granting writes.
+      const args=call.arguments??{};
+      // A changed signed grant set cannot be repaired by a registry bind.
+      // Only describe recovery to an already-authorized writable workspace;
+      // missing or read-only grants retain the original opaque denial.
       const fileMutationDenied=():never=>{
-        if(backend.fileBlockedReason==="Scoped file grant set changed")
-          throw Object.assign(Error("Scoped file grant set changed; qualified signed recovery is required"),{code:"FILE_GRANT_RECOVERY_REQUIRED"});
+        if(backend.fileBlockedReason==="Scoped file grant set changed"){
+          let authorized=false;
+          try{
+            if(["copy_file","move_file","edit_file_as_new_version"].includes(call.name)){
+              if(typeof args.source_workspace_id==="string"&&typeof args.destination_workspace_id==="string"){
+                registry.requireGrant(args.source_workspace_id,call.name==="move_file"?"write":"read");
+                registry.requireGrant(args.destination_workspace_id,"write");
+                authorized=true;
+              }
+            }else if(typeof args.workspace_id==="string"){
+              registry.requireGrant(args.workspace_id,"write");
+              authorized=true;
+            }
+          }catch{authorized=false;}
+          if(authorized)throw Object.assign(Error("Scoped file grant set changed; qualified signed recovery is required"),{code:"FILE_GRANT_RECOVERY_REQUIRED"});
+        }
         throw Error("SECURITY_BLOCKED");
       };
-      const args=call.arguments??{};
       const desktopPaused=await isDesktopPaused();
       // Pause rejects NEW effects. Readback/diagnostics/stopping owned work stay
       // available, and already-running operations are not interrupted.
