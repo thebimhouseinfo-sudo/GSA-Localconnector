@@ -31,7 +31,7 @@ test("image file tool requires current controller, imports only to active worksp
   };
   const tools=createReadOnlyTools(registry,backend,null,null,null,null,null,null,null,null,new ControlLeaseStore(identity),{
    grantDirectory:identity,
-   downloadImageFile:async(file,target)=>{downloads++;return downloadChatGptImage(file,target,(async()=>new Response(Uint8Array.from(png).buffer as ArrayBuffer,{status:200})) as typeof fetch);}
+   downloadImageFile:async(file,target)=>downloadChatGptImage(file,target,(async()=>{downloads++;return new Response(Uint8Array.from(png).buffer as ArrayBuffer,{status:200});}) as typeof fetch)
   });
   const call=async(name:string,args:Record<string,unknown>={})=>body(await tools({name,arguments:args}));
   const schema=toolDefinitions().find(x=>x.name==="import_image_file") as any;
