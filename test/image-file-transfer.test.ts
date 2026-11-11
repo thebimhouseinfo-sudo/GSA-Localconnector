@@ -8,7 +8,7 @@ const file={file_id:"file_test_asset_123456",download_url:"https://files.oaiuser
 function stub(bytes:Uint8Array=sample,status=200,headers?:Record<string,string>):typeof fetch{
  return (async (_input,options)=>{
   assert.equal(options?.redirect,"manual");
-  return new Response(bytes,{status,headers:headers??{"content-type":"application/octet-stream"}});
+  return new Response(Uint8Array.from(bytes).buffer as ArrayBuffer,{status,headers:headers??{"content-type":"application/octet-stream"}});
  }) as typeof fetch;
 }
 test("ChatGPT file param imports exact PNG bytes, MIME and SHA without altering data",async()=>{
