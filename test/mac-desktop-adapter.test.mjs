@@ -45,7 +45,7 @@ test('overlapping slow status probes publish once and future refreshes still wor
   release();
   const results=await Promise.all(requests);
   assert.equal(count,1);
-  assert.deepEqual(results,Array(3).fill({state:'RUNNING',connection:'CONNECTING'}));
+  assert.deepEqual(results,Array(3).fill({state:'RUNNING',connection:'CONNECTING',desktopPaused:false}));
   adapter.runtime={status:async()=>({state:'RUNNING',connection:'CONNECTED'})};
   await adapter.publishStatus();
   assert.equal(JSON.parse(await fs.readFile(statusPath,'utf8')).connection,'CONNECTED');
@@ -70,14 +70,14 @@ test('blocked Quit status is published without changing runtime state; retry can
   adapter.runtime={status:async()=>({state:'RUNNING',connection:'CONNECTED'})};
   adapter.quitOutcome={stopAttempt:1,stopBlockedReason:'ACTIVE_WORK_UNKNOWN'};
   const denied=await adapter.publishStatus();
-  assert.deepEqual(denied,{state:'RUNNING',connection:'CONNECTED',stopAttempt:1,stopBlockedReason:'ACTIVE_WORK_UNKNOWN'});
+  assert.deepEqual(denied,{state:'RUNNING',connection:'CONNECTED',desktopPaused:false,stopAttempt:1,stopBlockedReason:'ACTIVE_WORK_UNKNOWN'});
   assert.deepEqual(JSON.parse(await fs.readFile(statusPath,'utf8')),denied);
   adapter.quitOutcome={stopAttempt:2,stopBlockedReason:'ACTIVE_WORK_PRESENT'};
   assert.equal((await adapter.publishStatus()).stopAttempt,2);
   assert.equal(JSON.parse(await fs.readFile(statusPath,'utf8')).stopBlockedReason,'ACTIVE_WORK_PRESENT');
   adapter.quitOutcome={stopAttempt:3,stopBlockedReason:null};
   adapter.runtime={status:async()=>({state:'STOPPED',connection:'DISCONNECTED'})};
-  assert.deepEqual(await adapter.publishStatus(),{state:'STOPPED',connection:'DISCONNECTED',stopAttempt:3,stopBlockedReason:null});
+  assert.deepEqual(await adapter.publishStatus(),{state:'STOPPED',connection:'DISCONNECTED',desktopPaused:false,stopAttempt:3,stopBlockedReason:null});
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
 
