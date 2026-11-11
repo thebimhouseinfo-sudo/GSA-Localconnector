@@ -16,6 +16,7 @@ The source binding API accepts explicit workspace/reference roles and retains th
 - [Milestone proposals](docs/MILESTONES.md)
 - [First Mac boundary feasibility plan](docs/plans/M1-MAC-BOUNDARY-FEASIBILITY.md)
 - [Workspace model](docs/workspaces/LOCAL-ENROLLMENT.md)
+- [ChatGPT ImageGen → local image asset transfer](docs/workspaces/IMAGE-ASSET-TRANSFER.md)
 - [Transport setup](docs/tunnel/SETUP.md)
 
 ## Build and tests
