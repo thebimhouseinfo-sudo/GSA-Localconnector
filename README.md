@@ -25,3 +25,11 @@ Node >=20 is required; source CI uses Node 22. Install with `npm ci --ignore-scr
 Product code is in src/, native/ and scripts/; tests in test/ and product test scripts. Native tests require matching hosts/disposable fixtures. A source build does not certify native or live readiness.
 
 This repository versions product source, CI/build/install/test scripts and project documents. Agent harness, skills and local Codex configuration are excluded; product tests do not require them.
+
+## Dọn đăng ký workspace cũ trên macOS
+
+Menu icon **GSA Local Connector** có mục **Dọn đăng ký cũ…**. Mục này chỉ compact các bản ghi workspace `STALE` (không còn trùng identity pin) và `REVOKED` (đã thu hồi) trong protected grant store, giữ nguyên các grants `ACTIVE`, các grant cần xác minh lại (`REAUTH_REQUIRED`), controller lease, tiến trình đang chạy, signed file backend và file transaction journal. Không có thao tác kill PID hay xóa file dự án.
+
+Kết quả dọn được phản hồi qua status riêng của Desktop; nếu lỗi/không xác nhận, không báo đã dọn. Các thế hệ ID cũ không được tái sử dụng do revision floor được nâng cùng atomic publication. Việc dọn các bản ghi không còn hiệu lực **không** thay thế `unbind_workspace` cho một grant còn `ACTIVE`, cũng không thu hồi quyền từ một descriptor đã mở trước đó; hãy dừng tác vụ có liên quan rồi thu hồi một grant ACTIVE thông qua API được xác thực. Đừng xóa `trusted-workspaces.json`, `scoped-files`, `file-transactions` hoặc control/owner locks để “reset nhanh”.
+
+Nếu một lần bind mới làm thay đổi tập grants còn ACTIVE, file backend vẫn yêu cầu `STOP_OWNER_AND_APPLY_QUALIFIED_RECOVERY` theo signed-recovery flow; dọn lịch sử cũ không thể bypass chữ ký đó. Source/CI không thay thế nghiệm thu trên ứng dụng Mac đã cài.
