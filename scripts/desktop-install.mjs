@@ -11,7 +11,7 @@ export async function runInstall({action='install',platformAdapter:adapter,sourc
   if(host?.ready===false||!['darwin','win32'].includes(host?.platform)||Object.values(host.tools??{}).some(x=>x===false))return result('FAILED','HOST_NOT_READY');
   const current=await adapter.inspectCurrent({action});
   if(!['EMPTY','VALID'].includes(current?.state))return result('FAILED','CURRENT_UNSAFE');
-  if(action==='doctor')return result('VERIFIED');
+  if(action==='doctor')return current.state==='VALID'?result('VERIFIED'):result('FAILED','NOT_INSTALLED');
   if(action==='uninstall'){
    if(current.state==='EMPTY')return result('UNINSTALLED');
    const stopped=await adapter.stopOwned(current);if(stopped?.stopped!==true)return result('FAILED','OWNED_WORK_ACTIVE');

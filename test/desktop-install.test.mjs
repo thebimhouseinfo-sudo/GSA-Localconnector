@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {spawn} from 'node:child_process';
 import { runInstall, createReleaseManifest, verifyReleaseManifest } from '../scripts/desktop-install.mjs';
 import {createMacInstaller} from '../scripts/mac-desktop-install.mjs';
 import {createMacPrivateFile} from '../scripts/mac-desktop-private-file.mjs';
@@ -126,6 +127,51 @@ test('update recovers an absent app alias only from a fully verified owned insta
   await fs.writeFile(path.join(runtimeRoot,'GSA Local Connector.app','fixture'),'tampered');
   assert.equal((await options.platformAdapter.inspectCurrent({action:'update'})).state,'STALE_POINTER','damaged release must refuse');
  }finally{await options.platformAdapter.releaseInstall();}
+});
+
+test('doctor is read-only: validates active owner installation but refuses tampered runtime; update stays blocked',{skip:process.platform!=='darwin'},async t=>{
+ const root=await fixture(t),home=path.join(root,'home');await fs.mkdir(home,{mode:0o700});
+ const options=await createMacInstaller({home,sourceRoot:root,registerLogin:false});
+ const id='01234567-1234-1234-1234-0123456789ab',runtimeRoot=path.join(options.installRoot,'runtimes',id);
+ const bundle=path.join(runtimeRoot,'GSA Local Connector.app'),appPath=path.join(home,'Applications/GSA Local Connector.app');
+ await fs.mkdir(bundle,{recursive:true,mode:0o700});await fs.writeFile(path.join(bundle,'fixture'),'verified runtime');
+ const manifest=await createReleaseManifest({sourceRoot:runtimeRoot,platform:'darwin',arch:'arm64',version:'fixture',allowedFiles:['GSA Local Connector.app/fixture']});
+ await fs.writeFile(path.join(runtimeRoot,'manifest.json'),JSON.stringify(manifest));
+ const desktop=path.join(options.installRoot,'desktop'),envPath=path.join(desktop,'.env');
+ await fs.mkdir(desktop,{recursive:true,mode:0o700});await fs.mkdir(path.dirname(appPath),{recursive:true,mode:0o755});
+ const privateFile=createMacPrivateFile();
+ await privateFile.replaceVerified(path.join(desktop,'runtime-current.json'),Buffer.from(JSON.stringify({id,runtimeRoot,appPath,envPath,loginPreference:false})),null);
+ await privateFile.replaceVerified(path.join(desktop,'config.json'),Buffer.from(JSON.stringify({runtimeRoot,envPath})),null);
+ await fs.symlink(bundle,appPath);
+ const owner=path.join(options.installRoot,'server-owner.lock');
+ await fs.writeFile(owner,'',{mode:0o600,flag:'wx'});
+ // The lock is held by another process, as in an installed running connector.
+ const script="import fcntl,os,sys\\nfd=os.open(sys.argv[1],os.O_RDWR|os.O_NOFOLLOW)\\nfcntl.flock(fd,fcntl.LOCK_EX)\\nprint('LOCKED',flush=True)\\nsys.stdin.buffer.read()\\n";
+ const child=spawn('/usr/bin/python3',['-I','-u','-c',script,owner],{stdio:['pipe','pipe','pipe']});
+ try{
+  await new Promise((resolve,reject)=>{
+   const timer=setTimeout(()=>reject(Error('Owner fixture did not acquire lock')),5000);
+   child.stdout.once('data',data=>{clearTimeout(timer);if(String(data).includes('LOCKED'))resolve();else reject(Error('Unexpected owner fixture response'));});
+   child.once('error',error=>{clearTimeout(timer);reject(error);});
+   child.once('exit',code=>{clearTimeout(timer);reject(Error('Owner fixture exited before acquiring lock: '+code));});
+  });
+  const runDoctor=()=>runInstall({action:'doctor',platformAdapter:{...options.platformAdapter,inspectHost:async()=>({platform:'darwin',arch:'arm64',tools:{node:true}})},sourceRoot:root,installRoot:options.installRoot,envPath});
+  assert.equal((await runDoctor()).state,'VERIFIED','doctor must verify the pinned runtime while its owner is running');
+  assert.equal((await options.platformAdapter.inspectCurrent({action:'update'})).state,'UNKNOWN_ACTIVE','update must not bypass active owner lock');
+  await fs.writeFile(path.join(bundle,'fixture'),'modified after signing');
+  const unsafe=await runDoctor();
+  assert.equal(unsafe.state,'FAILED');assert.equal(unsafe.reason,'CURRENT_UNSAFE','doctor must reject altered manifest contents');
+ }finally{
+  child.stdin.end();child.kill('SIGTERM');
+  await options.platformAdapter.releaseInstall();
+ }
+});
+
+test('doctor does not report VERIFIED if there is no installed runtime',async t=>{
+ const root=await fixture(t),{api,calls}=adapter({inspectCurrent:async()=>({state:'EMPTY'})});
+ const state=await runInstall({action:'doctor',platformAdapter:api,sourceRoot:root,installRoot:path.join(root,'managed'),envPath:path.join(root,'config.env')});
+ assert.deepEqual([state.state,state.reason],['FAILED','NOT_INSTALLED']);
+ assert.equal(calls.includes('build'),false);assert.equal(calls.includes('activate'),false);
 });
 
 test('first install enables login startup and existing configuration path is passed through without reading its key', async t => {
