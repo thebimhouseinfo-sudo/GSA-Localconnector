@@ -99,6 +99,52 @@ test("explicit binding is idempotent, preserves custom root IDs and rejects mixe
  assert.deepEqual(registry.list().map(g=>g.id),["custom-project-id"]);
 }));
 
+
+test("workspace recovery: reselecting a changed inode restores durable workspace identity",async()=>isolated(async root=>{
+ const identity=path.join(root,"identity"),work=await dir(root,"Ke-chinhta");
+ const [previous]=await enrollRolesTrustedBatch([{id:"original-id",root:work,role:"workspace"}],identity);
+ await fs.rename(work,work+"-old");await fs.mkdir(work);
+ const invoke=createTools(new WorkspaceRegistry(),identity);
+ const observed=await call(invoke,"inspect_workspace_recovery");
+ assert.equal(observed.ok,true);assert.equal(observed.result[0].state,"STALE");
+ assert.equal(observed.result[0].reason,"ROOT_INODE_CHANGED");
+ const bound=await call(invoke,"bind_workspaces",{roots:[{path:work,role:"workspace"}]});
+ assert.equal(bound.ok,true);assert.equal(bound.result[0].workspace_id,"original-id");
+ assert.ok(bound.result[0].revision>previous.grant.revision);
+ assert.equal((await loadTrustedRegistry(identity)).get("original-id")?.revision,bound.result[0].revision);
+ assert.equal((await call(invoke,"inspect_workspace_recovery")).result[0].state,"ACTIVE");
+}));
+
+test("workspace recovery: unrelated stale root is retired only by explicit controller selection",async()=>isolated(async root=>{
+ const identity=path.join(root,"identity"),work=await dir(root,"work"),old=await dir(root,"old"),ref=await dir(root,"reference");
+ await enrollRolesTrustedBatch([{id:"work",root:work,role:"workspace"},{id:"stale",root:old,role:"workspace"},{id:"ref",root:ref,role:"reference"}],identity);
+ await fs.rename(old,old+"-old");await fs.mkdir(old);
+ const invoke=createTools(new WorkspaceRegistry(),identity),before=await fs.readFile(path.join(identity,"trusted-workspaces.json"),"utf8");
+ const missing=await call(invoke,"bind_workspaces",{roots:[{path:work,role:"workspace"}]});
+ assert.equal(missing.code,"WORKSPACE_REAUTH_REQUIRED");
+ assert.equal(await fs.readFile(path.join(identity,"trusted-workspaces.json"),"utf8"),before);
+ const invalid=await call(invoke,"bind_workspaces",{roots:[{path:work,role:"workspace"}],revoke_stale_ids:["ref"]});
+ assert.equal(invalid.code,"PERMISSION_DENIED");
+ assert.equal(await fs.readFile(path.join(identity,"trusted-workspaces.json"),"utf8"),before);
+ const repaired=await call(invoke,"bind_workspaces",{roots:[{path:work,role:"workspace"}],revoke_stale_ids:["stale"]});
+ assert.equal(repaired.ok,true);
+ const observed=(await call(invoke,"inspect_workspace_recovery")).result;
+ assert.equal(observed.find((x:any)=>x.workspace_id==="stale").state,"REVOKED");
+ assert.equal(observed.find((x:any)=>x.workspace_id==="ref").state,"ACTIVE");
+ const reloaded=await loadTrustedRegistry(identity);
+ assert.deepEqual(reloaded.list().map(g=>g.id).sort(),["ref","work"]);
+ assert.throws(()=>reloaded.requireGrant("ref","write"),{code:"PERMISSION_DENIED"});
+}));
+
+test("workspace recovery: stale removal requires an active controller, and malformed IDs are denied",async()=>isolated(async root=>{
+ const identity=path.join(root,"identity"),work=await dir(root,"work");
+ const controls=new ControlLeaseStore(path.join(root,"control")),invoke=createTools(new WorkspaceRegistry(),identity,controls);
+ assert.equal((await call(invoke,"bind_workspaces",{roots:[{path:work,role:"workspace"}],revoke_stale_ids:[]})).code,"SESSION_INVALID");
+ const lease=await controls.acquire();
+ assert.equal((await call(invoke,"bind_workspaces",{roots:[{path:work,role:"workspace"}],revoke_stale_ids:["bad","bad"],control_token:lease.control_token})).code,"INVALID_ARGUMENTS");
+ assert.equal((await call(invoke,"bind_workspaces",{roots:[{path:work,role:"workspace"}],revoke_stale_ids:[],control_token:lease.control_token})).ok,true);
+ await controls.release(lease.control_token);
+}));
 test("explicit binding repairs a replaced selected root using its stored custom ID and advances its epoch",async()=>isolated(async root=>{
  const identity=path.join(root,"identity"),selected=await dir(root,"selected"),moved=path.join(root,"selected-old");
  const [old]=await enrollRolesTrustedBatch([{id:"custom-stable-id",root:selected,role:"workspace"}],identity);

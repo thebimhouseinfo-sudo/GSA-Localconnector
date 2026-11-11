@@ -256,6 +256,18 @@ test("stale-root repair revokes missing pinned root while preserving other selec
  const outcome=await grants.revokeStaleTrustedRoots(dir);assert.deepEqual(outcome.revoked.map(x=>x.id),["lost"]);
  assert.equal((await grants.loadTrustedRegistry(dir)).list()[0]?.id,"work");
 }));
+
+test("explicit stale grant retirement is atomic and cannot remove a valid reference",async()=>fixture(async(tmp,dir)=>{
+ const work=await mkdir(tmp,"work"),stale=await mkdir(tmp,"stale"),ref=await mkdir(tmp,"reference");
+ await enroll([{id:"work",root:work,role:"workspace"},{id:"old",root:stale,role:"workspace"},{id:"ref",root:ref,role:"reference"}],dir);
+ await fs.rename(stale,stale+"-old");await fs.mkdir(stale);
+ const before=await bytes(dir);
+ await assert.rejects(grants.enrollRolesTrustedBatch([{id:"work",root:work,role:"workspace"}],dir,undefined,["ref"]),{code:"PERMISSION_DENIED"});
+ assert.deepEqual(await bytes(dir),before);
+ await grants.enrollRolesTrustedBatch([{id:"work",root:work,role:"workspace"}],dir,undefined,["old"]);
+ assert.equal((await grants.inspectTrustedWorkspaceRecovery(dir)).find(x=>x.workspace_id==="old")?.state,"REVOKED");
+ assert.deepEqual((await grants.loadTrustedRegistry(dir)).list().map(x=>x.id).sort(),["ref","work"]);
+}));
 test("stale-root repair is a no-op when all identities match",async()=>fixture(async(tmp,dir)=>{
  const root=await mkdir(tmp,"work");await enroll([{id:"work",root,role:"workspace"}],dir);
  const original=await bytes(dir),result=await grants.revokeStaleTrustedRoots(dir);

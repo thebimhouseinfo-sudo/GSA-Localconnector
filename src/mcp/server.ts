@@ -9,7 +9,7 @@ import {WorkspaceReadSession} from "../core/workspace-read.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {createHash} from "node:crypto";
-import {enrollReadOnlyBatch,enrollRolesTrustedBatch,revokeTrusted,readTrustedRootBindings,loadTrustedRegistry} from "../local/grants.js";
+import {enrollReadOnlyBatch,enrollRolesTrustedBatch,revokeTrusted,readTrustedRootBindings,loadTrustedRegistry,inspectTrustedWorkspaceRecovery} from "../local/grants.js";
 import {identityDirectory} from "../local/identity.js";
 import {isDesktopPaused} from "../local/desktop-pause.js";
 import {ConnectorError,type WorkspaceGrant,type WorkspaceRole} from "../core/contracts.js";
@@ -38,8 +38,9 @@ const definitions = [
   {name:"connector_status",description:"Return host capabilities; shell and CI remain blocked",inputSchema:{type:"object",properties:{},additionalProperties:false}},
   {name:"list_workspaces",description:"List explicitly trusted workspaces; does not enroll new ones",inputSchema:{type:"object",properties:{},additionalProperties:false}},
   {name:"get_workspace",description:"Inspect trusted workspace metadata",inputSchema:{type:"object",properties:{workspace_id:{type:"string"}},required:["workspace_id"],additionalProperties:false}},
+  {name:"inspect_workspace_recovery",description:"Diagnose ACTIVE, STALE, REAUTH_REQUIRED and REVOKED persisted grants without granting filesystem access",inputSchema:{type:"object",properties:{},additionalProperties:false}},
   {name:"list_directory",description:"Read immediate directory entries in an enrolled workspace or reference",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"}},required:["workspace_id","path"],additionalProperties:false}},
-  {name:"bind_workspaces",description:"Select explicit workspace/reference roots on this host, or legacy read-only paths. Roles grant intent; backend availability is reported separately. Never discover extra roots.",inputSchema:{type:"object",properties:{paths:{type:"array",items:{type:"string"},minItems:1,maxItems:16},roots:{type:"array",minItems:1,maxItems:16,items:{type:"object",properties:{path:{type:"string"},role:{type:"string",enum:["workspace","reference"]}},required:["path","role"],additionalProperties:false}}},oneOf:[{required:["paths"],not:{required:["roots"]}},{required:["roots"],not:{required:["paths"]}}],additionalProperties:false}},
+  {name:"bind_workspaces",description:"Select explicit workspace/reference roots on this host, or legacy read-only paths. Roles grant intent; backend availability is reported separately. Never discover extra roots.",inputSchema:{type:"object",properties:{paths:{type:"array",items:{type:"string"},minItems:1,maxItems:16},roots:{type:"array",minItems:1,maxItems:16,items:{type:"object",properties:{path:{type:"string"},role:{type:"string",enum:["workspace","reference"]}},required:["path","role"],additionalProperties:false}},revoke_stale_ids:{type:"array",items:{type:"string"},maxItems:16,uniqueItems:true}},oneOf:[{required:["paths"],not:{anyOf:[{required:["roots"]},{required:["revoke_stale_ids"]}]}},{required:["roots"],not:{required:["paths"]}}],additionalProperties:false}},
   {name:"unbind_workspace",description:"Revoke a previously bound workspace on the selected host; subsequent calls lose the grant",inputSchema:{type:"object",properties:{workspace_id:{type:"string"}},required:["workspace_id"],additionalProperties:false}},
   {name:"get_file_info",description:"Metadata and SHA256 of a file within a bound workspace; max 8 MiB hash",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"}},required:["workspace_id","path"],additionalProperties:false}},
   {name:"search",description:"Search UTF-8 text across bounded files under a workspace-relative directory; no external grep subprocess",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},query:{type:"string"}},required:["workspace_id","path","query"],additionalProperties:false}},
@@ -121,8 +122,14 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
     }
   };
   const bindSelections=(args:Record<string,unknown>):{path:string;role?:WorkspaceRole}[]=>{
-    if(!args||typeof args!=="object"||Array.isArray(args)||Object.keys(args).length!==1)throw Error("INVALID_ARGUMENTS");
-    const explicit=Object.hasOwn(args,"roots"),values=explicit?args.roots:args.paths;
+    if(!args||typeof args!=="object"||Array.isArray(args))throw Error("INVALID_ARGUMENTS");
+    const explicit=Object.hasOwn(args,"roots"),keys=Object.keys(args);
+    if(!((keys.length===1&&(explicit||Object.hasOwn(args,"paths")))||
+         (keys.length===2&&explicit&&Object.hasOwn(args,"revoke_stale_ids"))))throw Error("INVALID_ARGUMENTS");
+    const retired=args.revoke_stale_ids;
+    if(retired!==undefined&&(!Array.isArray(retired)||retired.length>16||new Set(retired).size!==retired.length||
+       retired.some(id=>typeof id!=="string"||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(id))))throw Error("INVALID_ARGUMENTS");
+    const values=explicit?args.roots:args.paths;
     if(!Array.isArray(values)||values.length<1||values.length>16)throw Error("INVALID_ARGUMENTS");
     return Array.from(values,value=>{
       const root=explicit?value?.path:value,role=explicit?value?.role:undefined;
@@ -182,6 +189,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           fileWriteBackendAvailable:protectedStateCapability().available&&controlStore!==null&&fileOperations.some(name=>name!=="copy_directory"),
           fileGrantSyncRequired:grantSetChanged,
           fileGrantSyncState:grantSetChanged?"REQUIRES_SIGNED_REINSTALL":nativeFiles?"CURRENT":"UNAVAILABLE",
+          fileGrantSyncAction:grantSetChanged?"STOP_OWNER_AND_APPLY_QUALIFIED_RECOVERY":null,
           hostFileWrites:fullFileWrites,
           fileBlockedReason:backend.fileBlockedReason??(nativeFiles&&!fullFileWrites?"Partial native backend; compare-and-mutate operations remain blocked":nativeFiles?null:"Verified native file installation unavailable")
         };
@@ -191,7 +199,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
       // Pause rejects NEW effects. Readback/diagnostics/stopping owned work stay
       // available, and already-running operations are not interrupted.
       const whilePaused=new Set([
-       "connector_status","list_capabilities","list_workspaces","get_workspace",
+       "connector_status","list_capabilities","list_workspaces","get_workspace","inspect_workspace_recovery",
        "list_directory","get_file_info","fetch_file","fetch_file_bytes",
        "search","glob","inspect_directory","get_directory_copy",
        "get_file_transaction","git_status","git_diff","git_log","git_show",
@@ -204,7 +212,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
        "SECURITY_BLOCKED","CONNECTOR_PAUSED: new effects are suspended by the desktop app"
       );
       const scopedRead=()=>readSession??(readSession=new WorkspaceReadSession(registry,args.workspace_id as string));
-      const diagnostic=["connector_status","acquire_control","renew_control","release_control","stop_process","ci_cancel"].includes(call.name)||call.name==="list_capabilities"&&args.workspace_id===undefined;
+      const diagnostic=["connector_status","inspect_workspace_recovery","acquire_control","renew_control","release_control","stop_process","ci_cancel"].includes(call.name)||call.name==="list_capabilities"&&args.workspace_id===undefined;
       if(!diagnostic)assertSynchronized();
       let result:unknown;
       switch(call.name) {
@@ -230,6 +238,10 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
         case "list_workspaces":
           if(Object.keys(args).length) throw Error("INVALID_ARGUMENTS");
           result=registry.list().map(g=>({workspace_id:g.id,role:g.role??null,permissions:g.permissions,revision:g.revision}));break;
+        case "inspect_workspace_recovery":
+          requireProtectedState();
+          if(Object.keys(args).length)throw Error("INVALID_ARGUMENTS");
+          result=await inspectTrustedWorkspaceRecovery(grantDirectory());break;
         case "get_workspace":
           if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1) throw Error("INVALID_ARGUMENTS");
           {const g=registry.get(args.workspace_id);if(!g) throw Error("WORKSPACE_NOT_FOUND");
@@ -252,7 +264,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
              }
              const bound=await publishScope(beforePublish=>selections[0]!.role===undefined?
                enrollReadOnlyBatch(requests,directory,beforePublish):
-               enrollRolesTrustedBatch(requests.map(request=>({...request,role:request.role!})),directory,beforePublish),
+               enrollRolesTrustedBatch(requests.map(request=>({...request,role:request.role!})),directory,beforePublish,(args.revoke_stale_ids as string[]|undefined)??[]),
                (durable,items)=>{for(const item of items){const active=durable.get(item.id);if(!active||grantKey(active)!==grantKey(item.grant))throw Error("Bound grant changed after publication");}});
              await durable.initialize();
              const admission=new Map<string,boolean>();
@@ -389,7 +401,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           if(Object.keys(args).some(k=>k!=="workspace_id")||(args.workspace_id!==undefined&&typeof args.workspace_id!=="string"))throw Error("INVALID_ARGUMENTS");
           {if(typeof args.workspace_id==="string"&&!registry.get(args.workspace_id))throw Error("WORKSPACE_NOT_FOUND");
            const protectedStorage=protectedStateCapability();
-           const read=["connector_status","list_workspaces","get_workspace","bind_workspaces","unbind_workspace","list_directory","fetch_file","fetch_file_bytes","get_file_info","search","glob","list_capabilities","ci_validate_workflow","ci_list_workflows","ci_list_runs","ci_status","ci_artifacts","ci_read_artifact","ci_logs"].filter(name=>protectedStorage.available||!controlledToolNames.has(name));
+           const read=["connector_status","list_workspaces","get_workspace","inspect_workspace_recovery","bind_workspaces","unbind_workspace","list_directory","fetch_file","fetch_file_bytes","get_file_info","search","glob","list_capabilities","ci_validate_workflow","ci_list_workflows","ci_list_runs","ci_status","ci_artifacts","ci_read_artifact","ci_logs"].filter(name=>protectedStorage.available||!controlledToolNames.has(name));
            const execution=sandbox?.verified?["run_command","start_process","stop_process","list_processes","process_status","process_output","git_status","git_diff","git_log","git_show","compare_commits","git_add","git_commit","create_branch","git_checkout"]:[];
            if(options.processPersistence&&protectedStorage.available)read.push("list_processes","process_status","process_output");
            const ci=ciExecutor?.verified?["ci_run","ci_rerun_failed","ci_cancel"]:[];
