@@ -55,3 +55,18 @@ Placeholders are documentation only. Never invent these source fields or expose 
 The **existing gsa-lc-mac App-backed plugin** includes the `local-image-save` Skill (package 1.0.1), preserving the original App ID. Source tool `import_image_file` must be built, installed on the user's Mac and the ChatGPT tool catalog refreshed before it can be called. The Skill can be present even while that new server tool is not yet deployed.
 
 Required evidence: (1) plugin source readback has Skill; (2) TypeScript build + focused/macos CI tests pass; (3) real Mac `fileGrantSyncState=CURRENT`; (4) host-exposed ImageGen image is accepted via `import_image_file`; (5) `get_file_info` and `fetch_file_bytes` match the exact original SHA-256 and file length. Keep any untested step `PENDING` instead of PASS.
+
+## App tool discovery is separate from backend capability
+
+A live macOS connector can report `import_image_file` in `list_capabilities()` even when an already connected ChatGPT app still exposes an older, approved `tools/list` snapshot. This is a **CATALOG_NOT_REFRESHED** condition, not proof the importer is broken. Direct image import is the preferred route, not Base64.
+
+**Supported refresh (user/admin-controlled):** For a directly connected development MCP app, open the connection in ChatGPT **Settings → Plugins**, use **Refresh** to reload available tool definitions, and start a new chat with that app selected. For a published plugin, go to its **MCPs → connected server → Issues → Rescan** (or the applicable workspace admin **Refresh/Action control** flow), review findings and enable approved new actions. Exact UI and privileges vary by account; do not force-delete/recreate app identity or bypass reviews. A Skill package update alone does not refresh the app action snapshot.
+
+### E2E evidence thresholds
+
+- `SERVER_TOOL_LIST_PASS`: authenticated MCP HTTP `tools/list` returns `import_image_file` with all four file properties and `_meta.openai/fileParams=["file"]`; proves server publication only.
+- `CHATGPT_TOOL_EXPOSED`: callable `import_image_file` genuinely appears in the model-facing app actions in a new chat after refresh.
+- `HOST_FILEPARAM_PASS`: ImageGen creates a real file and ChatGPT supplies its file input to that tool; a forged `file_id` or URL does not qualify.
+- `MAC_FILE_READBACK_PASS`: native exclusive creation succeeds; info/fetch match original SHA and bytes. Only all four qualify as **DIRECT_E2E_PASS**.
+
+If the backend advertises the importer but the ChatGPT action inventory lacks it, mark `CATALOG_NOT_REFRESHED` and attempt supported refresh; do not immediately use Base64. Only after a real host-mediated import attempt fails due to fileParam unavailability, or a verified unrefreshable catalog gap in the current client, may `create_file_bytes` be used with independently available exact original bytes. Mark that as `BASE64_FALLBACK`, never `DIRECT_E2E_PASS`. If bytes are inaccessible, report BLOCKED.
