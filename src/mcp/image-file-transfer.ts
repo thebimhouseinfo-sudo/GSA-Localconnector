@@ -17,8 +17,12 @@ function approvedHost(hostname:string):boolean{
   hostname.endsWith(".chatgpt.com");
 }
 function source(value:unknown):ChatGptFileInput{
+ // ChatGPT may expose a host file parameter as a model-facing string.
+ // File IDs alone are not authenticated image bytes; fail closed.
+ if(typeof value==="string")fail("FILEPARAM_UNRESOLVED");
  if(!value||typeof value!=="object"||Array.isArray(value))fail("INVALID_IMAGE_FILE");
  const v=value as Record<string,unknown>;
+ if(typeof v.file_id==="string"&&!Object.hasOwn(v,"download_url"))fail("FILEPARAM_UNRESOLVED");
  if(Object.keys(v).some(key=>!["download_url","file_id","mime_type","file_name"].includes(key))||
     typeof v.download_url!=="string"||typeof v.file_id!=="string"||
     !/^(?:file_|file-)[A-Za-z0-9_-]{8,128}$/.test(v.file_id)||

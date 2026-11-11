@@ -596,8 +596,9 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
         case "import_image_file": {
           if(!fileOperations.includes("create_file"))fileMutationDenied();
           if(!protectedStateCapability().available||!controlStore)throw Error("SECURITY_BLOCKED");
-          if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||
-             Object.keys(args).length!==3||!Object.hasOwn(args,"file"))throw Error("INVALID_ARGUMENTS");
+          if(typeof args.workspace_id!=="string"||typeof args.path!=="string")throw Error("INVALID_ARGUMENTS");
+          if(!Object.hasOwn(args,"file"))throw Error("FILEPARAM_MISSING");
+          if(Object.keys(args).length!==3)throw Error("INVALID_ARGUMENTS");
           registry.requireGrant(args.workspace_id,"write");
           const relative=directoryPath(args.path,false);
           const downloaded=await (options.downloadImageFile??downloadChatGptImage)(args.file,relative);

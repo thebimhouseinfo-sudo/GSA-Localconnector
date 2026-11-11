@@ -43,6 +43,11 @@ test("image file tool requires current controller, imports only to active worksp
   assert.deepEqual(schema.annotations,{readOnlyHint:false,destructiveHint:false,openWorldHint:false,idempotentHint:false});
   assert.equal((await call("import_image_file",{workspace_id:"workspace",path:"test.png",file:source})).code,"SESSION_INVALID");
   const acquired=await call("acquire_control"),token=acquired.result.control_token;
+  const unresolved=await call("import_image_file",{workspace_id:"workspace",path:"unresolved.png",file:source.file_id,control_token:token});
+  assert.equal(unresolved.code,"FILEPARAM_UNRESOLVED");
+  const missing=await call("import_image_file",{workspace_id:"workspace",path:"missing.png",control_token:token});
+  assert.equal(missing.code,"FILEPARAM_MISSING");
+  assert.equal(downloads,0,"no download for unresolved or missing file");
   const noWrite=await call("import_image_file",{workspace_id:"reference",path:"bad.png",file:source,control_token:token});
   assert.equal(noWrite.code,"PERMISSION_DENIED");
   assert.equal(downloads,0);

@@ -18,6 +18,14 @@ test("ChatGPT file param imports exact PNG bytes, MIME and SHA without altering 
  assert.equal(r.mime_type,"image/png");
  assert.equal(r.sha256,createHash("sha256").update(sample).digest("hex"));
 });
+test("unresolved fileParams produce a distinct error and never download",async()=>{
+ let calls=0;
+ const noFetch=(async()=>{calls++;throw Error("UNEXPECTED_DOWNLOAD");}) as typeof fetch;
+ for(const input of [file.file_id,"chat_upload://image_0",{file_id:file.file_id}]){
+  await assert.rejects(downloadChatGptImage(input,"output.png",noFetch),{code:"FILEPARAM_UNRESOLVED"});
+ }
+ assert.equal(calls,0);
+});
 test("file input rejects arbitrary URL, local network, redirects, opaque file id and spoofed MIME",async()=>{
  for(const url of [
   "http://files.oaiusercontent.com/image",
