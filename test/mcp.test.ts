@@ -22,6 +22,11 @@ test("BUG-02: signed backend may be blocked while grant-scoped file reads work",
     assert.equal(capabilities.fileWriteBackendAvailable,false);
     assert.equal(capabilities.fileGrantSyncRequired,true);
     assert.equal(capabilities.fileGrantSyncState,"REQUIRES_SIGNED_REINSTALL");
+    assert.deepEqual(capabilities.fileGrantRecovery,{
+      code:"FILE_GRANT_RECOVERY_REQUIRED",state:"REQUIRES_SIGNED_REINSTALL",
+      required_action:"STOP_OWNER_AND_APPLY_QUALIFIED_RECOVERY",
+      requires_qualified_archive:true,qualified_archive_status:"UNVERIFIED",automatically_restored:false
+    });
     assert.ok(capabilities.fileReadOperations.includes("fetch_file"));
     assert.deepEqual(capabilities.fileOperations,[]);
     assert.notEqual((await invoke({name:"list_directory",arguments:{workspace_id:"ref",path:"."}})).isError,true);

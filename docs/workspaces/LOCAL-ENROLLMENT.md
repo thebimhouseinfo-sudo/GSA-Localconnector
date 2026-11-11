@@ -36,6 +36,20 @@ Mỗi lần chọn 1–16 thư mục có sẵn bằng đường dẫn tuyệt đ
 
 Role workspace mô tả phạm vi toàn quyền dự kiến, không chứng minh backend đã ghi file/chạy shell/Git được. Đọc `connector_status` để biết khả năng thực tế; các backend còn thiếu vẫn bị chặn. Các phép thử source không thay thế gọi plugin đang cài hoặc kiểm chứng native.
 
+### Recovery inspector fallback khi ChatGPT chưa cập nhật tool catalog
+
+Nếu `list_capabilities()` đã thông báo `inspect_workspace_recovery` nhưng công cụ này không xuất hiện trong ChatGPT App hiện được kết nối, dùng **chế độ chỉ đọc của công cụ đã có sẵn**:
+
+```json
+{"inspect_recovery":true,"control_token":"<current-controller-token>"}
+```
+
+Gọi payload này bằng `bind_workspaces`, **không** kèm `roots`, `paths` hoặc `revoke_stale_ids`. Kết quả `mode: RECOVERY_INSPECTION`, `mutation_performed: false`, `grants` liệt kê durable IDs, role, root, revision, state, reason và các cờ `can_rebind`, `can_retire`, `requires_explicit_authorization`. Công cụ yêu cầu controller lease và protected storage; không cần bất kỳ workspace ACTIVE nào. Hai cờ là thông tin hỗ trợ, **không thay thế xác minh lại trên grant-store lock** khi chọn root hoặc retire.
+
+Với client đã refresh đúng MCP catalog, `inspect_workspace_recovery` độc lập vẫn hỗ trợ kiểm tra metadata. Nếu cả hai cách đều chưa có do ứng dụng Mac chưa cài bản mới, phải update Desktop app bằng installer an toàn; đừng xóa grant store hoặc bỏ chữ ký để workaround.
+
+`fileGrantRecovery` trong `connector_status` / `list_capabilities` trình bày `FILE_GRANT_RECOVERY_REQUIRED` và việc cần làm (`STOP_OWNER_AND_APPLY_QUALIFIED_RECOVERY`) nếu signed grant set sai. `qualified_archive_status: UNVERIFIED` nghĩa là API **chưa** xác minh archive cài đặt trên máy; không được hiểu là có thể phục hồi tự động hay đã có quyền ghi.
+
 ### Workspace reauthorization — P1
 
 `inspect_workspace_recovery(control_token:"...")` reads a diagnostic inventory from the protected grant store, requiring the **current controller lease** because it reveals prior explicitly selected private root names. It reports `ACTIVE`, `STALE`, `REAUTH_REQUIRED`, `REVOKED`, with reasons such as `ROOT_INODE_CHANGED`, `ROOT_DEVICE_CHANGED`, `ROOT_CANONICAL_CHANGED`, `ROOT_NOT_FOUND` and `ROOT_PERMISSION_DENIED`. This inventory never grants authority.

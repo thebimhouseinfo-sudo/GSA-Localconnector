@@ -40,7 +40,7 @@ const definitions = [
   {name:"get_workspace",description:"Inspect trusted workspace metadata",inputSchema:{type:"object",properties:{workspace_id:{type:"string"}},required:["workspace_id"],additionalProperties:false}},
   {name:"inspect_workspace_recovery",description:"Diagnose ACTIVE, STALE, REAUTH_REQUIRED and REVOKED persisted grants without granting filesystem access",inputSchema:{type:"object",properties:{},additionalProperties:false}},
   {name:"list_directory",description:"Read immediate directory entries in an enrolled workspace or reference",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"}},required:["workspace_id","path"],additionalProperties:false}},
-  {name:"bind_workspaces",description:"Select explicit workspace/reference roots on this host, or legacy read-only paths. Roles grant intent; backend availability is reported separately. Never discover extra roots.",inputSchema:{type:"object",properties:{paths:{type:"array",items:{type:"string"},minItems:1,maxItems:16},roots:{type:"array",minItems:1,maxItems:16,items:{type:"object",properties:{path:{type:"string"},role:{type:"string",enum:["workspace","reference"]}},required:["path","role"],additionalProperties:false}},revoke_stale_ids:{type:"array",items:{type:"string"},maxItems:16,uniqueItems:true}},oneOf:[{required:["paths"],not:{anyOf:[{required:["roots"]},{required:["revoke_stale_ids"]}]}},{required:["roots"],not:{required:["paths"]}}],additionalProperties:false}},
+  {name:"bind_workspaces",description:"Select explicit workspace/reference roots or inspect retained grant recovery read-only with inspect_recovery:true under current controller. Never discover extra roots.",inputSchema:{type:"object",properties:{paths:{type:"array",items:{type:"string"},minItems:1,maxItems:16},roots:{type:"array",minItems:1,maxItems:16,items:{type:"object",properties:{path:{type:"string"},role:{type:"string",enum:["workspace","reference"]}},required:["path","role"],additionalProperties:false}},revoke_stale_ids:{type:"array",items:{type:"string"},maxItems:16,uniqueItems:true},inspect_recovery:{type:"boolean",const:true}},oneOf:[{required:["paths"],not:{anyOf:[{required:["roots"]},{required:["revoke_stale_ids"]},{required:["inspect_recovery"]}]}},{required:["roots"],not:{anyOf:[{required:["paths"]},{required:["inspect_recovery"]}]}},{required:["inspect_recovery"],not:{anyOf:[{required:["paths"]},{required:["roots"]},{required:["revoke_stale_ids"]}]}}],additionalProperties:false}},
   {name:"unbind_workspace",description:"Revoke a previously bound workspace on the selected host; subsequent calls lose the grant",inputSchema:{type:"object",properties:{workspace_id:{type:"string"}},required:["workspace_id"],additionalProperties:false}},
   {name:"get_file_info",description:"Metadata and SHA256 of a file within a bound workspace; max 8 MiB hash",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"}},required:["workspace_id","path"],additionalProperties:false}},
   {name:"search",description:"Search UTF-8 text across bounded files under a workspace-relative directory; no external grep subprocess",inputSchema:{type:"object",properties:{workspace_id:{type:"string"},path:{type:"string"},query:{type:"string"}},required:["workspace_id","path","query"],additionalProperties:false}},
@@ -124,6 +124,8 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
   const bindSelections=(args:Record<string,unknown>):{path:string;role?:WorkspaceRole}[]=>{
     if(!args||typeof args!=="object"||Array.isArray(args))throw Error("INVALID_ARGUMENTS");
     const explicit=Object.hasOwn(args,"roots"),keys=Object.keys(args);
+    // This is the existing client-visible tool: read-only recovery discovery
+    // is handled separately before bindSelections and never publishes authority.
     if(!((keys.length===1&&(explicit||Object.hasOwn(args,"paths")))||
          (keys.length===2&&explicit&&Object.hasOwn(args,"revoke_stale_ids"))))throw Error("INVALID_ARGUMENTS");
     const retired=args.revoke_stale_ids;
@@ -190,6 +192,14 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           fileGrantSyncRequired:grantSetChanged,
           fileGrantSyncState:grantSetChanged?"REQUIRES_SIGNED_REINSTALL":nativeFiles?"CURRENT":"UNAVAILABLE",
           fileGrantSyncAction:grantSetChanged?"STOP_OWNER_AND_APPLY_QUALIFIED_RECOVERY":null,
+          fileGrantRecovery:grantSetChanged?{
+            code:"FILE_GRANT_RECOVERY_REQUIRED",
+            state:"REQUIRES_SIGNED_REINSTALL",
+            required_action:"STOP_OWNER_AND_APPLY_QUALIFIED_RECOVERY",
+            requires_qualified_archive:true,
+            qualified_archive_status:"UNVERIFIED",
+            automatically_restored:false
+          }:null,
           hostFileWrites:fullFileWrites,
           fileBlockedReason:backend.fileBlockedReason??(nativeFiles&&!fullFileWrites?"Partial native backend; compare-and-mutate operations remain blocked":nativeFiles?null:"Verified native file installation unavailable")
         };
@@ -208,11 +218,12 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
        "list_processes","process_status","process_output","stop_process",
        "acquire_control","renew_control","release_control","ci_cancel"
       ]);
-      if(desktopPaused&&!whilePaused.has(call.name))throw new ConnectorError(
+      if(desktopPaused&&!whilePaused.has(call.name)&&!(call.name==="bind_workspaces"&&args.inspect_recovery===true&&Object.keys(args).length===1))throw new ConnectorError(
        "SECURITY_BLOCKED","CONNECTOR_PAUSED: new effects are suspended by the desktop app"
       );
       const scopedRead=()=>readSession??(readSession=new WorkspaceReadSession(registry,args.workspace_id as string));
-      const diagnostic=["connector_status","inspect_workspace_recovery","acquire_control","renew_control","release_control","stop_process","ci_cancel"].includes(call.name)||call.name==="list_capabilities"&&args.workspace_id===undefined;
+      const recoveryInspect=call.name==="bind_workspaces"&&args.inspect_recovery===true&&Object.keys(args).length===1;
+      const diagnostic=["connector_status","inspect_workspace_recovery","acquire_control","renew_control","release_control","stop_process","ci_cancel"].includes(call.name)||call.name==="list_capabilities"&&args.workspace_id===undefined||recoveryInspect;
       if(!diagnostic)assertSynchronized();
       let result:unknown;
       switch(call.name) {
@@ -248,6 +259,19 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           result={workspace_id:g.id,role:g.role??null,permissions:g.permissions,revision:g.revision};}break;
         case "bind_workspaces":
           requireProtectedState();
+          if(args.inspect_recovery===true&&Object.keys(args).length===1){
+            // Compatibility path for ChatGPT clients whose static installed app
+            // tool catalog has not refreshed to expose inspect_workspace_recovery.
+            // The existing controller wrapper authenticates this call.
+            const grants=await inspectTrustedWorkspaceRecovery(grantDirectory());
+            result={mode:"RECOVERY_INSPECTION",mutation_performed:false,
+              grants:grants.map(g=>({...g,
+                can_rebind:g.state==="STALE"&&["ROOT_INODE_CHANGED","ROOT_DEVICE_CHANGED","ROOT_CANONICAL_CHANGED"].includes(g.reason),
+                can_retire:g.state==="STALE",
+                requires_explicit_authorization:g.state==="STALE"||g.state==="REAUTH_REQUIRED"
+              }))};
+            break;
+          }
           {const selections=bindSelections(args);
            result=await serializeScope(async()=>{
              const directory=grantDirectory();
