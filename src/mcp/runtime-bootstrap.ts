@@ -100,9 +100,12 @@ export async function bootstrapMcpTools(registry:WorkspaceRegistry,identityRoot=
   grantDirectory:identityRoot,
   processPersistence,
   fileBackendState:()=>({files,fileBlockedReason,directoryCopyBlockedReason}),
-  onScopeChanged:async _kind=>{
-   // Successful selected rebind does not silently hide unrelated retained pins.
-   workspaceStartupIssue=await inspectStartupIssue(identityRoot);
+  onScopeChanged:async kind=>{
+   // A selected bind may resolve its own pending issue but not unrelated stale
+   // pins. Unbinding cannot prove that an initial recovery warning was resolved.
+   const remaining=await inspectStartupIssue(identityRoot);
+   if(kind==="bind")workspaceStartupIssue=remaining;
+   else if(remaining)workspaceStartupIssue=remaining;
    await reloadFiles();
   }
  });
