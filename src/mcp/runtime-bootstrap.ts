@@ -115,6 +115,12 @@ export async function bootstrapMcpTools(registry:WorkspaceRegistry,identityRoot=
   // Network Git remains independently blocked by gitPlan without explicit authorization.
   const result=await dispatch(call);
   if((owner||workspaceStartupIssue)&&["connector_status","list_capabilities"].includes(call.name)&&!result.isError){
+   // The Desktop menu can compact stale/revoked durable records without an
+   // MCP bind. Re-evaluate diagnostics from protected state rather than
+   // preserving a boot-time warning forever. On inspection failure retain
+   // the previous known issue; never infer an ACTIVE grant from this check.
+   try{workspaceStartupIssue=await inspectStartupIssue(identityRoot);}
+   catch{/* Keep the last known warning; no implicit recovery or grant write. */}
    const body=JSON.parse(result.content[0].text);
    if(processPersistence){
     body.result.processRecovery=processPersistence.store.health();
