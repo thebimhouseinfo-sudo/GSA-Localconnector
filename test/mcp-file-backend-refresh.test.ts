@@ -51,14 +51,15 @@ test("file dispatch and capability reporting follow null-to-partial-to-null back
 });
 
 test("signed grant mismatch keeps byte writes blocked and exposes qualified recovery action",async()=>{
- const root=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-file-grant-recovery-")),identity=path.join(root,"identity"),project=path.join(root,"project");
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-file-grant-recovery-")),identity=path.join(root,"identity"),project=path.join(root,"project"),reference=path.join(root,"reference");
  await fs.mkdir(project,{mode:0o700});
+ await fs.mkdir(reference,{mode:0o700});
  try{
   const registry=new WorkspaceRegistry();
   const bytes=Buffer.from([137,80,78,71,13,10,26,10]);
   let state:{files:any|null;fileBlockedReason?:string}={files:null,fileBlockedReason:"Scoped file grant set changed"};
   const invoke=makeTools(registry,identity,{grantDirectory:identity,fileBackendState:()=>state});
-  const bound=await call(invoke,"bind_workspaces",{roots:[{path:project,role:"workspace"}]});
+  const bound=await call(invoke,"bind_workspaces",{roots:[{path:project,role:"workspace"},{path:reference,role:"reference"}]});
   assert.equal(bound.ok,true,"binding the registry does not by itself install a signed file backend");
   const workspace=bound.result[0].workspace_id;
   const status=await call(invoke,"connector_status");
@@ -72,6 +73,8 @@ test("signed grant mismatch keeps byte writes blocked and exposes qualified reco
   assert.equal(denied.backend_state,"REQUIRES_SIGNED_REINSTALL");
   assert.equal(denied.required_action,"STOP_OWNER_AND_APPLY_QUALIFIED_RECOVERY");
   assert.equal(denied.retryable_before_recovery,false);
+  assert.equal((await call(invoke,"create_file_bytes",{workspace_id:bound.result[1].workspace_id,path:"forbidden.png",base64:bytes.toString("base64")})).code,"SECURITY_BLOCKED","read-only references must not be mistaken for recoverable file-write grants");
+  assert.equal((await call(invoke,"create_file_bytes",{workspace_id:"not-a-grant",path:"forbidden.png",base64:bytes.toString("base64")})).code,"SECURITY_BLOCKED","unknown grants remain opaque");
   await assert.rejects(fs.stat(path.join(project,"pixel.png")),{code:"ENOENT"});
   state={files:null,fileBlockedReason:"unrelated native backend error"};
   assert.equal((await call(invoke,"create_file_bytes",{workspace_id:workspace,path:"pixel.png",base64:bytes.toString("base64")})).code,"SECURITY_BLOCKED");
