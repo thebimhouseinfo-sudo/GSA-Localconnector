@@ -37,6 +37,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
     private let statusLine = NSMenuItem(title: "Đang khởi động connector…", action: nil, keyEquivalent: "")
     private var pauseItem: NSMenuItem?
     private var resumeItem: NSMenuItem?
+    private var pruneItem: NSMenuItem?
     private var supervisor: Process?
     private var configPath: String?
     private var config: [String: Any] = [:]
@@ -46,6 +47,9 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
     private var quitRequested = false
     private var quitAttemptBaseline = 0
     private var quitRequestedAt: Date?
+    private var pruneRequested = false
+    private var pruneAttemptBaseline = 0
+    private var pruneRequestedAt: Date?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -118,6 +122,11 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
         resume.isEnabled = false
         resumeItem = resume
         menu.addItem(.separator())
+        let prune = menu.addItem(withTitle: "Dọn đăng ký cũ…", action: #selector(requestPrune(_:)), keyEquivalent: "")
+        prune.target = self
+        prune.isEnabled = false
+        pruneItem = prune
+        menu.addItem(.separator())
         let quit = menu.addItem(withTitle: "Thoát", action: #selector(requestQuit(_:)), keyEquivalent: "")
         quit.target = self
         item.menu = menu
@@ -146,6 +155,31 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
     }
 
     private func refreshStatus() {
+        if pruneRequested {
+            if let statusPath, let status = try? privateJSON(statusPath),
+               let attempt = status["registrationPruneAttempt"] as? Int,
+               attempt > pruneAttemptBaseline {
+                pruneRequested = false
+                pruneRequestedAt = nil
+                if status["registrationPruneStatus"] as? String == "DONE",
+                   let summary = status["registrationPruneSummary"] as? [String: Any] {
+                    let stale = summary["removed_stale"] as? Int ?? 0
+                    let revoked = summary["removed_revoked"] as? Int ?? 0
+                    setStatus("Đã dọn " + String(stale + revoked) + " đăng ký cũ; workspace đang dùng được giữ nguyên.")
+                } else {
+                    setStatus("Không thể dọn đăng ký cũ; kiểm tra trạng thái connector.")
+                }
+                return
+            }
+            if let started = pruneRequestedAt, Date().timeIntervalSince(started) > 10 {
+                pruneRequested = false
+                pruneRequestedAt = nil
+                setStatus("Chưa xác nhận kết quả dọn đăng ký; kiểm tra lại trạng thái.")
+                return
+            }
+            setStatus("Đang dọn các đăng ký không còn hiệu lực…")
+            return
+        }
         if quitRequested {
             if supervisor?.isRunning != true {
                 quitRequested = false
@@ -182,6 +216,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
         let paused = status["desktopPaused"] as? Bool ?? false
         pauseItem?.isEnabled = state == "RUNNING" && supervisor?.isRunning == true && !paused
         resumeItem?.isEnabled = state == "RUNNING" && supervisor?.isRunning == true && paused
+        pruneItem?.isEnabled = state == "RUNNING" && supervisor?.isRunning == true
         if state == "RUNNING" && paused {
             setStatus("Đã tạm dừng nhận tác vụ mới.")
             return
@@ -218,6 +253,19 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
         if kill(pid_t(process.processIdentifier), SIGHUP) == 0 {
             setStatus("Đang tiếp tục nhận tác vụ…")
         } else { setStatus("Không gửi được yêu cầu tiếp tục.") }
+    }
+
+    // SIGWINCH is handled by the retained adapter only; it never kills a
+    // process or revokes an ACTIVE workspace. The protected grant lock ensures
+    // a bind cannot race with compaction.
+    @objc private func requestPrune(_ sender: Any?) {
+        guard !quitRequested && !pruneRequested, let process = supervisor, process.isRunning else { return }
+        pruneAttemptBaseline = (statusPath.flatMap { try? privateJSON($0) }?["registrationPruneAttempt"] as? Int) ?? 0
+        if kill(pid_t(process.processIdentifier), SIGWINCH) == 0 {
+            pruneRequestedAt = Date()
+            pruneRequested = true
+            setStatus("Đang dọn các đăng ký không còn hiệu lực…")
+        } else { setStatus("Không gửi được yêu cầu dọn đăng ký.") }
     }
 
     @objc private func requestQuit(_ sender: Any?) {
