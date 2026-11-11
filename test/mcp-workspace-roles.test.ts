@@ -35,9 +35,10 @@ const test=(name:string,fn:()=>void|Promise<void>)=>platformTest(name,{skip:proc
 test("bind schema accepts either legacy paths or explicit roles and rejects malformed scope forms",async()=>isolated(async root=>{
  const schema=definitions().inputSchema;
  assert.ok(Array.isArray(schema.oneOf),"bind_workspaces schema must express the legacy and role forms");
+ assert.equal(schema.oneOf.length,3,"schema also defines read-only recovery inspector fallback");
  const work=await dir(root,"work"),registry=new WorkspaceRegistry(),invoke=createTools(registry,path.join(root,"identity"));
  for(const args of [
-  {},{paths:[]},{paths:["relative"]},{paths:[work],roots:[{path:work,role:"workspace"}]},
+  {},{inspect_recovery:false},{paths:[]},{paths:["relative"]},{paths:[work],roots:[{path:work,role:"workspace"}]},
   {roots:[]},{roots:[{path:work,role:"admin"}]},{roots:[{path:work,role:"workspace",id:"invented"}]},
   {roots:[{path:work,role:"reference"}],extra:true}
  ]){
@@ -100,6 +101,31 @@ test("explicit binding is idempotent, preserves custom root IDs and rejects mixe
 }));
 
 
+test("recovery is inspectable through existing bind tool with no ACTIVE roots, without a registry mutation",async()=>isolated(async root=>{
+ const identity=path.join(root,"identity"),work=await dir(root,"work"),ref=await dir(root,"reference");
+ await enrollRolesTrustedBatch([{id:"work-old",root:work,role:"workspace"},{id:"ref-valid",root:ref,role:"reference"}],identity);
+ await fs.rename(work,work+"-old");await fs.mkdir(work);
+ const before=await fs.readFile(path.join(identity,"trusted-workspaces.json"));
+ const controls=new ControlLeaseStore(path.join(root,"control"));
+ const invoke=createTools(new WorkspaceRegistry(),identity,controls);
+ assert.deepEqual((await call(invoke,"list_workspaces")).result,[]);
+ assert.equal((await call(invoke,"bind_workspaces",{inspect_recovery:true})).code,"SESSION_INVALID");
+ const lease=await controls.acquire();
+ const invalid=await call(invoke,"bind_workspaces",{inspect_recovery:true,roots:[{path:work,role:"workspace"}],control_token:lease.control_token});
+ assert.equal(invalid.code,"INVALID_ARGUMENTS","inspection must be exclusive of mutation inputs");
+ const response=await call(invoke,"bind_workspaces",{inspect_recovery:true,control_token:lease.control_token});
+ assert.equal(response.ok,true);
+ assert.equal(response.result.mode,"RECOVERY_INSPECTION");
+ assert.equal(response.result.mutation_performed,false);
+ const stale=response.result.grants.find((g:any)=>g.workspace_id==="work-old");
+ const valid=response.result.grants.find((g:any)=>g.workspace_id==="ref-valid");
+ assert.deepEqual([stale.state,stale.reason,stale.can_rebind,stale.can_retire],["STALE","ROOT_INODE_CHANGED",true,true]);
+ assert.deepEqual([valid.state,valid.can_rebind,valid.can_retire],["ACTIVE",false,false]);
+ assert.deepEqual(await fs.readFile(path.join(identity,"trusted-workspaces.json")),before);
+ assert.deepEqual((await call(invoke,"list_workspaces")).result,[]);
+ await controls.release(lease.control_token);
+ assert.equal((await call(invoke,"bind_workspaces",{inspect_recovery:true,control_token:lease.control_token})).code,"SESSION_INVALID");
+}));
 test("workspace recovery: reselecting a changed inode restores durable workspace identity",async()=>isolated(async root=>{
  const identity=path.join(root,"identity"),work=await dir(root,"Ke-chinhta");
  const [previous]=await enrollRolesTrustedBatch([{id:"original-id",root:work,role:"workspace"}],identity);
