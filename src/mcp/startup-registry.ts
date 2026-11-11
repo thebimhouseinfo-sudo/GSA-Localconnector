@@ -12,8 +12,8 @@ export async function loadStartupRegistry(identityRoot=identityDirectory()):Prom
  try{return {registry:await loadTrustedRegistry(identityRoot)};}
  catch(error){
   if(!(error instanceof ConnectorError)||error.code!=='SOURCE_UNVERIFIED')throw error;
-  const issue=error.message==='Workspace root identity changed'?'WORKSPACE_ROOT_CHANGED'
-   :error.message==='Workspace root identity unavailable'?'WORKSPACE_ROOT_UNAVAILABLE':undefined;
+  const issue=error.message.startsWith('Workspace root identity changed: ')?'WORKSPACE_ROOT_CHANGED'
+   :error.message.startsWith('Workspace root identity unavailable: ')?'WORKSPACE_ROOT_UNAVAILABLE':undefined;
   if(!issue)throw error;
   return {registry:new WorkspaceRegistry(),workspaceStartupIssue:issue};
  }
