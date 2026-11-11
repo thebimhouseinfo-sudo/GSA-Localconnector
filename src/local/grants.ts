@@ -292,8 +292,18 @@ export async function enrollRolesTrustedBatch(requests:readonly WorkspaceRoleReq
   let registry:WorkspaceRegistry;
   try{registry=await validatedRegistry(next,dir);}
   catch(error){
-   if(error instanceof ConnectorError&&error.code==="SOURCE_UNVERIFIED")
-    throw new ConnectorError("WORKSPACE_REAUTH_REQUIRED","Other retained roots need reauthorization; inspect_workspace_recovery then explicitly rebind or retire verifiably stale IDs");
+   if(error instanceof ConnectorError&&error.code==="SOURCE_UNVERIFIED"){
+    // This path is reached only after authenticated controller selection. Return
+    // bounded metadata to MCP clients whose cached catalog omits the inspector.
+    const retainedIds=new Set(retained.map(entry=>entry.id));
+    const blockers=(await inspectTrustedWorkspaceRecovery(dir)).filter(item=>
+      retainedIds.has(item.workspace_id)&&(item.state==="STALE"||item.state==="REAUTH_REQUIRED"));
+    if(!blockers.length)throw error; // Preserve other validation failure causes.
+    const details=blockers.slice(0,16).map(item=>
+      `${item.workspace_id} [${item.role??"legacy"}; ${item.reason}; ${item.root.slice(0,240)}]`).join("; ");
+    throw new ConnectorError("WORKSPACE_REAUTH_REQUIRED",
+      `Retained roots require reauthorization; no changes committed: ${details}. Reselect needed roots or explicitly retire only verified STALE IDs via revoke_stale_ids; permission-denied REAUTH_REQUIRED roots cannot be retired.`);
+   }
    throw error;
   }
   const bound=chosen.map(grant=>({id:grant.id,root:grant.canonicalRoot,grant:registry.get(grant.id)!}));
