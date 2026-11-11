@@ -168,6 +168,40 @@ export async function revokeStaleTrustedRoots(dir=identityDirectory()):Promise<{
    retained:revised.filter(entry=>!entry.revoked&&pinned(entry)).length};
  });
 }
+/** Explicit local UI maintenance: compact registrations that cannot authorize current work.
+ * ACTIVE and ambiguous REAUTH_REQUIRED entries are retained. This is NOT a
+ * forced disconnect or an authorization to stop user processes. Revision
+ * floor prevents reuse of an old persisted generation after compaction.
+ *
+ * Uses the same protected lock and atomic publication as normal binding; no
+ * signed broker, transaction journal, controller lease or root is touched.
+ */
+export async function pruneInactiveWorkspaceRegistrations(dir=identityDirectory()):Promise<{
+ removed_stale:number;removed_revoked:number;retained_active:number;retained_reauth_required:number;
+}>{
+ return withGrantLock(dir,async publication=>{
+  const store=await readStore(dir);
+  const retained:Entry[]=[];
+  let removed_stale=0,removed_revoked=0,retained_active=0,retained_reauth_required=0;
+  for(const entry of store.entries){
+   const assessment=await assessGrant(entry);
+   switch(assessment.state){
+    case "REVOKED":removed_revoked++;break;
+    case "STALE":removed_stale++;break;
+    case "ACTIVE":retained.push(entry);retained_active++;break;
+    case "REAUTH_REQUIRED":retained.push(entry);retained_reauth_required++;break;
+  }
+  if(removed_stale+removed_revoked){
+   const floor=Math.max(store.revisionFloor,...store.entries.map(entry=>entry.revision??0));
+   if(!Number.isSafeInteger(floor)||floor>=Number.MAX_SAFE_INTEGER)throw Error("INVALID_GRANT_STORE");
+   // The removed ids are no longer active. A future explicit enrollment must
+   // use an epoch higher than any compacted entry, never reuse an old grant.
+   await persistEntries(dir,retained,publication,undefined,floor+1);
+  }
+  return {removed_stale,removed_revoked,retained_active,retained_reauth_required};
+ });
+}
+
 /** Recheck durable revocation/epoch and root identity before and during native work. */
 export async function requirePersistedGrant(registry:WorkspaceRegistry,workspaceId:string,dir=identityDirectory(),permission:WorkspacePermission="execute"):Promise<WorkspaceGrant>{
  requireProtectedState();
