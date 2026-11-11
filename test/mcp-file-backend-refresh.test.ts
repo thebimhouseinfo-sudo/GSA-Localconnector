@@ -50,6 +50,48 @@ test("file dispatch and capability reporting follow null-to-partial-to-null back
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
 
+test("signed grant mismatch keeps byte writes blocked and exposes qualified recovery action",async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-file-grant-recovery-")),identity=path.join(root,"identity"),project=path.join(root,"project");
+ await fs.mkdir(project,{mode:0o700});
+ try{
+  const registry=new WorkspaceRegistry();
+  const bytes=Buffer.from([137,80,78,71,13,10,26,10]);
+  let state:{files:any|null;fileBlockedReason?:string}={files:null,fileBlockedReason:"Scoped file grant set changed"};
+  const invoke=makeTools(registry,identity,{grantDirectory:identity,fileBackendState:()=>state});
+  const bound=await call(invoke,"bind_workspaces",{roots:[{path:project,role:"workspace"}]});
+  assert.equal(bound.ok,true,"binding the registry does not by itself install a signed file backend");
+  const workspace=bound.result[0].workspace_id;
+  const status=await call(invoke,"connector_status");
+  assert.equal(status.result.fileGrantSyncState,"REQUIRES_SIGNED_REINSTALL");
+  assert.equal(status.result.fileWriteBackendAvailable,false);
+  assert.equal(status.result.fileGrantRecovery.qualified_archive_status,"UNVERIFIED");
+  const denied=await call(invoke,"create_file_bytes",{workspace_id:workspace,path:"pixel.png",base64:bytes.toString("base64")});
+  assert.equal(denied.ok,false);
+  assert.equal(denied.code,"FILE_GRANT_RECOVERY_REQUIRED");
+  assert.equal(denied.operation,"create_file_bytes");
+  assert.equal(denied.backend_state,"REQUIRES_SIGNED_REINSTALL");
+  assert.equal(denied.required_action,"STOP_OWNER_AND_APPLY_QUALIFIED_RECOVERY");
+  assert.equal(denied.retryable_before_recovery,false);
+  await assert.rejects(fs.stat(path.join(project,"pixel.png")),{code:"ENOENT"});
+  state={files:null,fileBlockedReason:"unrelated native backend error"};
+  assert.equal((await call(invoke,"create_file_bytes",{workspace_id:workspace,path:"pixel.png",base64:bytes.toString("base64")})).code,"SECURITY_BLOCKED");
+  // Only a separately installed, verified native backend can refresh production.
+  // This injected backend is a unit-test fixture, NOT signed recovery evidence.
+  const restored={
+   ...fakeFiles("fixture",[]),
+   supportedOperations:["create_file"],
+   createExclusive:async(ref:{path:string},data:Uint8Array)=>fs.writeFile(path.join(project,ref.path),data,{flag:"wx"})
+  };
+  state={files:restored};
+  const active=await call(invoke,"connector_status");
+  assert.equal(active.result.fileGrantSyncState,"CURRENT");
+  assert.equal(active.result.fileBackendAvailable,true);
+  const created=await call(invoke,"create_file_bytes",{workspace_id:workspace,path:"pixel.png",base64:bytes.toString("base64")});
+  assert.equal(created.ok,true);
+  assert.deepEqual(await fs.readFile(path.join(project,"pixel.png")),bytes);
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+
 test("scope refresh callback follows confirmed bind and unbind publication only",async()=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-scope-refresh-")),identity=path.join(root,"identity"),project=path.join(root,"project");
  await fs.mkdir(project,{mode:0o700});
