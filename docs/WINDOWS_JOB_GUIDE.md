@@ -1,9 +1,9 @@
 # Windows Native Connector — Job Guide / Task Contracts
 
-**Updated:** 2026-11-12 (V2 planning/job contracts)  
+**Updated:** 2026-11-12 (V3 Mac reliability delta review)  
 **Status:** PRE-CODE / NOT AUTHORIZED TO IMPLEMENT  
 **Development branch (single):** `feat/windows-native-connector-20261109`  
-**Branch fork SHA:** `41102fa3e9d2a187c8373b1474e9377b737c66b1` · **Newer main inspected (not merged):** `bce187542ec68491f29a95b4a876fd7b4dc5648e`  
+**Branch fork SHA:** `41102fa3e9d2a187c8373b1474e9377b737c66b1` · **Newer main inspected (not merged):** `9d66c60c4f31cae6cfed64838468b5558973ab0c` (83 commits ahead)  
 **Project:** `thebimhouseinfo-sudo/GSA-Localconnector`
 
 ## GOAL
@@ -12,9 +12,28 @@ Give each bounded Windows W0–W5 Job a single contract covering WHAT, WHERE, co
 
 ## 2026-11-12 V2 context and work boundary
 
-The Windows branch contained **four documentation commits** (HEAD `aca0bb3` before this planning update) and no Windows implementation diff. The inspected `main` source SHA `bce1875` was 67 commits newer than the branch fork; later reconciliation/merge is W0 work, **not yet performed**. GSA branch authority was changed with Memory Repo readback to this Windows branch. Earlier Mac Planning Job `J-F33D` is historical and still READY; it is not Windows coding authorization.
+The Windows branch contained **four documentation commits** (HEAD `aca0bb3` before this planning update) and no Windows implementation diff. The inspected `main` source SHA `9d66c60` is 83 commits newer than the Windows branch at this review, including 16 more fixes since `bce1875`; later reconciliation/merge is W0 work, **not yet performed**. GSA branch authority was changed with Memory Repo readback to this Windows branch. Earlier Mac Planning Job `J-F33D` is historical and still READY; it is not Windows coding authorization.
 
 Relevant new shared-source contracts: `src/local/grants.ts` selected-only reauthorization, `src/mcp/server.ts` file-backend sync diagnostics, `src/mcp/image-file-transfer.ts` image fileParam/validated image download and `src/mcp/startup-registry.ts` lifecycle. These are **reusable interfaces**; actual Windows support and native testing remain open.
+
+## 2026-11-12 V3 — Additional bounded Job instructions for Mac reliability parity
+
+**Baseline and provenance:** `main@9d66c60` was inspected; reliability guide `docs/reviews/2026-11-12-RELIABILITY-FIX-GUIDE.md`, 16 latest commits and relevant source/test bodies support the map. Guide snippets are historical repair instructions, **not proof of actual Windows delivery**. Common source sync (W0-05), independent V3 planning review (W0-06) and separate Human implementation approval are still pending. Each Coder must bind to the actual merged branch HEAD before implementation.
+
+| Task | WHAT / source-owner boundary | WHERE / minimum evidence and stop rule |
+| --- | --- | --- |
+| **W0-07** Reliability source classification | Planner/Reviewer map nine Mac defects: shared reuse, Windows-native port or Mac-only, and link each to an existing or new Windows test | READ `src/core/durable-process.ts`, `src/local/{grants,control-lease}.ts`, `src/mcp/{http,server}.ts`, `scripts/{desktop-supervisor,mac-desktop-adapter}.mjs`, `native/macos-desktop/App.swift`, reliability guide; no source code changes; W0-06 uses this map |
+| **W1-05** Windows grant lock owner/fence | Implement only Windows-specific lock primitives needed by trusted grant store; preserve common session/holder protocol | Native Windows owner/grant adapter and tests; stale fenced server recoverable, desktop/foreign/unowned/unparseable lock preserved, `GRANT_STORE_RECOVERY_REQUIRED` diagnostic, racing writers cannot both publish. Never infer stale from PID/age |
+| **W1-06** Control lease after restart | Reuse existing hashed unexpired lease and `SESSION_BUSY.expires_at`; qualify with real Windows private identity | `src/local/control-lease.ts` contract and Windows owner adapter tests; same token renews after tunnel restart, expired released state handled correctly, no automatic takeover |
+| **W3-05** Process-journal loading and degraded state | Reuse `ensureReady` retry and MCP diagnostic bypass; adapt native Windows Job Object reconciliation only | `src/core/durable-process.ts`, `src/mcp/server.ts` integration owner, Windows process persistence; fail-once/success-next, concurrent single load, permanent journal error returns `PROCESS_JOURNAL_UNAVAILABLE`, discovery and control release still work |
+| **W4-04** HTTP/stdio reliability and errors | Reuse HTTP active-call timeout split and exact JSON-RPC error mapping; add Windows-host proof, not another transport | `src/mcp/http.ts`, `src/mcp/server.ts`, Windows tests; >30s benign tool still returns result; header timeout remains; invalid params `-32602`, internal errors `-32603`, invalid request `-32600`, missing method `-32601`; no secret/path leak |
+| **W4-05** Windows tray restart & safe Quit | Implement bounded retryable tunnel restart, no retry on auth/config/explicit Quit; observe owned work and permit explicit confirm-force within Quit only | Windows tray/installer + Job Object adapter, tests: owner remains unique, retries capped, `IDLE/ACTIVE/UNKNOWN` honored, confirmed Force Quit stops only connector-owned tree; no Pause/Resume UI |
+
+**Shared-edit ownership:** exactly one integrator modifies `src/mcp/{runtime-bootstrap,server,catalog,write-dispatch}.ts`. Windows feature owners prepare independent Windows adapters/tests and interface requests. Whenever a shared TS fix from `main` already satisfies the contract, **do not reimplement it**; add Windows-native checks and truthfully record platform limitations. Source changes and app installation remain gated separately.
+
+**Test-host isolation:** synthetic `USERPROFILE`/`APPDATA`/`LOCALAPPDATA`/TEMP/identity for Windows tests; no real user grants, secrets, registry or installed connector modifications during hosted fixtures. No tests with Windows skips count as Windows native PASS. Preserve Mac CI on the same integration SHA.
+
+**W5 final acceptance supplement:** actual selected Windows plugin must (a) recover after a disposable retryable tunnel failure without owner duplication, (b) preserve and renew the same unexpired controller lease across reconnect, (c) diagnose stale/malformed grant lock without unsafe deletion, (d) report a temporarily unavailable journal without disabling status/discovery and recover later, (e) complete a benign long tool call through HTTP with correct status/output, and (f) perform normal Quit and explicitly confirmed owned-only Force Quit without killing an unrelated neighbor. Do not require physical reboot or Mac Pause/Resume. If no Windows host is connected, mark these `CHƯA KIỂM / PENDING USER REQUIRE`, never PASS.
 
 ## 1. Purpose and how to use this guide
 
@@ -61,6 +80,8 @@ Do not paste full Criteria, Harness or Proposal into each job. Link exact sectio
 **W0-00 branch authority (DONE, not code):** Explicit Human instruction changed the Project's development branch to `feat/windows-native-connector-20261109`; the Memory manifest was written with exact SHA and read back. Preserve Mac Jobs and their evidence. No new Windows source write is implied.
 
 **W0-05 branch synchronization (PENDING):** verify both current Git HEADs; reconcile newer `main` common changes into the Windows branch through an authorized reviewable merge; protect all four Windows documents and any user-owned local work, do not force-push or write `main`. Re-pin exact merged revision before coding.
+
+**W0-07 reliability delta (mapped, not reviewed):** inspect nine Mac fixes against exact main source and mark shared reuse, Windows port and Mac-only exclusions with owner and test. **W0-06** must review this mapping after W0-05 sync.
 
 **W0-06 planning review (PENDING):** verify all four docs at their committed blobs, check Criteria §§1–10, exact dependency/acceptance traceability, and correct findings on this Windows branch. Present reviewed Plan for Human approval before starting Windows product coding.
 
@@ -147,6 +168,12 @@ Do not paste full Criteria, Harness or Proposal into each job. Link exact sectio
 | --- | --- |
 | Reparse/junction escape | Swap an intermediate segment between validation and mutation; no write outside granted root |
 | Identity reuse/alias | Drive-letter change, casefold path, volume replacement, UNC ambiguity; stale authority rejected |
+| Grant-lock recovery | Old fenced session may be recovered, active/foreign/unparseable/unowned lock preserved; no PID/age cleanup; recovery diagnostic is precise |
+| Controller lease continuity | Unexpired hashed token survives verified reconnect; `SESSION_BUSY` reports `expires_at`; expiry/release preserve single controller |
+| Journal unavailable | First failure retries; process tools report `PROCESS_JOURNAL_UNAVAILABLE`, diagnostic tools work with `DEGRADED`; no child replay |
+| HTTP / JSON-RPC | >30s bounded tool completes, slow headers denied, precise error code classes and secret/path redaction |
+| Desktop recovery / Quit | Retryable failures reconnect within bound, auth/Quit never trigger loop; only owned Job Objects can be force-stopped with user confirmation |
+| Test isolation | Synthetic Windows user profile and identity; no host profile/registry/personal connector files changed |
 | Grant refresh mismatch | Selected-only stale-root rebind does not enable stale/unsigned native file grants; blocked write with diagnosis and unchanged prior journal |
 | Binary/image import | Genuine host fileParam, approved URL, MIME/size/extension, exclusive native create, stale grant/reference denial, byte/SHA-256 readback; no Windows skip-as-PASS |
 | Reference misuse | Read/copy out allowed; reference source move, delete, execute and destination copy denied |
@@ -172,6 +199,6 @@ No report may say full Windows accepted based solely on Mac PASS or on a GitHub 
 
 ## 11. Pre-code readiness and assignment policy
 
-This Job Guide and companion documents are **drafts**, not approval to execute W1–W5. W0 branch authority update is complete; source merge/reconciliation and planning review remain open. W0 Reviewer/Critic must inspect for missing file boundaries, feasibility blockers, contradictions and new unwanted requirements. If findings concern design rather than the approved Criteria, correct the design; do not call it a Criteria change. Once W0 receives approval, assign tasks in dependency order and continue automatically to DONE or a true human gate, with Planner refreshing provisional instructions when each upstream artifact is available.
+This Job Guide and companion documents are **drafts**, not approval to execute W1–W5. W0 branch authority update is complete; source merge/reconciliation and V3 planning review remain open. The latest Mac reliability delta is incorporated as W0-07, W1-05/W1-06, W3-05 and W4-04/W4-05; none is Windows-native PASS. W0 Reviewer/Critic must inspect for missing file boundaries, feasibility blockers, contradictions and new unwanted requirements. If findings concern design rather than the approved Criteria, correct the design; do not call it a Criteria change. Once W0 receives approval, assign tasks in dependency order and continue automatically to DONE or a true human gate, with Planner refreshing provisional instructions when each upstream artifact is available.
 
 **Current state:** Windows code NOT started in this phase; no Windows native test or selected-host acceptance claimed.
