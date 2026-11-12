@@ -13,6 +13,41 @@ const fail = code => Object.assign(new Error(code), {code});
 const absolute = value => typeof value === "string" && path.isAbsolute(value) && !/[\u0000-\u001f\u007f]/.test(value);
 const xml = value => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
 
+// A tunnel or runtime that went away may come back; the menu app restarts the
+// adapter after exit code 75 (EX_TEMPFAIL). Every other failure needs a person:
+// OWNER_ACTIVE, OWNER_RELEASE_FAILED, DESKTOP_PAUSE_STATE_UNSAFE, LOG_FAILED,
+// SETUP_REQUIRED/AUTH_REJECTED and CONFIG_* keep their current exit behavior.
+const RETRYABLE_REASONS = new Set(["CHILD_EXITED", "CHILD_FAILED", "RUNTIME_UNAVAILABLE"]);
+export const RETRYABLE_EXIT_CODE = 75;
+
+/** Exit code for a final published status, or null to keep the default. */
+export function desktopExitCode(status) {
+  return status?.state === "FAILED" && RETRYABLE_REASONS.has(status.reason) ? RETRYABLE_EXIT_CODE : null;
+}
+
+/** Reason and exit code for an error thrown by adapter.start(). */
+export function desktopStartFailure(error) {
+  const reason = ["OWNER_ACTIVE", "DESKTOP_PAUSE_STATE_UNSAFE"].includes(error?.code) ? error.code : "RUNTIME_UNAVAILABLE";
+  return {reason, exitCode: RETRYABLE_REASONS.has(reason) ? RETRYABLE_EXIT_CODE : 1};
+}
+
+/** Publish status once a second; stop at a final state and set the exit code. */
+export function watchAdapterStatus(adapter, {intervalMs = 1000, setExitCode = code => {process.exitCode = code;}} = {}) {
+  let publishing = false;
+  const timer = setInterval(() => {
+    if (publishing) return;
+    publishing = true;
+    void adapter.publishStatus().then(status => {
+      if (["STOPPED", "FAILED"].includes(status.state)) {
+        clearInterval(timer);
+        const code = desktopExitCode(status);
+        if (code !== null) setExitCode(code);
+      }
+    }).catch(() => {clearInterval(timer); setExitCode(1);}).finally(() => {publishing = false;});
+  }, intervalMs);
+  return timer;
+}
+
 export function ensureLogin({firstInstall, existingPreference}) {
   if (typeof existingPreference === "boolean") return existingPreference;
   return firstInstall === true;
@@ -305,21 +340,15 @@ async function main() {
   try {
     await adapter.start();
   } catch (error) {
-    const reason = ["OWNER_ACTIVE","DESKTOP_PAUSE_STATE_UNSAFE"].includes(error.code) ? error.code : "RUNTIME_UNAVAILABLE";
+    const {reason, exitCode} = desktopStartFailure(error);
     await publish(privateFile, config.statusPath, Buffer.from(JSON.stringify({state: "FAILED", connection: "UNKNOWN", reason})));
-    process.exitCode = 1;
+    process.exitCode = exitCode;
     return;
   }
   const first = await adapter.status();
   if (first.state === "SETUP_REQUIRED") return;
   let stopAttempt = 0;
-  let publishing = false;
-  const timer = setInterval(() => {
-    if (publishing) return;
-    publishing = true;
-    void adapter.publishStatus().then(status => {
-    if (["STOPPED", "FAILED"].includes(status.state)) clearInterval(timer);
-  }).catch(() => {clearInterval(timer); process.exitCode = 1;}).finally(() => {publishing = false;});}, 1000);
+  const timer = watchAdapterStatus(adapter);
   // UI-owned signals affect only admission of NEW MCP mutations. SIGUSR1
   // is deliberately unused because Node reserves it for debugging.
   process.on("SIGUSR2",()=>{void adapter.requestPause(true);});

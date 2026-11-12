@@ -56,6 +56,16 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
     private var pauseNotice: String?
     private var pauseNoticeUntil: Date?
     private var abnormalPauseReads = 0
+    // Automatic restart after the adapter exits with EX_TEMPFAIL (75): backoff
+    // 2s, 4s, 8s ... capped at 60s, stop after the 10th consecutive failure.
+    private let retryableExitStatus: Int32 = 75
+    private let maxRestartAttempts = 10
+    private let stableRunSeconds: TimeInterval = 300
+    private var restartAttempt = 0
+    private var restartPending = false
+    private var restartGaveUp = false
+    private var restartWork: DispatchWorkItem?
+    private var healthySince: Date?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -154,10 +164,53 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
-        process.terminationHandler = { [weak self] _ in DispatchQueue.main.async { self?.refreshStatus() } }
+        process.terminationHandler = { [weak self] finished in
+            let status = finished.terminationStatus
+            let exited = finished.terminationReason == .exit
+            DispatchQueue.main.async { self?.supervisorExited(finished, status: status, exited: exited) }
+        }
         supervisor = process
         do { try process.run(); launchFailed = false }
         catch { supervisor = nil; launchFailed = true; setStatus("Không thể khởi động connector.") }
+    }
+
+    /// Quit and Prune are user intent: never restart over them. Only the adapter's
+    /// retryable exit code (75) restarts; the owner lock was released before exit.
+    private func supervisorExited(_ finished: Process, status: Int32, exited: Bool) {
+        let intentional = quitRequested || pruneRequested
+        defer { refreshStatus() }
+        guard finished === supervisor, !intentional, !launchFailed, exited, status == retryableExitStatus else { return }
+        healthySince = nil
+        restartAttempt += 1
+        guard restartAttempt < maxRestartAttempts else { restartGaveUp = true; return }
+        restartPending = true
+        let delay = min(60.0, pow(2.0, Double(restartAttempt)))
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.restartPending else { return }
+            self.restartPending = false
+            self.restartWork = nil
+            self.startSupervisor()
+        }
+        restartWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func cancelRestart() {
+        restartWork?.cancel()
+        restartWork = nil
+        restartPending = false
+    }
+
+    /// Consecutive-failure budget resets only after a stable RUNNING/CONNECTED run.
+    private func trackStableRun(_ status: [String: Any]) {
+        guard supervisor?.isRunning == true, status["state"] as? String == "RUNNING",
+              status["connection"] as? String == "CONNECTED" else { healthySince = nil; return }
+        let since = healthySince ?? Date()
+        healthySince = since
+        if restartAttempt > 0, Date().timeIntervalSince(since) >= stableRunSeconds {
+            restartAttempt = 0
+            restartGaveUp = false
+        }
     }
 
     private func refreshStatus() {
@@ -245,10 +298,25 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
             }
         }
         guard !launchFailed else { return }
+        if restartPending && supervisor?.isRunning != true {
+            pauseItem?.isEnabled = false
+            resumeItem?.isEnabled = false
+            pruneItem?.isEnabled = false
+            setStatus("Đang kết nối lại (lần " + String(restartAttempt) + ")…")
+            return
+        }
+        if restartGaveUp && supervisor?.isRunning != true {
+            pauseItem?.isEnabled = false
+            resumeItem?.isEnabled = false
+            pruneItem?.isEnabled = false
+            setStatus("Connector liên tục thoát; xem desktop.log")
+            return
+        }
         guard let statusPath, let status = try? privateJSON(statusPath), let state = status["state"] as? String else {
             setStatus("Chưa đọc được trạng thái connector.")
             return
         }
+        trackStableRun(status)
         let paused = status["desktopPaused"] as? Bool ?? false
         let running = state == "RUNNING" && supervisor?.isRunning == true
         var pauseEnabled = running && !paused
@@ -358,6 +426,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
 
     @objc private func requestQuit(_ sender: Any?) {
         guard !quitRequested else { return }
+        cancelRestart()
         guard let process = supervisor, process.isRunning else { NSApp.terminate(nil); return }
         // Only signal our retained supervisor. It decides whether its owned tunnel
         // can stop; ACTIVE/UNKNOWN work must never be force-killed by the GUI.

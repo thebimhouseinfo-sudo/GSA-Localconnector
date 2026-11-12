@@ -188,3 +188,11 @@ test("active retained work refuses Quit without signalling any process",async()=
  assert.deepEqual(neighbor.signals,[]);
  assert.equal(calls.released,0);
 });
+
+test("tunnel child exiting with code 1 is FAILED/CHILD_EXITED with its code",async()=>{
+ const {adapter,child}=makeAdapter();
+ const runtime=await startDesktopRuntime({runtimeRoot:runtimeRoot(),envPath:"/fixture/setup/.env",platformAdapter:adapter});
+ child.exitCode=1;child.emit("close",1,null);
+ const status=await runtime.status();
+ assert.equal(status.state,"FAILED");assert.equal(status.reason,"CHILD_EXITED");assert.equal(status.childExitCode,1);
+});

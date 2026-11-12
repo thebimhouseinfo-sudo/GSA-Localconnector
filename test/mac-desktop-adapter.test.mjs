@@ -239,3 +239,38 @@ test('status publication during a pause write reuses the last observation',async
   assert.equal(reads,2);
  }finally{await fs.rm(f.root,{recursive:true,force:true});}
 });
+
+import * as adapterModule from '../scripts/mac-desktop-adapter.mjs';
+
+test('only retryable tunnel/runtime failures map to exit code 75, on both the timer and the start-failure path',()=>{
+ for(const reason of ['CHILD_EXITED','CHILD_FAILED','RUNTIME_UNAVAILABLE']){
+  assert.equal(adapterModule.desktopExitCode({state:'FAILED',reason}),75,reason);
+ }
+ for(const reason of ['OWNER_ACTIVE','OWNER_RELEASE_FAILED','DESKTOP_PAUSE_STATE_UNSAFE','LOG_FAILED','CONFIG_REQUIRED','CONFIG_INVALID','SETUP_REQUIRED']){
+  assert.notEqual(adapterModule.desktopExitCode({state:'FAILED',reason}),75,reason);
+ }
+ assert.notEqual(adapterModule.desktopExitCode({state:'SETUP_REQUIRED',reason:'AUTH_REJECTED'}),75);
+ assert.notEqual(adapterModule.desktopExitCode({state:'STOPPED'}),75);
+ assert.notEqual(adapterModule.desktopExitCode({state:'RUNNING',reason:'CHILD_EXITED'}),75);
+ assert.deepEqual(adapterModule.desktopStartFailure({code:'OWNER_ACTIVE'}),{reason:'OWNER_ACTIVE',exitCode:1});
+ assert.deepEqual(adapterModule.desktopStartFailure({code:'DESKTOP_PAUSE_STATE_UNSAFE'}),{reason:'DESKTOP_PAUSE_STATE_UNSAFE',exitCode:1});
+ assert.deepEqual(adapterModule.desktopStartFailure({code:'RUNTIME_UNSAFE'}),{reason:'RUNTIME_UNAVAILABLE',exitCode:75});
+});
+
+test('status watcher exits 75 after a child exit has been published and stops polling',async()=>{
+ let published=0,code=null;
+ const adapter={publishStatus:async()=>{published++;return published<3?{state:'RUNNING'}:{state:'FAILED',reason:'CHILD_EXITED'};}};
+ const timer=adapterModule.watchAdapterStatus(adapter,{intervalMs:5,setExitCode:value=>{code=value;}});
+ await new Promise(resolve=>setTimeout(resolve,120));
+ clearInterval(timer);
+ assert.equal(code,75);assert.equal(published,3);
+});
+
+test('status watcher does not use 75 for non-retryable failures',async()=>{
+ let code=null;
+ const adapter={publishStatus:async()=>({state:'FAILED',reason:'DESKTOP_PAUSE_STATE_UNSAFE'})};
+ const timer=adapterModule.watchAdapterStatus(adapter,{intervalMs:5,setExitCode:value=>{code=value;}});
+ await new Promise(resolve=>setTimeout(resolve,60));
+ clearInterval(timer);
+ assert.notEqual(code,75);
+});
