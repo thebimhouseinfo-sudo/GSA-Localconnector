@@ -1,10 +1,20 @@
 # Windows Native Connector — Job Guide / Task Contracts
 
-**Date:** 2026-11-09  
+**Updated:** 2026-11-12 (V2 planning/job contracts)  
 **Status:** PRE-CODE / NOT AUTHORIZED TO IMPLEMENT  
 **Development branch (single):** `feat/windows-native-connector-20261109`  
-**Baseline SHA:** `41102fa3e9d2a187c8373b1474e9377b737c66b1`  
+**Branch fork SHA:** `41102fa3e9d2a187c8373b1474e9377b737c66b1` · **Newer main inspected (not merged):** `bce187542ec68491f29a95b4a876fd7b4dc5648e`  
 **Project:** `thebimhouseinfo-sudo/GSA-Localconnector`
+
+## GOAL
+
+Give each bounded Windows W0–W5 Job a single contract covering WHAT, WHERE, constraints, dependencies, expected native evidence and safe stopping conditions, using the existing Mac-accepted shared MCP behavior without inheriting Mac test PASS. No product VM, new agent, Pause/Resume or uncontrolled local-file fallback.
+
+## 2026-11-12 V2 context and work boundary
+
+The Windows branch contained **four documentation commits** (HEAD `aca0bb3` before this planning update) and no Windows implementation diff. The inspected `main` source SHA `bce1875` was 67 commits newer than the branch fork; later reconciliation/merge is W0 work, **not yet performed**. GSA branch authority was changed with Memory Repo readback to this Windows branch. Earlier Mac Planning Job `J-F33D` is historical and still READY; it is not Windows coding authorization.
+
+Relevant new shared-source contracts: `src/local/grants.ts` selected-only reauthorization, `src/mcp/server.ts` file-backend sync diagnostics, `src/mcp/image-file-transfer.ts` image fileParam/validated image download and `src/mcp/startup-registry.ts` lifecycle. These are **reusable interfaces**; actual Windows support and native testing remain open.
 
 ## 1. Purpose and how to use this guide
 
@@ -48,6 +58,14 @@ Do not paste full Criteria, Harness or Proposal into each job. Link exact sectio
 
 ## 3. W0 — Planning and review contract
 
+**W0-00 branch authority (DONE, not code):** Explicit Human instruction changed the Project's development branch to `feat/windows-native-connector-20261109`; the Memory manifest was written with exact SHA and read back. Preserve Mac Jobs and their evidence. No new Windows source write is implied.
+
+**W0-05 branch synchronization (PENDING):** verify both current Git HEADs; reconcile newer `main` common changes into the Windows branch through an authorized reviewable merge; protect all four Windows documents and any user-owned local work, do not force-push or write `main`. Re-pin exact merged revision before coding.
+
+**W0-06 planning review (PENDING):** verify all four docs at their committed blobs, check Criteria §§1–10, exact dependency/acceptance traceability, and correct findings on this Windows branch. Present reviewed Plan for Human approval before starting Windows product coding.
+
+
+
 **Role:** Planner → Reviewer/Critic  
 **WHAT:** Preserve four Windows pre-code documents on the Windows branch, trace the accepted Mac architecture into Windows tasks, and reconcile source limitations and the latest Open/Quit-only user decision.  
 **WHERE:** `docs/WINDOWS_{IMPLEMENTATION_PLAN,MILESTONES,TECHNICAL_PROPOSAL,JOB_GUIDE}.md`; reference `docs/CRITERIA.md`, `docs/DECISIONS.md`, `src/core/native-io.ts`, `src/mcp/runtime-bootstrap.ts`.  
@@ -55,6 +73,10 @@ Do not paste full Criteria, Harness or Proposal into each job. Link exact sectio
 **DONE:** All four docs linked and mutually consistent; exact source revision, dependencies, file ownership, Windows negative tests and Windows-native evidence gates present. Independent review records findings and dispositions. Explicit Human approval before W1 implementation.
 
 ## 4. W1 — Owner / Windows grant / host capability contracts
+
+**W1-04 qualified grant sync (new):** preserve `ACTIVE/STALE/REAUTH_REQUIRED/REVOKED` and selected-only stale-root reauthorization from common grants. Record separately whether the durable root was accepted and whether the native file backend is qualified for that root list. A mismatch must yield actionable blocked status, not pretend file mutations are permitted. Native update requires stopped-owner/qualified installer evidence and retained previous generation/journal. Test other stale grants retained, root identity changed, failed installer and safe retry-after-readback. **W1-04 DONE:** actual Windows owner/root/negative fixture receipts and a failure-state readback, not merely successful `bind_workspaces`.
+
+
 
 **Role:** Coder + Tester, Reviewer at G1  
 **WHAT:** One per-user Windows connector owner, protected durable grant store, Windows root identity and revision checks. Prove unsupported sandbox API is never advertised as verified.  
@@ -65,6 +87,15 @@ Do not paste full Criteria, Harness or Proposal into each job. Link exact sectio
 **Instruction update trigger:** After host probe, Planner records supported Windows versions, native API availability and whether additional proof is necessary; revise W2 and W3 instructions before dispatch.
 
 ## 5. W2 — Native file/recovery/directory contracts
+
+**W2-05 Windows bytes and image import (new, depends W2-01 and W1-04):**
+
+- **WHAT:** enable existing `create_file_bytes`, `fetch_file_bytes` and `import_image_file` on the qualified Windows file backend; do not add duplicate importer APIs.
+- **WHERE:** `src/mcp/image-file-transfer.ts` (reuse only), `src/mcp/server.ts` (integrator-owned), Windows native file adapter, Windows-specific tests; see `docs/workspaces/IMAGE-ASSET-TRANSFER.md` from current `main`.
+- **CONSTRAINTS:** real host injected `file` parameter; HTTPS origin allowlist, no redirects, no logs with URL/tokens, MIME/signature/extension, 8 MiB, native exclusive create, current controller + workspace role. No Base64 chat-workaround or unconfined `fs.writeFile` fallback. Windows-skipped POSIX tests do not satisfy this job.
+- **DONE:** `windows-latest` native file import/bytes tests prove role denial, stale grant, path/ADS escape, interrupted transfer, collision and SHA-256 source/readback equality; selected Windows plugin genuine image artifact E2E is a later W5 test, not assumed by CI.
+
+
 
 **Role:** Coder (owned subtracks) + Tester  
 **WHAT:** Build safe Windows file-tool boundary, versioned CAS mutations, recovery/journal readback, role-aware copy/move, directory inspection/copy with negative tests.  
@@ -86,6 +117,10 @@ Do not paste full Criteria, Harness or Proposal into each job. Link exact sectio
 
 ## 7. W4 — MCP integration / Desktop / CI contracts
 
+**V2 integration requirement:** compose only verified Windows native grant-backed file capability; preserve `import_image_file` host fileParam and shared image validator, `fileGrantSyncState`/blocked diagnostic shapes and command confinement truth. The Windows desktop installer must preserve old state on failed update and must not mutate the Mac installation.
+
+
+
 **Role:** Single Integrator (MCP), Coder (Desktop), Tester  
 **WHAT:** Expose proven Windows backends over existing MCP calls, ship per-user Windows background/tray Open/Quit and trusted tunnel start/stop, preserve Mac behavior.  
 **WHERE:** Integration owner only touches `src/mcp/{runtime-bootstrap,server,catalog,write-dispatch}.ts`. Desktop owner uses new Windows UI/installer scripts, package resources and tests. CI owner edits Windows workflow files.  
@@ -95,6 +130,10 @@ Do not paste full Criteria, Harness or Proposal into each job. Link exact sectio
 **Instruction update trigger:** Integrator obtains exact stable interface signatures from G2 and G3 and adjusts its contract before editing shared dispatch.
 
 ## 8. W5 — Real Windows installed-plugin acceptance
+
+**V2 mandatory real-plugin cases:** choose a disposable Windows workspace and reference root; pass a genuine ImageGen artifact through the selected Windows plugin's `import_image_file` host fileParam, verify source/import/readback SHA-256 and file length, and refuse false PASS on a preview or a fabricated file ID. Bind a new root and verify selected-only rebind plus qualified file-grant status; report any installer refresh blocker without bypass. Run normal Open/Quit and owned-process checks separately; reboot remains excluded.
+
+
 
 **Role:** Operator + Tester; Human closure  
 **WHAT:** Confirm the selected Windows connector actually performs the user workflow on real Windows, not only the GitHub runner.  
@@ -108,6 +147,8 @@ Do not paste full Criteria, Harness or Proposal into each job. Link exact sectio
 | --- | --- |
 | Reparse/junction escape | Swap an intermediate segment between validation and mutation; no write outside granted root |
 | Identity reuse/alias | Drive-letter change, casefold path, volume replacement, UNC ambiguity; stale authority rejected |
+| Grant refresh mismatch | Selected-only stale-root rebind does not enable stale/unsigned native file grants; blocked write with diagnosis and unchanged prior journal |
+| Binary/image import | Genuine host fileParam, approved URL, MIME/size/extension, exclusive native create, stale grant/reference denial, byte/SHA-256 readback; no Windows skip-as-PASS |
 | Reference misuse | Read/copy out allowed; reference source move, delete, execute and destination copy denied |
 | Partial copy/move | Source changes or destination appears; no unintended removal, conflict/UNKNOWN truthful |
 | Journaling | Crash between effect and acknowledgment; readback reports uncertainty, no automatic retry |
@@ -131,6 +172,6 @@ No report may say full Windows accepted based solely on Mac PASS or on a GitHub 
 
 ## 11. Pre-code readiness and assignment policy
 
-This Job Guide and companion documents are **drafts**, not approval to execute W1–W5. W0 Reviewer/Critic must inspect for missing file boundaries, feasibility blockers, contradictions and new unwanted requirements. If findings concern design rather than the approved Criteria, correct the design; do not call it a Criteria change. Once W0 receives approval, assign tasks in dependency order and continue automatically to DONE or a true human gate, with Planner refreshing provisional instructions when each upstream artifact is available.
+This Job Guide and companion documents are **drafts**, not approval to execute W1–W5. W0 branch authority update is complete; source merge/reconciliation and planning review remain open. W0 Reviewer/Critic must inspect for missing file boundaries, feasibility blockers, contradictions and new unwanted requirements. If findings concern design rather than the approved Criteria, correct the design; do not call it a Criteria change. Once W0 receives approval, assign tasks in dependency order and continue automatically to DONE or a true human gate, with Planner refreshing provisional instructions when each upstream artifact is available.
 
 **Current state:** Windows code NOT started in this phase; no Windows native test or selected-host acceptance claimed.
