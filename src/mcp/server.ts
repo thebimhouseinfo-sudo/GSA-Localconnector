@@ -161,7 +161,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
     return {state:observations.every(value=>value.state==="STOPPED")?"STOPPED":"UNKNOWN",pending_starts:observations.reduce((sum,value)=>sum+value.pending_starts,0),outcomes};
   };
   const processHistory=()=>options.processPersistence?{
-    processHistory:"persisted-start_process-and-run_command",processHistoryLimit:1000,processJournalLimit:null,
+    processHistory:"persisted-start_process-and-run_command",processHistoryState:durable.ready?"READY":"DEGRADED",processHistoryLimit:1000,processJournalLimit:null,
     processRecovery:options.processPersistence.store.health?.()??{unreadable_records:0,admission_blocked:false},
     ...(options.processPersistence.store.health?.().admission_blocked?{restartRecovery:"degraded-process-journal"}:{})
   }:{processHistory:"current-server-only; newest 128 terminal native receipts"};
@@ -687,15 +687,27 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
       catch(e){return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:"READ_CLEANUP_UNCONFIRMED",message:e instanceof Error?e.message:"READ_CLEANUP_UNCONFIRMED"})}]};}
     }
   };
+  // Best effort only: a failing or slow journal load is reported as DEGRADED, never as a tool failure.
+  const bestEffortJournalReady=async(load:Promise<void>)=>{
+    let timer:NodeJS.Timeout|undefined;
+    try{await Promise.race([load.catch(()=>{}),new Promise<void>(resolve=>{timer=setTimeout(resolve,2000);timer.unref();})]);}
+    finally{if(timer)clearTimeout(timer);}
+  };
+  // Diagnostics and non-process tools must not fail on (or inherit failures from) the journal load.
+  const needsProcessJournal=new Set(["run_command","start_process","stop_process","list_processes","process_status","process_output"]);
   return async(call:ToolCall):Promise<ToolResult>=>{
     try{
-      if(options.processPersistence)await durable.initialize();
-      if(!controlStore||!controlledToolNames.has(call.name))return invoke(call);
+      if(options.processPersistence){
+        if(needsProcessJournal.has(call.name))await durable.initialize();
+        else await bestEffortJournalReady(durable.initialize());
+      }
+      if(!controlStore||!controlledToolNames.has(call.name))return await invoke(call);
       const {control_token,...args}=call.arguments??{};
       if(typeof control_token!=="string")throw new ControlLeaseError("SESSION_INVALID","Controller token is required");
       return await withControlToken(controlStore,control_token,()=>invoke({...call,arguments:args}));
     }catch(error){
-      return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code:error&&typeof error==="object"&&"code" in error?error.code:"SESSION_INVALID"})}]};
+      const code=error&&typeof error==="object"&&"code" in error&&typeof error.code==="string"?error.code:"INTERNAL_ERROR";
+      return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code,...(code==="INTERNAL_ERROR"&&error instanceof Error?{message:error.message}:{})})}]};
     }
   };
 }
@@ -738,7 +750,7 @@ export async function runStdio(registry=new WorkspaceRegistry(),invoke:(call:Too
       if(id!==undefined)streams.output.write(JSON.stringify({jsonrpc:"2.0",id,result})+"\n");
     } catch(e) {
       if(!parsed){streams.output.write(JSON.stringify({jsonrpc:"2.0",id:null,error:{code:-32700,message:"Parse error"}})+"\n");return;}
-      if(id!==undefined)streams.output.write(JSON.stringify({jsonrpc:"2.0",id,error:{code:-32603,message:e instanceof Error?e.message:"Internal error"}})+"\n");
+      if(id!==undefined)streams.output.write(JSON.stringify({jsonrpc:"2.0",id,error:{code:e instanceof Error&&e.message==="INVALID_REQUEST"?-32600:e instanceof Error&&e.message==="METHOD_NOT_FOUND"?-32601:-32603,message:e instanceof Error?e.message:"Internal error"}})+"\n");
     }
   };
   for await(const line of createInterface({input:streams.input,crlfDelay:Infinity})) {

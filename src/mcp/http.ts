@@ -10,6 +10,9 @@ import {loadStartupRegistry} from "./startup-registry.js";
 const DEFAULT_PORT = 58347;
 const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
 const PROTOCOL_VERSION = "2025-03-26";
+// time_limit_ms is validated up to 120000; leave headroom for spawn, kill and journal writes.
+// Receiving a request stays bounded by requestTimeout/headersTimeout; this only bounds idle sockets.
+const SOCKET_IDLE_MS = 120000 + 30000;
 
 function respond(res: ServerResponse, status: number, payload: unknown): void {
   res.writeHead(status, {
@@ -95,6 +98,8 @@ export function createHttpMcpServer(token: string, registry = new WorkspaceRegis
     }
     let result: unknown;
     const params = raw.params;
+    // The request is fully received: do not let the idle timer cut the socket while a tool runs.
+    req.socket.setTimeout(0);
     try {
       switch (raw.method) {
         case "initialize":
@@ -111,10 +116,17 @@ export function createHttpMcpServer(token: string, registry = new WorkspaceRegis
       }
       respond(res, 200, {jsonrpc:"2.0",id,result});
     } catch(cause) {
-      const busy=cause instanceof Error&&cause.message==="SERVER_BUSY";
-      respond(res, 200, error(id, busy?-32603:-32602, busy?"SERVER_BUSY":"Invalid params"));
+      const message=cause instanceof Error?cause.message:"";
+      if(message==="INVALID_PARAMS"){respond(res, 200, error(id, -32602, "Invalid params")); return;}
+      if(message==="SERVER_BUSY"){respond(res, 200, error(id, -32603, "SERVER_BUSY")); return;}
+      // Raw messages may contain local paths; keep them out of the response.
+      process.stderr.write("HTTP MCP internal error: "+(message||String(cause))+"\n");
+      respond(res, 200, error(id, -32603, "Internal error"));
+    } finally {
+      // Restore the idle bound for keep-alive reuse after the response was written.
+      if (!req.socket.destroyed) req.socket.setTimeout(SOCKET_IDLE_MS);
     }
-  }).setTimeout(30000,socket=>socket.destroy());
+  }).setTimeout(SOCKET_IDLE_MS,socket=>socket.destroy());
 }
 export async function startHttpMcp(token: string, port = DEFAULT_PORT,owner?:import("../local/mac-owner.js").MacOwner): Promise<void> {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw Error("Invalid HTTP MCP port");

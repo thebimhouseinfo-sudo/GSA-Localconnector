@@ -68,7 +68,7 @@ test('HTTP closes a client stalled during the body within its configured deadlin
  try{
   assert.ok(server.requestTimeout>0&&server.requestTimeout<=30000,'bounded request deadline');
   assert.ok(server.headersTimeout>0&&server.headersTimeout<=server.requestTimeout,'bounded header deadline');
-  assert.ok(server.timeout>0&&server.timeout<=30000,'body/response inactivity deadline');
+  assert.ok(server.timeout>0&&server.timeout<=150000,'idle socket deadline (must exceed the 120s tool limit)');
   await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const port=(server.address() as AddressInfo).port;
   const started=Date.now();
   await new Promise<void>((resolve,reject)=>{

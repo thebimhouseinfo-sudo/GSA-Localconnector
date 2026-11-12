@@ -11,7 +11,7 @@ type Entry={workspace_id:string;native_id:string;public_id:string;active:boolean
 export class DurableProcessManager{
  private readonly owned=new Map<string,Entry>();
  private readonly pending=new Map<string,number>();
- private readonly ready:Promise<void>;
+ private readyPromise?:Promise<void>;
  private readonly admission=new ProcessAdmission();
  private readonly ownerSession:string|undefined;
  private initialized=false;
@@ -29,7 +29,7 @@ export class DurableProcessManager{
   const collect=()=>{for(const entry of this.owned.values())if(entry.workspace_id===workspaceId&&entry.active)selected.add(entry);};
   collect();
   const work=(async()=>{
-   await this.ready;collect();
+   await this.ensureReady();collect();
    // Cancel known work immediately while late acknowledgements retain their own continuation.
    const stop=async(entry:Entry)=>{if(!entry.active||!this.currentOwner(entry))return;try{await this.stopOwned(entry);}catch{}};
    const known=[...selected].map(stop);
@@ -55,14 +55,27 @@ export class DurableProcessManager{
   if(!this.persistence&&(status.stopped||["SUCCEEDED","FAILED","CANCELLED"].includes(status.state)))entry.active=false;
   return status;
  }
+ private ensureReady():Promise<void>{
+  if(this.readyPromise)return this.readyPromise;
+  const attempt:Promise<void>=this.load().catch(error=>{
+   // Never cache a failed load: a later call must be able to retry.
+   if(this.readyPromise===attempt)this.readyPromise=undefined;
+   throw Object.assign(Error("PROCESS_JOURNAL_UNAVAILABLE"),{code:"PROCESS_JOURNAL_UNAVAILABLE" as const,cause:error});
+  });
+  return this.readyPromise=attempt;
+ }
+ private async load():Promise<void>{
+  if(this.persistence)for(const record of await this.persistence.store.list())this.hydrate(record);
+  this.initialized=true;
+ }
  constructor(private readonly backend:VerifiedNativeProcessController|null,private readonly maxActive=16,private readonly persistence?:ProcessPersistence){
   this.ownerSession=persistence?.ownerSession;
-  this.ready=(persistence?persistence.store.list().then(records=>{for(const record of records)this.hydrate(record);}):Promise.resolve()).then(()=>{this.initialized=true;});
-  // Retain the rejecting readiness promise for callers without an unhandled
-  // rejection when the factory is created before its first invocation.
-  void this.ready.catch(()=>{});
+  // Start loading eagerly, without an unhandled rejection when the factory is
+  // created before its first invocation. A failure is retried by the next caller.
+  void this.ensureReady().catch(()=>{});
  }
- async initialize():Promise<void>{await this.ready;}
+ get ready():boolean{return this.initialized;}
+ async initialize():Promise<void>{await this.ensureReady();}
  /** Persist the existing synchronous sandbox execution, preserving its full receipt.
   * This path never translates a command identity into a controller-native ID. */
  run(input:SandboxedProcessRequest,sandbox:VerifiedNativeSandbox):Promise<ProcessRecord>{
@@ -85,7 +98,7 @@ export class DurableProcessManager{
   if(!sandbox?.verified||!this.persistence)throw Error("SECURITY_BLOCKED");
   validateProcessRequest(input);
   const request={...input,argv:[...input.argv]};
-  await this.ready;token.check();
+  await this.ensureReady();token.check();
   if([...this.owned.values()].filter(e=>e.command&&e.active).length>=4)throw new DurableProcessError("PROCESS_LIMIT","Concurrent command limit");
   const id=randomUUID(),now=new Date().toISOString();
   const initial:ProcessJournalRecord={format:"gsa-process-v1",process_id:id,workspace_id:request.workspace_id,native_id:null,owner_session:this.persistence.ownerSession,revision:1,
@@ -149,9 +162,9 @@ export class DurableProcessManager{
   const entry={workspace_id:record.workspace_id,native_id:record.native_id??"",public_id:record.process_id,active:!record.stopped,record};
   this.owned.set(record.process_id,entry);return entry;
  }
- async list(workspaceId:string){await this.ready;return [...this.owned.values()].filter(x=>x.workspace_id===workspaceId).map(x=>({process_id:x.public_id,workspace_id:x.workspace_id}));}
+ async list(workspaceId:string){await this.ensureReady();return [...this.owned.values()].filter(x=>x.workspace_id===workspaceId).map(x=>({process_id:x.public_id,workspace_id:x.workspace_id}));}
  private async entry(workspaceId:string,id:string):Promise<Entry>{
-  await this.ready;if(!this.owned.has(id)&&this.persistence){const record=await this.persistence.store.load(id);if(record)this.hydrate(record);}
+  await this.ensureReady();if(!this.owned.has(id)&&this.persistence){const record=await this.persistence.store.load(id);if(record)this.hydrate(record);}
   return this.get(workspaceId,id);
  }
  private async persist(entry:Entry,status:NativeProcessStatus,confirmedStop=false):Promise<void>{
@@ -186,7 +199,7 @@ export class DurableProcessManager{
  }
  private async startAdmitted(request:SandboxedProcessRequest,token:ReturnType<DurableProcessManager["begin"]>):Promise<{process_id:string;state:"RUNNING"}>{
   const native=requireNativeBackend(this.backend);
-  await this.ready;token.check();
+  await this.ensureReady();token.check();
   if(!request.workspace_id||!request.executable||!validCommandCwd(request.cwd_relative)||request.network_allowed||
     !Number.isInteger(request.time_limit_ms)||request.time_limit_ms<1||request.time_limit_ms>120000||
     !Number.isInteger(request.max_output_bytes)||request.max_output_bytes<1||request.max_output_bytes>2097152||
