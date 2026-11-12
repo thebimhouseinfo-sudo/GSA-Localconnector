@@ -1,9 +1,9 @@
 # Windows Native Connector — Implementation Plan
 
 **Date:** 2026-11-09  
-**Status:** PRE-CODE / V2 UPDATED FOR REVIEW (2026-11-12)  
+**Status:** PRE-CODE / V3 RELIABILITY UPDATE — REVIEW PENDING (2026-11-12)  
 **Branch:** `feat/windows-native-connector-20261109`  
-**Branch origin:** `41102fa3e9d2a187c8373b1474e9377b737c66b1`; **newer main inspected:** `bce187542ec68491f29a95b4a876fd7b4dc5648e` (67 commits newer, NOT merged yet)  
+**Branch origin:** `41102fa3e9d2a187c8373b1474e9377b737c66b1`; **newer main inspected:** `9d66c60c4f31cae6cfed64838468b5558973ab0c` (83 commits ahead of Windows, NOT merged yet)  
 **Authority:** `docs/CRITERIA.md` §§1–10 and user acceptance of Mac (2026-11-09); `docs/DECISIONS.md`; Mac `docs/{IMPLEMENTATION_PLAN,MILESTONES,TECHNICAL_PROPOSAL}.md`. See companion `WINDOWS_MILESTONES.md`, `WINDOWS_TECHNICAL_PROPOSAL.md`, `WINDOWS_JOB_GUIDE.md`.
 
 ## GOAL
@@ -28,7 +28,7 @@ Mac is user-accepted and **frozen as the reference behavior**, not a Windows tes
 
 ## 2026-11-12 V2 baseline and integration assessment
 
-The Windows branch currently contains **four planning-document commits only** (HEAD `aca0bb3ac0b74215d6a2b7b6d7402d777ea26785` before this V2 edit); no Windows feature implementation has been observed. At inspection, `main` was `bce187542ec68491f29a95b4a876fd7b4dc5648e`: 67 commits ahead of the branch fork. **Reading these newer changes is not merging them.** Revalidate heads and merge or safely integrate the current `main` into this Windows branch as a separately reviewed W0 action, with no force push and no loss of the four Windows docs. Do not edit `main` or install on a real host as part of W0.
+The Windows branch currently contains **four planning-document commits only** (HEAD `aca0bb3ac0b74215d6a2b7b6d7402d777ea26785` before this V2 edit); no Windows feature implementation has been observed. At latest inspection, `main` was `9d66c60c4f31cae6cfed64838468b5558973ab0c`: 83 commits ahead of the Windows branch, including 16 newer commits since `bce1875`. **Reading these newer changes is not merging them.** Revalidate heads and merge or safely integrate the current `main` into this Windows branch as a separately reviewed W0 action, with no force push and no loss of the four Windows docs. Do not edit `main` or install on a real host as part of W0.
 
 GSA Project Memory branch authority was changed on 2026-11-12 to `feat/windows-native-connector-20261109` after explicit user instruction; historical Mac planning Job `J-F33D` remains a distinct READY planning record. Do not silently replay or reuse its old evidence for Windows.
 
@@ -48,7 +48,28 @@ GSA Project Memory branch authority was changed on 2026-11-12 to `feat/windows-n
 
 - **W0-00 (Completed governance only):** GSA branch authority updated with exact Memory Repo CAS and readback; no Windows source/code capability was enabled.
 - **W0-05 (Pending source reconciliation):** Re-read current Windows/main heads, retain the four docs and integrate later shared changes with a reviewable merge; document conflicts and keep user-owned uncommitted files intact.
+- **W0-07 (Pending reliability classification):** Map nine Mac defect categories to shared fixes, Windows-specific implementation and negative tests; finish before W0-06.
 - **W0-06 (Pending review):** Cross-check these four Windows docs against exact revision and obtain independent Planner/Reviewer findings closure; obtain separate Human authorization before W1 source coding.
+
+## 2026-11-12 V3 — Latest macOS reliability lessons for Windows
+
+**Observed evidence:** 16 new `main` commits since `bce1875`; current `main` `9d66c60`; source paths `src/core/durable-process.ts`, `src/local/{control-lease,grants}.ts`, `src/mcp/{http,server}.ts`, `scripts/{desktop-supervisor,mac-desktop-adapter}.mjs`, `native/macos-desktop/App.swift`, tests and `docs/reviews/2026-11-12-RELIABILITY-FIX-GUIDE.md`. The guide describes nine Mac defects and includes historical repair steps; current checked source contains corresponding fixes. **Neither documentation nor Mac execution certifies a Windows implementation.** First synchronize these common changes into the Windows branch under W0-05; do not overwrite four Windows plans or mutate `main`.
+
+| Mac repair / failure mode | Windows treatment | Owner / acceptance |
+| --- | --- | --- |
+| Unexpected tunnel/client exit leaves connector offline | Port bounded retryable restart and backoff to Windows tray; never restart after Quit, auth/config denial or existing owner | W4-05: simulated tunnel exit, reconnect, ceiling, no duplicate owner |
+| Quit blocked by `ACTIVE_WORK_UNKNOWN` | Read owned process journal; normal Quit only when safely idle, explicitly confirmed Force Quit for owned processes only, unrelated processes survive | W4-05, W3-02; W5-04 |
+| Transient process journal failure made all tools `SESSION_INVALID` forever | Reuse `ensureReady` retry, `PROCESS_JOURNAL_UNAVAILABLE` and diagnostic `DEGRADED` response on Windows | W3-05, W4-01: fail-once/pass-next, permanent failure still allows diagnostics |
+| Orphan grant lock caused permanent `GRANT_STORE_BUSY` | Port owner/session-fenced lock recovery to Windows-native lock mechanism; never delete foreign/unparseable/unowned locks by PID or age | W1-05: stale fenced writer, live writer, legacy lock and concurrency negatives |
+| Controller token invalidated after restart | Reuse preserved unexpired hashed lease and `SESSION_BUSY.expires_at`; no takeover UI | W1-06; W5-03: renew after restart, expire/release behavior |
+| HTTP socket closed mid-tool around 30 seconds | Reuse separate request/headers timeouts and completed-tool wait, with bounded execution | W4-04: >30s valid JSON-RPC result and slow-header rejection |
+| JSON-RPC and native error codes misleading | Reuse `INTERNAL_ERROR`, correct HTTP/stdio `-32600/-32601/-32602/-32603` and secret/path-safe messages | W4-04: method/argument/runtime failure and redaction cases |
+| Unit tests read installed Mac identity under real HOME | Windows tests must isolate `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, TEMP and identity; never touch real host state | W1-03, W4-03: synthetic-profile fixture isolation |
+| Mac pause-state diagnostics/repair | **Do not port Pause/Resume or pause-state UI**. Preserve only shared reliability rule: status, capabilities, recovery inspection, release/stop respond even in degraded state | W4-01, W4-05: no diagnostic lockout |
+
+**New bounded planning tasks:** W0-07 (reliability evidence mapping and common vs Windows vs Mac-only classifications), W1-05 (grant lock recovery), W1-06 (controller lease continuity), W3-05 (journal retry/degraded state), W4-04 (HTTP/stdio error and duration handling), W4-05 (tray reconnect, safe Quit/confirmed force). Add matching exact-SHA Windows-hosted tests and separately selected-plugin acceptance in W5; do not create extra product agents, UI modes or connector-wide CI systems. Native Windows locking and process control must be proven on Win32; Mac FD/Swift/launchd/Unix signals cannot be copied as their implementation.
+
+**Distinct safety states:** a successfully reselected workspace is not proof its signed/qualified native file backend was refreshed; old or unparseable grants/locks do not authorize a new scope. `UNKNOWN` is never retried as a second file effect without readback. Real Windows plugin check is separate from hosted `windows-latest` checks. Mac Git remote and reboot remain outside this acceptance round.
 
 ## 3. Mac-to-Windows reuse matrix
 
@@ -79,7 +100,7 @@ Inventory the exact Windows-relevant source entrypoints and tests; record API co
 
 **GOAL:** Establish one Windows owner and safe grant/root identity, including selected-only stale-root reauthorization and truthful native-backend freshness.
 
-Create a Windows owner/session mechanism and persisted grant store; enforce exclusive connector owner without modifying unrelated processes; store secrets safely and separately from workspace roots. Prove durable root identity under rename/replacement, drive-letter aliases, case changes, junctions, symlinks, alternate data streams, UNC paths and inaccessible volumes. Implement read-only capability probes that never assert enforcement from API presence alone. **W1-04:** define secure synchronization between reselected workspace grants and the verified native file-grant set. Rebinding an old root is not proof that native file mutations are enabled. Preserve previous native installation/recovery journals; report a blocked qualification/update step rather than assuming automatic refresh.
+Create a Windows owner/session mechanism and persisted grant store; enforce exclusive connector owner without modifying unrelated processes; store secrets safely and separately from workspace roots. Prove durable root identity under rename/replacement, drive-letter aliases, case changes, junctions, symlinks, alternate data streams, UNC paths and inaccessible volumes. Implement read-only capability probes that never assert enforcement from API presence alone. **W1-04:** define secure synchronization between reselected workspace grants and the verified native file-grant set. Rebinding an old root is not proof that native file mutations are enabled. Preserve previous native installation/recovery journals; report a blocked qualification/update step rather than assuming automatic refresh. **W1-05/W1-06:** qualify owner-session grant-lock recovery and hashed control lease continuity against Windows host identity, without PID/mtime stale-lock guesses.
 
 ### W2 — Native files and directories
 
@@ -91,19 +112,19 @@ Implement per-operation Win32 path/handle containment and recoverable mutations.
 
 **GOAL:** Run real Windows scripts, local Git and owned processes with bounded results and truthful user-account, unconfined command semantics.
 
-Launch from the granted workspace or child cwd as the logged-in user. Under the approved §7 exception, this runner is **not OS-confined** and must advertise `command_confinement: none (user account)` and `state_integrity_vs_commands: not_protected`. Use a scoped initial cwd, minimal environment, bounded time/output; track process tree ownership (Job Objects) and avoid killing neighbors. Local Git and scripts/test/build in non-Git folders must work. Remote Git remains blocked until an independently reviewed, restricted network capability is demonstrated; report missing functionality truthfully, not as success.
+Launch from the granted workspace or child cwd as the logged-in user. Under the approved §7 exception, this runner is **not OS-confined** and must advertise `command_confinement: none (user account)` and `state_integrity_vs_commands: not_protected`. Use a scoped initial cwd, minimal environment, bounded time/output; track process tree ownership (Job Objects) and avoid killing neighbors. Local Git and scripts/test/build in non-Git folders must work. Remote Git remains blocked until an independently reviewed, restricted network capability is demonstrated; report missing functionality truthfully, not as success. **W3-05:** a temporary process journal load failure may be retried and must not block diagnostic MCP tools; persistent failure is explicitly degraded.
 
 ### W4 — MCP integration, Windows CI and Desktop delivery
 
 **GOAL:** Wire proven Windows capabilities through unchanged MCP contracts, ship per-user Windows Open/Quit and protected tunnel lifecycle and preserve Mac regression behavior.
 
-One integration owner wires the verified Windows backends into the existing dispatch and capability status without breaking Mac, including existing image fileParam protocol and grant-recovery diagnostic shapes. Dedicated `windows-latest` workflow exercises Node typecheck/tests plus actual Windows file, directory and process fixtures. Build/test a per-user installation with background/tray Open/Quit and tunnel initialization from saved protected configuration; never embed secrets in artifacts. GitHub CI runs on exact candidate SHA before user-machine installation.
+One integration owner wires the verified Windows backends into the existing dispatch and capability status without breaking Mac, including existing image fileParam protocol and grant-recovery diagnostic shapes. Dedicated `windows-latest` workflow exercises Node typecheck/tests plus actual Windows file, directory and process fixtures. Build/test a per-user installation with background/tray Open/Quit and tunnel initialization from saved protected configuration; never embed secrets in artifacts. **W4-04:** independently verify long-tool HTTP responses and JSON-RPC error mapping. **W4-05:** bounded retryable reconnect and safe Quit/confirmed force for owned work only; no Pause/Resume. GitHub CI runs on exact candidate SHA before user-machine installation.
 
 ### W5 — Real Windows acceptance and closure
 
 **GOAL:** Verify the installed Windows plugin's actual file, image import, process and lifecycle operations with independent source/byte readback before user acceptance.
 
-User-selected Windows machine: install/update, connect from separate Windows plugin, bind one workspace plus one reference, execute file and directory operations, genuine-host `import_image_file` with SHA-256 readback, selected grant rebind/qualification handling, projects with and without Git, build/test process lifecycle, safe cancellation, local Git, tunnel quit/relaunch, unknown/partial recovery and a second independent project. Confirm full workflow against the exact installed version; record failure/blocked/unverified cases instead of PASS. Reboot excluded; outstanding defects become Issues after explicit user acceptance.
+User-selected Windows machine: install/update, connect from separate Windows plugin, bind one workspace plus one reference, execute file and directory operations, genuine-host `import_image_file` with SHA-256 readback, selected grant rebind/qualification handling, projects with and without Git, build/test process lifecycle, safe cancellation, local Git, tunnel quit/relaunch, unexpected tunnel exit/reconnect, retained unexpired controller lease, grant-lock and process-journal fail/recovery, long-running HTTP tool completion, safe Quit/confirmed force with neighbor unaffected, unknown/partial recovery and a second independent project. Confirm full workflow against the exact installed version; record failure/blocked/unverified cases instead of PASS. Reboot excluded; outstanding defects become Issues after explicit user acceptance.
 
 ## 5. Development process and controls
 
