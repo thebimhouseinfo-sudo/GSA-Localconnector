@@ -747,7 +747,7 @@ export async function runStdio(registry=new WorkspaceRegistry(),invoke:(call:Too
       if(id!==undefined)streams.output.write(JSON.stringify({jsonrpc:"2.0",id,result})+"\n");
     } catch(e) {
       if(!parsed){streams.output.write(JSON.stringify({jsonrpc:"2.0",id:null,error:{code:-32700,message:"Parse error"}})+"\n");return;}
-      if(id!==undefined)streams.output.write(JSON.stringify({jsonrpc:"2.0",id,error:{code:-32603,message:e instanceof Error?e.message:"Internal error"}})+"\n");
+      if(id!==undefined)streams.output.write(JSON.stringify({jsonrpc:"2.0",id,error:{code:e instanceof Error&&e.message==="INVALID_REQUEST"?-32600:e instanceof Error&&e.message==="METHOD_NOT_FOUND"?-32601:-32603,message:e instanceof Error?e.message:"Internal error"}})+"\n");
     }
   };
   for await(const line of createInterface({input:streams.input,crlfDelay:Infinity})) {

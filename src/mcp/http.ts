@@ -111,8 +111,12 @@ export function createHttpMcpServer(token: string, registry = new WorkspaceRegis
       }
       respond(res, 200, {jsonrpc:"2.0",id,result});
     } catch(cause) {
-      const busy=cause instanceof Error&&cause.message==="SERVER_BUSY";
-      respond(res, 200, error(id, busy?-32603:-32602, busy?"SERVER_BUSY":"Invalid params"));
+      const message=cause instanceof Error?cause.message:"";
+      if(message==="INVALID_PARAMS"){respond(res, 200, error(id, -32602, "Invalid params")); return;}
+      if(message==="SERVER_BUSY"){respond(res, 200, error(id, -32603, "SERVER_BUSY")); return;}
+      // Raw messages may contain local paths; keep them out of the response.
+      process.stderr.write("HTTP MCP internal error: "+(message||String(cause))+"\n");
+      respond(res, 200, error(id, -32603, "Internal error"));
     }
   }).setTimeout(30000,socket=>socket.destroy());
 }
