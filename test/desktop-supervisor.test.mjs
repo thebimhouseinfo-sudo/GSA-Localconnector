@@ -196,3 +196,33 @@ test("tunnel child exiting with code 1 is FAILED/CHILD_EXITED with its code",asy
  const status=await runtime.status();
  assert.equal(status.state,"FAILED");assert.equal(status.reason,"CHILD_EXITED");assert.equal(status.childExitCode,1);
 });
+
+test("authentication rejection stops the child even when retained work is UNKNOWN",async()=>{
+ const {adapter,child,calls}=makeAdapter({connectionStatus:async()=>"AUTH_REJECTED",ownedWorkState:async()=>"UNKNOWN"});
+ const runtime=await startDesktopRuntime({runtimeRoot:runtimeRoot(),envPath:"/fixture/setup/.env",platformAdapter:adapter});
+ const status=await runtime.status();
+ assert.equal(status.state,"SETUP_REQUIRED");assert.equal(status.reason,"AUTH_REJECTED");
+ assert.deepEqual(child.signals,["SIGTERM"]);
+ assert.equal(calls.released,1);
+});
+
+test("confirmed force stop signals only the retained child despite ACTIVE or UNKNOWN work",async()=>{
+ for(const work of ["ACTIVE","UNKNOWN"]){
+  const {adapter,child,neighbor,calls}=makeAdapter({ownedWorkState:async()=>work});
+  const runtime=await startDesktopRuntime({runtimeRoot:runtimeRoot(),envPath:"/fixture/setup/.env",platformAdapter:adapter});
+  assert.deepEqual(await runtime.stopOwned(),{stopped:false,reason:work==="ACTIVE"?"ACTIVE_WORK_PRESENT":"ACTIVE_WORK_UNKNOWN"});
+  assert.deepEqual(child.signals,[]);
+  assert.deepEqual(await runtime.stopOwned({force:true}),{stopped:true});
+  assert.deepEqual(child.signals,["SIGTERM"]);
+  assert.deepEqual(neighbor.signals,[]);
+  assert.equal(calls.released,1);
+ }
+});
+
+test("force stop without a retained child signals nothing",async()=>{
+ const {adapter,child}=makeAdapter({loadSetup:async()=>({state:"REQUIRED"})});
+ const runtime=await startDesktopRuntime({runtimeRoot:runtimeRoot(),envPath:"/fixture/setup/.env",platformAdapter:adapter});
+ const result=await runtime.stopOwned({force:true});
+ assert.equal(result.stopped,true);
+ assert.deepEqual(child.signals,[]);
+});

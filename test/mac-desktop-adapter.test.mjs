@@ -274,3 +274,73 @@ test('status watcher does not use 75 for non-retryable failures',async()=>{
  clearInterval(timer);
  assert.notEqual(code,75);
 });
+
+import { EventEmitter } from 'node:events';
+
+const journalRecord=(id,overrides={})=>({format:'gsa-process-v1',process_id:id,workspace_id:'w',native_id:null,owner_session:'11111111-1111-4111-8111-111111111111',revision:1,
+ status:{state:'RUNNING',exit_code:null,started_at:'2026-01-01T00:00:00.000Z',ended_at:null},stopped:false,stdout:'',stderr:'',output_complete:false,...overrides});
+const ids=['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'];
+async function journalDirectory(records){
+ const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-work-state-')));
+ const runs=path.join(root,'process-runs');await fs.mkdir(runs,{mode:0o700});
+ for(const [id,record,mode=0o600] of records){await fs.writeFile(path.join(runs,id+'.json'),typeof record==='string'?record:JSON.stringify(record)+'\n',{mode});await fs.chmod(path.join(runs,id+'.json'),mode);}
+ return {root,runs};
+}
+
+test('owned work state is IDLE for a missing or empty journal without creating anything',async()=>{
+ const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-work-missing-')));
+ try{
+  assert.equal(await adapterModule.readOwnedWorkState(path.join(root,'process-runs')),'IDLE');
+  assert.deepEqual(await fs.readdir(root),[]);
+  const {root:other,runs}=await journalDirectory([]);
+  try{assert.equal(await adapterModule.readOwnedWorkState(runs),'IDLE');}finally{await fs.rm(other,{recursive:true,force:true});}
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+
+test('owned work state is ACTIVE for a running record and IDLE once every record is finished',async()=>{
+ const {root,runs}=await journalDirectory([[ids[0],journalRecord(ids[0])],[ids[1],journalRecord(ids[1],{stopped:true,output_complete:true,status:{state:'SUCCEEDED',exit_code:0,started_at:'2026-01-01T00:00:00.000Z',ended_at:'2026-01-01T00:00:01.000Z'}})]]);
+ try{
+  const before=await Promise.all(ids.map(async id=>(await fs.stat(path.join(runs,id+'.json'))).mtimeMs));
+  assert.equal(await adapterModule.readOwnedWorkState(runs),'ACTIVE');
+  const after=await Promise.all(ids.map(async id=>(await fs.stat(path.join(runs,id+'.json'))).mtimeMs));
+  assert.deepEqual(after,before,'read-only: journal files untouched');
+  assert.deepEqual((await fs.readdir(runs)).sort(),ids.map(id=>id+'.json').sort());
+  await fs.writeFile(path.join(runs,ids[0]+'.json'),JSON.stringify(journalRecord(ids[0],{stopped:true,output_complete:true,status:{state:'FAILED',exit_code:1,started_at:'2026-01-01T00:00:00.000Z',ended_at:'2026-01-01T00:00:01.000Z'}}))+'\n',{mode:0o600});
+  assert.equal(await adapterModule.readOwnedWorkState(runs),'IDLE');
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+
+test('owned work state is UNKNOWN for a corrupt, unsafe or unreadable journal',async()=>{
+ for(const [label,records] of [['corrupt json',[[ids[0],'{not json']]],['wrong format',[[ids[0],journalRecord(ids[0],{format:'other'})]]],['group-readable',[[ids[0],journalRecord(ids[0]),0o644]]],['id mismatch',[[ids[0],journalRecord(ids[1])]]]]){
+  const {root,runs}=await journalDirectory(records);
+  try{assert.equal(await adapterModule.readOwnedWorkState(runs),'UNKNOWN',label);}finally{await fs.rm(root,{recursive:true,force:true});}
+ }
+ const {root,runs}=await journalDirectory([]);
+ try{await fs.chmod(runs,0o755);assert.equal(await adapterModule.readOwnedWorkState(runs),'UNKNOWN','public directory');}finally{await fs.rm(root,{recursive:true,force:true});}
+});
+
+test('SIGTERM is a safe stop, SIGINT is the confirmed force stop, pause/prune signals never stop',async()=>{
+ const calls=[];
+ const adapter=new MacDesktopAdapter({configPath:'/unused',pauseReader:async()=>({exists:false,paused:false})});
+ adapter.stopOwned=async options=>{calls.push(options);return {stopped:false,reason:'ACTIVE_WORK_PRESENT'};};
+ adapter.publishStatus=async()=>({});adapter.requestPause=async()=>({});adapter.pruneInactiveRegistrations=async()=>({});
+ const emitter=new EventEmitter();
+ adapterModule.wireDesktopSignals(adapter,emitter,{onStopped(){}});
+ for(const signal of ['SIGUSR2','SIGHUP','SIGWINCH'])emitter.emit(signal);
+ assert.deepEqual(calls,[]);
+ emitter.emit('SIGTERM');await new Promise(resolve=>setTimeout(resolve,20));
+ emitter.emit('SIGINT');await new Promise(resolve=>setTimeout(resolve,20));
+ assert.deepEqual(calls,[{force:false},{force:true}]);
+ assert.equal(adapter.quitOutcome.stopAttempt,2);
+ assert.equal(adapter.quitOutcome.stopBlockedReason,'ACTIVE_WORK_PRESENT');
+});
+
+test('a stopped force request is reported once and ends the watcher',async()=>{
+ let stopped=0;
+ const adapter=new MacDesktopAdapter({configPath:'/unused',pauseReader:async()=>({exists:false,paused:false})});
+ adapter.stopOwned=async()=>({stopped:true});adapter.publishStatus=async()=>({});
+ const emitter=new EventEmitter();
+ adapterModule.wireDesktopSignals(adapter,emitter,{onStopped(){stopped++;}});
+ emitter.emit('SIGINT');await new Promise(resolve=>setTimeout(resolve,20));
+ assert.equal(stopped,1);assert.equal(adapter.quitOutcome.stopBlockedReason,null);
+});

@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import {constants as fsConstants} from "node:fs";
 import path from "node:path";
 import {spawn} from "node:child_process";
 import {randomUUID} from "node:crypto";
@@ -46,6 +47,48 @@ export function watchAdapterStatus(adapter, {intervalMs = 1000, setExitCode = co
     }).catch(() => {clearInterval(timer); setExitCode(1);}).finally(() => {publishing = false;});
   }, intervalMs);
   return timer;
+}
+
+const JOURNAL_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+const JOURNAL_STATES = new Set(["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED", "UNKNOWN"]);
+
+/**
+ * Read-only view of the MCP process journal (`process-runs`): ACTIVE when any
+ * record is not yet stopped, IDLE when every record is readable and stopped (or
+ * no journal exists), UNKNOWN when it cannot be read safely. It never creates,
+ * archives, locks or rewrites anything, so it cannot disturb the MCP server's
+ * own ProcessJournalStore. The server fences records of a dead session to
+ * stopped on its next start, so an unfinished record means work may still run.
+ * The adapter does not know the MCP server's session id, so no record is skipped
+ * by owner_session: an unfinished record of any session counts as work.
+ */
+export async function readOwnedWorkState(directory) {
+  const uid = process.getuid?.();
+  if (uid === undefined || !absolute(directory)) return "UNKNOWN";
+  let info;
+  try {info = await fs.lstat(directory);} catch (error) {return error?.code === "ENOENT" ? "IDLE" : "UNKNOWN";}
+  if (!info.isDirectory() || info.uid !== uid || (info.mode & 0o077)) return "UNKNOWN";
+  let names;
+  try {names = (await fs.readdir(directory)).filter(name => name.endsWith(".json") && JOURNAL_ID.test(name.slice(0, -5)));}
+  catch {return "UNKNOWN";}
+  if (names.length > 20000) return "UNKNOWN";
+  let unreadable = false;
+  for (const name of names) {
+    const id = name.slice(0, -5);
+    let handle;
+    try {
+      try {handle = await fs.open(path.join(directory, name), fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK);}
+      catch (error) {if (error?.code === "ENOENT") continue; throw error;} // archived meanwhile
+      const stat = await handle.stat();
+      if (!stat.isFile() || stat.nlink !== 1 || stat.uid !== uid || (stat.mode & 0o077) || stat.size > 13 * 1024 * 1024) throw fail("JOURNAL_UNSAFE");
+      const record = JSON.parse((await handle.readFile()).toString("utf8"));
+      if (!record || record.format !== "gsa-process-v1" || record.process_id !== id || typeof record.stopped !== "boolean" ||
+          !JOURNAL_STATES.has(record.status?.state)) throw fail("JOURNAL_INVALID");
+      if (record.stopped === false) return "ACTIVE";
+    } catch {unreadable = true;}
+    finally {await handle?.close().catch(() => {});}
+  }
+  return unreadable ? "UNKNOWN" : "IDLE";
 }
 
 export function ensureLogin({firstInstall, existingPreference}) {
@@ -214,7 +257,7 @@ export class MacDesktopAdapter {
           privateFile: this.privateFile, environment: env}).finally(() => {healthProbe = null;});
         return healthProbe;
       },
-      ownedWorkState: async () => "UNKNOWN", // No verified native retained-work observer is available yet.
+      ownedWorkState: () => readOwnedWorkState(path.join(path.dirname(config.directory), "process-runs")),
       writeLog: async chunk => {
         log = Buffer.concat([log, chunk]).subarray(-16384);
         await publish(this.privateFile, path.join(config.directory, "desktop.log"), log);
@@ -224,7 +267,20 @@ export class MacDesktopAdapter {
     return this.runtime;
   }
   async status() {return this.runtime ? this.runtime.status() : {state: "STOPPED", connection: "UNKNOWN", installationId: null, sessionId: null};}
-  async stopOwned() {return this.runtime ? this.runtime.stopOwned() : {stopped: true};}
+  async stopOwned({force = false} = {}) {return this.runtime ? this.runtime.stopOwned({force}) : {stopped: true};}
+  /** Stop request from a signal. `force` means the user confirmed Quit despite
+   * active work; it still only ever signals the retained child. */
+  async requestStop({force = false} = {}) {
+    let outcome;
+    try {
+      const result = await this.stopOwned({force});
+      outcome = {stopped: result.stopped === true, reason: result.stopped ? null : (result.reason ?? "STOP_UNCONFIRMED")};
+    } catch {outcome = {stopped: false, reason: "STOP_UNCONFIRMED"};}
+    this.stopAttempt = (this.stopAttempt ?? 0) + 1;
+    this.quitOutcome = {stopAttempt: this.stopAttempt, stopBlockedReason: outcome.reason};
+    try {await this.publishStatus();} catch {outcome.publishFailed = true;}
+    return outcome;
+  }
   /** Serialize local menu requests; no signal terminates an active task. */
   async setPaused(paused) {
     if(typeof paused!=="boolean")throw fail("DESKTOP_PAUSE_INVALID");
@@ -316,6 +372,25 @@ export class MacDesktopAdapter {
   }
 }
 
+/**
+ * Menu-owned signals. SIGUSR2/SIGHUP change only admission of NEW MCP effects
+ * (SIGUSR1 is deliberately unused: Node reserves it for debugging). SIGWINCH
+ * prunes inactive registrations only. SIGTERM is the normal safe stop; SIGINT
+ * means "force stop confirmed by the user in the Quit dialog". Nothing here can
+ * signal any process other than the retained tunnel child.
+ */
+export function wireDesktopSignals(adapter, emitter, {onStopped} = {}) {
+  emitter.on("SIGUSR2", () => {void adapter.requestPause(true);});
+  emitter.on("SIGHUP", () => {void adapter.requestPause(false);});
+  emitter.on("SIGWINCH", () => {void adapter.pruneInactiveRegistrations().catch(() => {});});
+  for (const [signal, force] of [["SIGTERM", false], ["SIGINT", true]]) emitter.on(signal, () => {
+    void adapter.requestStop({force}).then(outcome => {
+      if (outcome.stopped) onStopped?.();
+      else if (outcome.publishFailed) process.exitCode = 1;
+    });
+  });
+}
+
 async function main() {
   process.umask(0o077);
   const [action, flag, configPath, ...extra] = process.argv.slice(2);
@@ -347,27 +422,8 @@ async function main() {
   }
   const first = await adapter.status();
   if (first.state === "SETUP_REQUIRED") return;
-  let stopAttempt = 0;
   const timer = watchAdapterStatus(adapter);
-  // UI-owned signals affect only admission of NEW MCP mutations. SIGUSR1
-  // is deliberately unused because Node reserves it for debugging.
-  process.on("SIGUSR2",()=>{void adapter.requestPause(true);});
-  process.on("SIGHUP",()=>{void adapter.requestPause(false);});
-  // A dedicated menu signal asks the retained adapter to prune only inactive
-  // registrations. No arbitrary PID, process kill or active-grant revocation.
-  process.on("SIGWINCH",()=>{void adapter.pruneInactiveRegistrations().catch(()=>{});});
-  for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => {
-    void adapter.stopOwned().then(async result => {
-      stopAttempt++;
-      adapter.quitOutcome = {stopAttempt,stopBlockedReason:result.stopped ? null : (result.reason ?? "STOP_UNCONFIRMED")};
-      await adapter.publishStatus();
-      if (result.stopped) clearInterval(timer);
-    }).catch(async () => {
-      stopAttempt++;
-      adapter.quitOutcome = {stopAttempt,stopBlockedReason:"STOP_UNCONFIRMED"};
-      try {await adapter.publishStatus();} catch {process.exitCode = 1;}
-    });
-  });
+  wireDesktopSignals(adapter, process, {onStopped: () => clearInterval(timer)});
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch(() => {

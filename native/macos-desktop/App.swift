@@ -47,6 +47,8 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
     private var quitRequested = false
     private var quitAttemptBaseline = 0
     private var quitRequestedAt: Date?
+    private var quitForced = false
+    private var confirmingForceQuit = false
     private var pruneRequested = false
     private var pruneAttemptBaseline = 0
     private var pruneRequestedAt: Date?
@@ -247,13 +249,20 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
                 return
             }
             if let statusPath, let status = try? privateJSON(statusPath),
-               let attempt = status["stopAttempt"] as? Int, attempt > quitAttemptBaseline {
-                let reason = status["stopBlockedReason"] as? String ?? "STOP_UNCONFIRMED"
+               let attempt = status["stopAttempt"] as? Int, attempt > quitAttemptBaseline,
+               let reason = status["stopBlockedReason"] as? String {
+                let wasForced = quitForced
                 quitRequested = false
                 quitRequestedAt = nil
+                quitForced = false
+                if wasForced {
+                    setStatus("Không thể buộc dừng connector: " + reason)
+                    return
+                }
                 switch reason {
-                case "ACTIVE_WORK_PRESENT": setStatus("Không thể thoát: còn tác vụ đang chạy.")
-                case "ACTIVE_WORK_UNKNOWN": setStatus("Không thể thoát: chưa xác minh tác vụ đã dừng.")
+                case "ACTIVE_WORK_PRESENT", "ACTIVE_WORK_UNKNOWN":
+                    // Never force without an explicit confirmation from the user.
+                    confirmForceQuit(reason: reason)
                 default: setStatus("Không thể xác nhận dừng connector: " + reason)
                 }
                 return
@@ -261,10 +270,11 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
             if let started = quitRequestedAt, Date().timeIntervalSince(started) > 10 {
                 quitRequested = false
                 quitRequestedAt = nil
+                quitForced = false
                 setStatus("Yêu cầu thoát không được phản hồi; connector vẫn hoạt động.")
                 return
             }
-            setStatus("Đang yêu cầu dừng connector an toàn…")
+            setStatus(quitForced ? "Đang buộc dừng connector…" : "Đang yêu cầu dừng connector an toàn…")
             return
         }
         // Quit takes precedence over a pending Pause/Resume confirmation, and a
@@ -424,8 +434,41 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
         } else { setStatus("Không gửi được yêu cầu dọn đăng ký.") }
     }
 
+    private func confirmForceQuit(reason: String) {
+        guard !confirmingForceQuit else { return }
+        confirmingForceQuit = true
+        defer { confirmingForceQuit = false }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = reason == "ACTIVE_WORK_PRESENT" ? "Connector còn tác vụ đang chạy." : "Chưa xác minh được tác vụ đã dừng."
+        alert.informativeText = "Thoát an toàn bị từ chối. Buộc thoát sẽ dừng connector ngay và các tác vụ đang chạy sẽ bị dừng."
+        alert.addButton(withTitle: "Hủy")
+        let force = alert.addButton(withTitle: "Buộc thoát (tác vụ đang chạy sẽ bị dừng)")
+        force.hasDestructiveAction = true
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertSecondButtonReturn else {
+            setStatus("Đã hủy thoát; connector vẫn hoạt động.")
+            return
+        }
+        // SIGINT to the retained adapter only: "force stop confirmed by the user".
+        // SIGTERM stays the safe stop; SIGUSR2/SIGHUP/SIGWINCH are pause/resume/prune.
+        guard let process = supervisor, process.isRunning else { NSApp.terminate(nil); return }
+        quitAttemptBaseline = (statusPath.flatMap { try? privateJSON($0) }?["stopAttempt"] as? Int) ?? 0
+        quitRequestedAt = Date()
+        quitRequested = true
+        quitForced = true
+        setStatus("Đang buộc dừng connector…")
+        if kill(pid_t(process.processIdentifier), SIGINT) != 0 {
+            quitRequested = false
+            quitRequestedAt = nil
+            quitForced = false
+            setStatus("Không gửi được yêu cầu buộc thoát.")
+        }
+    }
+
     @objc private func requestQuit(_ sender: Any?) {
         guard !quitRequested else { return }
+        quitForced = false
         cancelRestart()
         guard let process = supervisor, process.isRunning else { NSApp.terminate(nil); return }
         // Only signal our retained supervisor. It decides whether its owned tunnel

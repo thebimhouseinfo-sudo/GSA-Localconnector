@@ -25,14 +25,23 @@ export async function startDesktopRuntime({runtimeRoot, envPath, platformAdapter
     await releasing;
   }
 
-  async function stopChild() {
+  // `force` is only passed for a user-confirmed Quit or for an internal path where
+  // no valid new work can arrive (rejected authentication). It skips the
+  // retained-work check but still signals only this retained child.
+  async function stopChild({force = false} = {}) {
     if (closed) {await closing; return {stopped: true};}
     if (!child) return {stopped: state === "STOPPED" || state === "SETUP_REQUIRED"};
-    if (stopPromise) return stopPromise;
-    stopPromise = (async () => {
-      let work;
-      try {work = await adapter.ownedWorkState(owner);} catch {work = "UNKNOWN";}
-      if (work !== "IDLE") return {stopped: false, reason: work === "ACTIVE" ? "ACTIVE_WORK_PRESENT" : "ACTIVE_WORK_UNKNOWN"};
+    if (stopPromise) {
+      const pending = await stopPromise;
+      if (pending.stopped || !force) return pending;
+      return stopChild({force});
+    }
+    const attempt = (async () => {
+      if (!force) {
+        let work;
+        try {work = await adapter.ownedWorkState(owner);} catch {work = "UNKNOWN";}
+        if (work !== "IDLE") return {stopped: false, reason: work === "ACTIVE" ? "ACTIVE_WORK_PRESENT" : "ACTIVE_WORK_UNKNOWN"};
+      }
       let signalled;
       try {signalled = child.kill("SIGTERM");} catch {signalled = false;}
       if (!signalled) return {stopped: false, reason: "STOP_UNCONFIRMED"};
@@ -46,7 +55,11 @@ export async function startDesktopRuntime({runtimeRoot, envPath, platformAdapter
       await closing;
       return {stopped: true};
     })();
-    try {return await stopPromise;} finally {stopPromise = null;}
+    stopPromise = attempt;
+    // Registered before any other awaiter, so a retry sees the cleared slot.
+    const clear = () => {if (stopPromise === attempt) stopPromise = null;};
+    attempt.then(clear, clear);
+    return attempt;
   }
 
   function enqueue(bytes) {
@@ -105,7 +118,7 @@ export async function startDesktopRuntime({runtimeRoot, envPath, platformAdapter
         if (connection === "AUTH_REJECTED") {
           authenticationRejected = true;
           state = "SETUP_REQUIRED"; reason = "AUTH_REJECTED";
-          await stopChild();
+          await stopChild({force: true});
         }
       }
       if (closed) await closing;
