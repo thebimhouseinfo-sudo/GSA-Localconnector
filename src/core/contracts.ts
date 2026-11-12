@@ -10,7 +10,8 @@ export interface WorkspaceRoleRequest {
 export type ConnectorErrorCode =
   | "UNSUPPORTED_PLATFORM" | "WORKSPACE_NOT_FOUND" | "PERMISSION_DENIED"
   | "PATH_OUTSIDE_SCOPE" | "HASH_CONFLICT" | "SECURITY_BLOCKED"
-  | "SOURCE_UNVERIFIED" | "WORKSPACE_REAUTH_REQUIRED" | "RESULT_UNKNOWN" | "SESSION_BUSY";
+  | "SOURCE_UNVERIFIED" | "WORKSPACE_REAUTH_REQUIRED" | "RESULT_UNKNOWN" | "SESSION_BUSY"
+  | "GRANT_STORE_BUSY" | "GRANT_STORE_RECOVERY_REQUIRED";
 export interface WorkspaceGrant {
   readonly role?: WorkspaceRole;
   readonly id: string;

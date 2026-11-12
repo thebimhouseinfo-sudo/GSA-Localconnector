@@ -220,7 +220,12 @@ export class MacDesktopAdapter {
     const healthFile = path.join(config.directory, "desktop-health.url");
     this.runtime = await startDesktopRuntime({runtimeRoot: config.runtimeRoot, envPath: config.envPath, platformAdapter: {
       loadSetup: ({envPath}) => loadDesktopConfig({envPath, privateFile: this.privateFile}),
-      acquireOwner: () => acquireGuard(config, env),
+      acquireOwner: async () => {
+        const owner = await acquireGuard(config, env);
+        this.desktopSessionId = owner.sessionId;
+        await this.recoverStaleGrantLock(owner.sessionId);
+        return owner;
+      },
       releaseOwner: owner => owner.release(),
       tunnelClient: () => client,
       runFlag: "--config", // Characterized tunnel-client 0.0.14; package verification pins this binary.
@@ -332,6 +337,17 @@ export class MacDesktopAdapter {
     this.lastPauseObservation=observation;
     return observation;
   }
+  /** Called with desktop-owner.lock held (no other adapter is alive) and before the
+   * tunnel spawns: a Desktop grant lock of another session is stale. Server locks
+   * and unparseable locks are never touched. Best effort: an unsafe lock stays
+   * visible through inspect_workspace_recovery.
+   */
+  async recoverStaleGrantLock(sessionId) {
+    try {
+      const {recoverDesktopGrantLock} = await import("../dist/src/local/grants.js");
+      return await recoverDesktopGrantLock(path.dirname(this.config.directory), sessionId);
+    } catch {return "failed";}
+  }
   /** A menu-only maintenance request. Never revokes ACTIVE workspaces, sessions,
    * controller leases or signed installation. The grant store owns its lock.
    */
@@ -343,7 +359,9 @@ export class MacDesktopAdapter {
         if(!this.runtime||!this.config||status.state!=="RUNNING")throw fail("DESKTOP_NOT_RUNNING");
         const prune=this.registrationPruner??(async()=>{
           const {pruneInactiveWorkspaceRegistrations}=await import("../dist/src/local/grants.js");
-          return pruneInactiveWorkspaceRegistrations();
+          const session=this.desktopSessionId;
+          if(typeof session!=="string")throw fail("DESKTOP_NOT_RUNNING");
+          return pruneInactiveWorkspaceRegistrations(path.dirname(this.config.directory),{holder:"desktop",session});
         });
         const summary=await prune();
         outcome={registrationPruneStatus:"DONE",registrationPruneSummary:summary};

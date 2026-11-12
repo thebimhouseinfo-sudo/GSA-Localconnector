@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import {protectedStateCapability,requireProtectedState} from "./protected-state.js";
 import {constants,type Stats} from "node:fs";
 import path from "node:path";
-import {randomBytes} from "node:crypto";
+import {randomBytes,randomUUID} from "node:crypto";
 import {identityDirectory} from "./identity.js";
 import {WorkspaceRegistry} from "../core/workspace.js";
 import {ConnectorError,type WorkspaceGrant,type WorkspacePermission,type WorkspaceRole,type WorkspaceRoleRequest} from "../core/contracts.js";
@@ -176,7 +176,7 @@ export async function revokeStaleTrustedRoots(dir=identityDirectory()):Promise<{
  * Uses the same protected lock and atomic publication as normal binding; no
  * signed broker, transaction journal, controller lease or root is touched.
  */
-export async function pruneInactiveWorkspaceRegistrations(dir=identityDirectory()):Promise<{
+export async function pruneInactiveWorkspaceRegistrations(dir=identityDirectory(),holder?:GrantLockHolder):Promise<{
  removed_stale:number;removed_revoked:number;retained_active:number;retained_reauth_required:number;
 }>{
  return withGrantLock(dir,async publication=>{
@@ -200,7 +200,7 @@ export async function pruneInactiveWorkspaceRegistrations(dir=identityDirectory(
    await persistEntries(dir,retained,publication,undefined,floor+1);
   }
   return {removed_stale,removed_revoked,retained_active,retained_reauth_required};
- });
+ },holder);
 }
 
 /** Recheck durable revocation/epoch and root identity before and during native work. */
@@ -219,24 +219,135 @@ type BeforePublish=(grants:readonly WorkspaceGrant[])=>Promise<void>;
 function publicationError(error:unknown):ConnectorError {
  return new ConnectorError("RESULT_UNKNOWN","Grant store may already be published; read it back before retrying. "+String(error));
 }
-async function withGrantLock<T>(dir:string,operation:(publication:Publication)=>Promise<T>):Promise<T>{
- requireProtectedState();
- await protectedDirectory(dir,true);const lock=path.join(dir,".trusted-workspaces.lock");
- let handle:Awaited<ReturnType<typeof fs.open>>;
- try{handle=await fs.open(lock,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);}
- catch(error){
-  if(["EEXIST","ELOOP"].includes((error as NodeJS.ErrnoException).code??"")){protectedInfo(await fs.lstat(lock));throw Error("GRANT_STORE_BUSY");}
-  throw error;
+const LOCK_NAME=".trusted-workspaces.lock";
+const LOCK_SESSION=/^[a-zA-Z0-9-]{1,128}$/;
+type LockHolderKind="server"|"desktop"|"unowned";
+export interface GrantLockHolder{holder:"server"|"desktop";session:string}
+type LockContent={holder:LockHolderKind;session:string};
+/** A server writer is identified by its kernel-fenced owner session. A writer with
+ * no verified owner (local admin tools, unit tests) is "unowned": no recovery
+ * path may ever remove its lock, because no fence proves that writer dead.
+ */
+function ownLockContent(holder?:GrantLockHolder):LockContent{
+ if(holder){
+  if(!["server","desktop"].includes(holder.holder)||typeof holder.session!=="string"||!LOCK_SESSION.test(holder.session))throw Error("INVALID_GRANT_LOCK_HOLDER");
+  return {holder:holder.holder,session:holder.session};
  }
- const publication:Publication={published:false};let result:T|undefined,error:unknown,failed=false,owned:Stats|undefined,closed=false;
- try{const observed=await handle.stat();protectedInfo(observed);owned=observed;result=await operation(publication);}catch(cause){failed=true;error=cause;}
- try{await handle.close();closed=true;}
- catch{failed=true;error=new ConnectorError("RESULT_UNKNOWN","Grant lock descriptor release is uncertain; inspect durable state");}
- // A failed initial stat gives no authority to remove the named lock. A replaced
- // lock belongs to another writer even when its permissions and owner match.
- if(closed&&owned)try{
+ const session=process.env.GSA_OWNER_SESSION;
+ if(process.env.GSA_OWNER_LOCK_FD==="3"&&typeof session==="string"&&LOCK_SESSION.test(session))return {holder:"server",session};
+ return {holder:"unowned",session:randomUUID()};
+}
+function parseLock(bytes:Buffer):LockContent|null{
+ try{
+  const value=JSON.parse(bytes.toString("utf8"));
+  if(!value||typeof value!=="object"||Array.isArray(value))return null;
+  const keys=Object.keys(value).sort();
+  if(keys.join(",")!=="format,holder,session"||value.format!=="gsa-grant-lock-v1"||!["server","desktop","unowned"].includes(value.holder)||
+   typeof value.session!=="string"||!LOCK_SESSION.test(value.session))return null;
+  return {holder:value.holder,session:value.session};
+ }catch{return null;}
+}
+const sameFile=(a:Stats,b:Stats)=>a.dev===b.dev&&a.ino===b.ino;
+/** lstat -> read through O_NOFOLLOW -> lstat again; every step must see the same dev/ino. */
+async function readLock(dir:string):Promise<{info:Stats;content:LockContent|null}|undefined>{
+ const lock=path.join(dir,LOCK_NAME);
+ let first:Stats;
+ try{first=await fs.lstat(lock);}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return undefined;throw error;}
+ protectedInfo(first);
+ let handle:Awaited<ReturnType<typeof fs.open>>;
+ try{handle=await fs.open(lock,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);}
+ catch(error){
+  if((error as NodeJS.ErrnoException).code==="ENOENT")return undefined;
+  if(["ELOOP","EISDIR"].includes((error as NodeJS.ErrnoException).code??""))unsafe();throw error;
+ }
+ let bytes:Buffer|undefined;
+ try{
+  const opened=await handle.stat();protectedInfo(opened);if(!sameFile(opened,first))unsafe();
+  if(opened.size<=1024){
+   const buffer=Buffer.alloc(opened.size);let offset=0;
+   while(offset<buffer.length){const read=await handle.read(buffer,offset,buffer.length-offset,offset);if(!read.bytesRead)break;offset+=read.bytesRead;}
+   bytes=buffer.subarray(0,offset);
+  }
+ }finally{await handle.close();}
+ let second:Stats;
+ try{second=await fs.lstat(lock);}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return undefined;throw error;}
+ protectedInfo(second);if(!sameFile(second,first))unsafe();
+ return {info:first,content:bytes?parseLock(bytes):null};
+}
+/** Removes the lock only when it parses and `remove` accepts its owner. The file
+ * identity is rechecked immediately before unlink; nothing is guessed from PID or age.
+ */
+async function removeLockIf(dir:string,remove:(content:LockContent)=>boolean):Promise<"removed"|"kept"|"absent">{
+ if(!await protectedDirectory(dir))return "absent";
+ const seen=await readLock(dir);
+ if(!seen)return "absent";
+ if(!seen.content||!remove(seen.content))return "kept";
+ const lock=path.join(dir,LOCK_NAME);
+ let again:Stats;
+ try{again=await fs.lstat(lock);}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return "absent";throw error;}
+ protectedInfo(again);if(!sameFile(again,seen.info))return "kept";
+ try{await fs.unlink(lock);}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return "absent";throw error;}
+ return "removed";
+}
+/** Server startup, after the kernel owner fence proved every older server dead.
+ * Only an older server's lock is removed. Desktop, unowned, unparseable and
+ * current-session locks are never touched.
+ */
+export async function recoverServerGrantLock(dir:string,ownerSession:string):Promise<"removed"|"kept"|"absent">{
+ return removeLockIf(dir,content=>content.holder==="server"&&content.session!==ownerSession);
+}
+/** Desktop adapter, holding desktop-owner.lock (so no other adapter is alive).
+ * Only another Desktop session's lock is removed; server locks are never touched.
+ */
+export async function recoverDesktopGrantLock(dir:string,desktopSession:string):Promise<"removed"|"kept"|"absent">{
+ return removeLockIf(dir,content=>content.holder==="desktop"&&content.session!==desktopSession);
+}
+export interface GrantLockInspection{holder:LockHolderKind|"unparseable";relation:"current"|"foreign"|"unparseable";action:string}
+/** Diagnostic only. "current" means this server's own session holds it. */
+export async function inspectGrantLock(dir=identityDirectory()):Promise<GrantLockInspection|undefined>{
+ if(!await protectedDirectory(dir))return undefined;
+ const seen=await readLock(dir);
+ if(!seen)return undefined;
+ if(!seen.content)return {holder:"unparseable",relation:"unparseable",
+  action:"Unreadable or legacy grant lock; it is never removed automatically. Stop every GSA connector process, then delete "+LOCK_NAME+" in the connector identity directory by hand."};
+ const mine=ownLockContent();
+ if(seen.content.holder==="server"&&mine.holder==="server"&&seen.content.session===mine.session)
+  return {holder:"server",relation:"current",action:"Held by this server session; it is released when the running operation ends."};
+ if(seen.content.holder==="server")return {holder:"server",relation:"foreign",action:"Left by an earlier server session; the next server start removes it."};
+ if(seen.content.holder==="desktop")return {holder:"desktop",relation:"foreign",action:"Held by the Desktop app; it is removed when the Desktop app next starts, or released when its operation ends."};
+ return {holder:"unowned",relation:"foreign",action:"Held by a local tool without an owner fence; it is never removed automatically. If no GSA process is running, delete "+LOCK_NAME+" in the connector identity directory by hand."};
+}
+async function acquireLock(dir:string,content:LockContent):Promise<Stats>{
+ const lock=path.join(dir,LOCK_NAME),tmp=path.join(dir,LOCK_NAME+"-"+randomBytes(16).toString("hex")+".tmp");
+ const handle=await fs.open(tmp,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
+ let written:Stats;
+ try{
+  try{await handle.writeFile(JSON.stringify({format:"gsa-grant-lock-v1",...content}));await handle.sync();written=await handle.stat();}
+  finally{await handle.close();}
+  try{await fs.link(tmp,lock);}
+  catch(error){
+   if((error as NodeJS.ErrnoException).code!=="EEXIST")throw error;
+   const seen=await readLock(dir);
+   if(seen&&!seen.content)throw new ConnectorError("GRANT_STORE_RECOVERY_REQUIRED",
+    "GRANT_STORE_RECOVERY_REQUIRED: the grant store lock "+LOCK_NAME+" has no readable owner (legacy or interrupted write). It is never removed automatically. Stop every GSA connector process, then delete that file in the connector identity directory and retry.");
+   throw new ConnectorError("GRANT_STORE_BUSY","GRANT_STORE_BUSY: another process holds the grant store lock; retry shortly.");
+  }
+ }finally{await fs.rm(tmp,{force:true});}
+ // The temporary name is gone, so a sole owner now sees nlink 1.
+ const visible=await fs.lstat(lock);protectedInfo(visible);
+ if(!sameFile(visible,written))throw new ConnectorError("GRANT_STORE_BUSY","GRANT_STORE_BUSY: the grant store lock was replaced while acquiring it; retry shortly.");
+ return visible;
+}
+async function withGrantLock<T>(dir:string,operation:(publication:Publication)=>Promise<T>,holder?:GrantLockHolder):Promise<T>{
+ requireProtectedState();
+ await protectedDirectory(dir,true);const lock=path.join(dir,LOCK_NAME);
+ const owned=await acquireLock(dir,ownLockContent(holder));
+ const publication:Publication={published:false};let result:T|undefined,error:unknown,failed=false;
+ try{result=await operation(publication);}catch(cause){failed=true;error=cause;}
+ // A replaced lock belongs to another writer even when its permissions and owner match.
+ try{
   const visible=await fs.lstat(lock);protectedInfo(visible);
-  if(visible.dev!==owned.dev||visible.ino!==owned.ino)throw new ConnectorError("RESULT_UNKNOWN","Grant lock identity changed; inspect durable state");
+  if(!sameFile(visible,owned))throw new ConnectorError("RESULT_UNKNOWN","Grant lock identity changed; inspect durable state");
   await fs.unlink(lock);
  }catch(cause){failed=true;error=cause instanceof ConnectorError?cause:new ConnectorError("RESULT_UNKNOWN","Grant lock release is uncertain; inspect durable state");}
  if(failed)throw publication.published?publicationError(error):error;

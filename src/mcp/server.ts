@@ -9,7 +9,7 @@ import {WorkspaceReadSession} from "../core/workspace-read.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {createHash} from "node:crypto";
-import {enrollReadOnlyBatch,enrollRolesTrustedBatch,revokeTrusted,readTrustedRootBindings,loadTrustedRegistry,inspectTrustedWorkspaceRecovery} from "../local/grants.js";
+import {enrollReadOnlyBatch,enrollRolesTrustedBatch,revokeTrusted,readTrustedRootBindings,loadTrustedRegistry,inspectTrustedWorkspaceRecovery,inspectGrantLock} from "../local/grants.js";
 import {identityDirectory} from "../local/identity.js";
 import {isDesktopPaused,DesktopPauseUntrusted} from "../local/desktop-pause.js";
 import {ConnectorError,type WorkspaceGrant,type WorkspaceRole} from "../core/contracts.js";
@@ -284,7 +284,10 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
         case "inspect_workspace_recovery":
           requireProtectedState();
           if(Object.keys(args).length)throw Error("INVALID_ARGUMENTS");
-          result=await inspectTrustedWorkspaceRecovery(grantDirectory());break;
+          {const grants=await inspectTrustedWorkspaceRecovery(grantDirectory());
+           // Appended only when a lock file exists, so the grant list keeps its shape otherwise.
+           const lock=await inspectGrantLock(grantDirectory()).catch(()=>({holder:"unparseable" as const,relation:"unparseable" as const,action:"The grant lock is unsafe or unreadable; it is never removed automatically. Stop every GSA connector process, then inspect and remove it by hand."}));
+           result=lock?[...grants,{stale_grant_lock:lock}]:grants;}break;
         case "get_workspace":
           if(typeof args.workspace_id!=="string"||Object.keys(args).length!==1) throw Error("INVALID_ARGUMENTS");
           {const g=registry.get(args.workspace_id);if(!g) throw Error("WORKSPACE_NOT_FOUND");

@@ -8,7 +8,7 @@ import {loadMacScopedFiles} from "../hosts/macos-scoped-files.js";
 
 import type {WorkspaceRegistry} from "../core/workspace.js";
 import {identityDirectory} from "../local/identity.js";
-import {requirePersistedGrant} from "../local/grants.js";
+import {requirePersistedGrant,recoverServerGrantLock} from "../local/grants.js";
 import {ControlLeaseStore} from "../local/control-lease.js";
 import {CiJournalStore,CiStoreError} from "../local/ci-store.js";
 import {ProcessJournalStore} from "../local/process-store.js";
@@ -59,6 +59,9 @@ export async function bootstrapMcpTools(registry:WorkspaceRegistry,identityRoot=
  let ciDegraded=false;
  if(owner){
   await controls.invalidateAfterOwnerFence(owner.session);
+  // The kernel owner fence proves every older server dead, so only its grant lock
+  // is stale. Desktop, unparseable and current-session locks are left alone.
+  try{await recoverServerGrantLock(identityRoot,owner.session);}catch{/* an unsafe lock stays visible through inspect_workspace_recovery */}
   try{await journal.reconcileAfterOwnerFence(owner.session);}
   catch(error){
    if(!(error instanceof SyntaxError)&&!(error instanceof CiStoreError&&error.code==="INVALID_RUN_RECORD"))throw error;

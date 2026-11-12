@@ -344,3 +344,56 @@ test('a stopped force request is reported once and ends the watcher',async()=>{
  emitter.emit('SIGINT');await new Promise(resolve=>setTimeout(resolve,20));
  assert.equal(stopped,1);assert.equal(adapter.quitOutcome.stopBlockedReason,null);
 });
+
+async function grantLockFixture() {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'gsa-adapter-grant-lock-')));
+  const desktop = path.join(root, 'desktop');
+  await fs.mkdir(desktop, { mode: 0o700 });
+  await fs.chmod(root, 0o700);
+  const lock = path.join(root, '.trusted-workspaces.lock');
+  const write = (holder, session) => fs.writeFile(lock, JSON.stringify({ format: 'gsa-grant-lock-v1', holder, session }), { mode: 0o600, flag: 'wx' });
+  const adapter = new MacDesktopAdapter({ configPath: path.join(desktop, 'config.json') });
+  adapter.config = { directory: desktop, statusPath: path.join(desktop, 'status.json') };
+  const exists = () => fs.lstat(lock).then(() => true, () => false);
+  return { root, lock, write, adapter, exists };
+}
+
+test('adapter start-up removes only a foreign-session desktop grant lock and never server or unparseable locks', async () => {
+  const { root, lock, write, adapter, exists } = await grantLockFixture();
+  try {
+    const mine = 'desktop-session-current';
+    await write('desktop', mine);
+    assert.equal(await adapter.recoverStaleGrantLock(mine), 'kept');
+    assert.equal(await exists(), true, 'the current Desktop session lock is kept');
+    await fs.rm(lock);
+    await write('server', 'a1b2c3d4-0000-4000-8000-000000000000');
+    assert.equal(await adapter.recoverStaleGrantLock(mine), 'kept');
+    assert.equal(await exists(), true, 'a server lock is never removed by the adapter');
+    await fs.rm(lock);
+    await fs.writeFile(lock, '', { mode: 0o600 });
+    assert.equal(await adapter.recoverStaleGrantLock(mine), 'kept');
+    assert.equal(await exists(), true, 'an unparseable lock is never removed by the adapter');
+    await fs.rm(lock);
+    await write('desktop', 'desktop-session-previous');
+    assert.equal(await adapter.recoverStaleGrantLock(mine), 'removed');
+    assert.equal(await exists(), false);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('menu prune reports GRANT_STORE_BUSY when another session holds the grant store, and RECOVERY_REQUIRED stays a generic failure', async () => {
+  const { root, lock, write, adapter } = await grantLockFixture();
+  try {
+    adapter.runtime = { status: async () => ({ state: 'RUNNING', connection: 'CONNECTED' }) };
+    adapter.desktopSessionId = 'desktop-session-current';
+    await write('server', 'a1b2c3d4-0000-4000-8000-000000000000');
+    const busy = await adapter.pruneInactiveRegistrations();
+    assert.equal(busy.registrationPruneStatus, 'FAILED');
+    assert.equal(busy.registrationPruneReason, 'GRANT_STORE_BUSY');
+    await fs.rm(lock);
+    await fs.writeFile(lock, '', { mode: 0o600 });
+    const unreadable = await adapter.pruneInactiveRegistrations();
+    assert.equal(unreadable.registrationPruneStatus, 'FAILED');
+    assert.notEqual(unreadable.registrationPruneReason, 'GRANT_STORE_BUSY');
+    assert.equal(await fs.readFile(lock, 'utf8'), '', 'the unparseable lock is left for the user');
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});

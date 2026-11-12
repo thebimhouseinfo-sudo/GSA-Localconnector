@@ -17,7 +17,7 @@ test("grant enroll/revoke are serialized and persisted",async()=>{
   await assert.rejects(enrollReadOnly("c",rootA,store),/WORKSPACE_DUPLICATE_ROOT/);
   await revokeTrusted("a",store);
   assert.deepEqual((await loadTrustedRegistry(store)).list().map(x=>x.id),["b"]);
-  await fs.writeFile(path.join(store,".trusted-workspaces.lock"),"held",{mode:0o600});
+  await fs.writeFile(path.join(store,".trusted-workspaces.lock"),JSON.stringify({format:"gsa-grant-lock-v1",holder:"desktop",session:"other-session"}),{mode:0o600});
   await assert.rejects(enrollReadOnly("a",rootA,store),/GRANT_STORE_BUSY/);
   await fs.rm(path.join(store,".trusted-workspaces.lock"));
   assert.deepEqual((await loadTrustedRegistry(store)).list().map(x=>x.id),["b"]);
