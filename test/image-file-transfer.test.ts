@@ -64,6 +64,22 @@ test("opaque host file IDs are accepted as metadata without a prefix",async()=>{
   assert.equal(r.sha256,createHash("sha256").update(sample).digest("hex"));
  }
 });
+test("approved Azure Blob Storage fileParam transfers original bytes and digest",async()=>{
+ const url="https://imageassets123.blob.core.windows.net/artwork/generated.png?sv=2026-01-01&sig=private";
+ let count=0;
+ const fetcher=(async (input,options)=>{
+  count++;
+  assert.equal(new URL(String(input)).hostname,"imageassets123.blob.core.windows.net");
+  assert.equal(options?.redirect,"manual");
+  assert.equal(options?.method,"GET");
+  return new Response(Uint8Array.from(sample).buffer as ArrayBuffer,{status:200});
+ }) as typeof fetch;
+ const r=await downloadChatGptImage({...file,download_url:url},"asset.png",fetcher);
+ assert.equal(count,1);
+ assert.deepEqual(r.bytes,sample);
+ assert.equal(r.size,sample.length);
+ assert.equal(r.sha256,createHash("sha256").update(sample).digest("hex"));
+});
 test("file URL rejects unsafe origins with finite, nonsecret diagnostics",async()=>{
  const bad:Array<[string,string]>=[
   ["http://files.oaiusercontent.com/image","IMAGE_URL_SCHEME_REJECTED"],
@@ -71,6 +87,13 @@ test("file URL rejects unsafe origins with finite, nonsecret diagnostics",async(
   ["https://localhost/a","IMAGE_URL_HOST_REJECTED"],
   ["https://files.oaiusercontent.com.evil.example/a","IMAGE_URL_HOST_REJECTED"],
   ["https://evil.example/a","IMAGE_URL_HOST_REJECTED"],
+  ["https://example.windows.net/art","IMAGE_URL_HOST_REJECTED"],
+  ["https://someacc.queue.core.windows.net/art","IMAGE_URL_HOST_REJECTED"],
+  ["https://someacc.file.core.windows.net/art","IMAGE_URL_HOST_REJECTED"],
+  ["https://blob.core.windows.net/art","IMAGE_URL_HOST_REJECTED"],
+  ["https://xx.blob.core.windows.net/art","IMAGE_URL_HOST_REJECTED"],
+  ["https://account.extra.blob.core.windows.net/art","IMAGE_URL_HOST_REJECTED"],
+  ["https://account.blob.core.windows.net.attacker.example/art","IMAGE_URL_HOST_REJECTED"],
   ["https://user:secret@files.oaiusercontent.com/a","IMAGE_URL_CREDENTIALS_REJECTED"],
   ["https://files.oaiusercontent.com:8443/a","IMAGE_URL_PORT_REJECTED"],
   ["file:///private/tmp/a.png","IMAGE_URL_SCHEME_REJECTED"],

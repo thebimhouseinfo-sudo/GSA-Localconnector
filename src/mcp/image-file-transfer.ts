@@ -11,10 +11,14 @@ export type DownloadedImage={bytes:Buffer;size:number;sha256:string;mime_type:"i
 const MAX_IMAGE_BYTES=8*1024*1024;
 const fail=(code:string):never=>{throw Object.assign(new Error(code),{code});};
 function approvedHost(hostname:string):boolean{
+ // Explicitly approved Azure Blob Storage endpoint, not all of windows.net.
+ // The exact one-label storage account format excludes unrelated Azure services.
+ const azureBlob=/^[a-z0-9]{3,24}\.blob\.core\.windows\.net$/;
  return hostname==="files.oaiusercontent.com"||
   hostname.endsWith(".oaiusercontent.com")||
   hostname==="chatgpt.com"||
-  hostname.endsWith(".chatgpt.com");
+  hostname.endsWith(".chatgpt.com")||
+  azureBlob.test(hostname);
 }
 function source(value:unknown):ChatGptFileInput{
  // An opaque model-facing string is not a host-provided download object.
