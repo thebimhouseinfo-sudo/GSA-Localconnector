@@ -3,7 +3,7 @@
 **Updated:** 2026-11-12 (V3 Mac reliability comparison)  
 **Status:** PRE-CODE — technical review required  
 **Repository/branch:** `thebimhouseinfo-sudo/GSA-Localconnector` / `feat/windows-native-connector-20261109`  
-**Branch fork:** `41102fa3e9d2a187c8373b1474e9377b737c66b1`; **newer `main` inspected, not merged:** `9d66c60c4f31cae6cfed64838468b5558973ab0c` (83 commits ahead of Windows at inspection)
+**Branch fork:** `41102fa3e9d2a187c8373b1474e9377b737c66b1`; **Mac READ-ONLY reference:** `main@9d66c60c4f31cae6cfed64838468b5558973ab0c` (not an integration target)
 
 ## GOAL
 
@@ -19,7 +19,7 @@ Build the second native Windows host beneath the existing MCP contract, reusing 
 
 ## V2 — Inherited shared changes and Windows-specific decisions (2026-11-12)
 
-These requirements are derived from newer shared-source changes seen on `main`; they are **design and test obligations**, not Windows-native implementation evidence. Current Windows branch originally contained only four documentation files, ahead 4 / behind 67 at inspection. New branch policy has been persisted for the Windows branch; merge/reconcile newer common code before W1 implementation and re-pin the candidate SHA. Preserve Mac code and its real-host acceptance history, and do not mislabel remote Git as accepted.
+These requirements are derived from Mac fixes observed **read-only** on `main`; they are Windows design/test obligations, not an instruction to import Mac commits or proof of Windows delivery. The Windows branch remains independent. No merge, rebase, cherry-pick, or other Git source synchronization from `main` is required or permitted by this plan. Preserve Mac code/history, implement Windows-specific mechanisms on the Windows branch, and do not mislabel remote Git as accepted.
 
 ### A. Grant reauthorization and native backend readiness (W1-04, W2-01, W4-01)
 
@@ -45,14 +45,20 @@ The Windows MCP capability status must differentiate (1) read/list ability, (2) 
 
 ### D. Provenance and test strategy
 
-- During W0 integrate the **current** `main` into this Windows branch in a separately reviewed Git operation; preserve all four pre-code files and user-owned state, without force-push or writing `main`.
+- During W0 **read** the relevant Mac fixes from `main` and record their problem/solution/negative-test lessons. Do **not** merge, rebase, cherry-pick or copy commits to Windows, and do not write `main`. Implement only approved Windows code on its own development branch.
 - Windows hosted test gate: actual Win32 filesystem+Job Object fixtures, real tool dispatch, exact commit/source provenance, explicit fail on required skip/missing runner. Mac source/regression gate on the same integration commit is separate.
 - Real Windows plugin acceptance after reviewed hosted CI and installer authorization; user-owned test roots only; verify imported image original bytes against file API readback rather than asserting success from an MCP response.
 - Review source interfaces before replacing or extending any shared contract; one integrator owns `src/mcp/server.ts`, `catalog.ts`, `runtime-bootstrap.ts` and `write-dispatch.ts`.
 
+## Windows design boundary — no Mac source integration
+
+**Human direction (2026-11-12):** `main` is a read-only Mac case study. Learn its root causes, accepted fixes, API outcomes, error codes, recovery invariants, and tests. Implement equivalent behavior by authoring Windows code **only** on `feat/windows-native-connector-20261109`. Do not alter `main`, merge it into Windows, cherry-pick its fixes, rebase Windows, or make branch convergence a prerequisite.
+
+A shared contract documented in newer Mac code is a **target behavior** to match where the Windows branch needs it, not a statement that its source is present on Windows. Windows-specific safety primitives (handles, identity, locks, Job Objects, Windows protected state) are designed and validated independently. Historical Mac CI/real-Mac PASS cannot be transferred to Windows. W0 produces a read-only requirements matrix; Windows implementation begins only after its normal planning review and approval.
+
 ## V3 — Reliability parity decisions from newer Mac source (2026-11-12)
 
-**Independent evidence inspected:** 16 commits after `bce1875`, latest `main` `9d66c60`; `docs/reviews/2026-11-12-RELIABILITY-FIX-GUIDE.md` lists nine Mac defects, and current implementation shows selected source fixes under `src/core/durable-process.ts`, `src/local/control-lease.ts`, `src/local/grants.ts`, `src/mcp/{http,server}.ts`, `scripts/{desktop-supervisor,mac-desktop-adapter}.mjs` and `native/macos-desktop/App.swift`. This is a **Windows portability/acceptance plan**, not Windows execution evidence. W0 must incorporate updated shared source before any source implementation; native correctness must be retested on Windows.
+**Independent evidence inspected:** 16 commits after `bce1875`, latest `main` `9d66c60`; `docs/reviews/2026-11-12-RELIABILITY-FIX-GUIDE.md` lists nine Mac defects, and current implementation shows selected source fixes under `src/core/durable-process.ts`, `src/local/control-lease.ts`, `src/local/grants.ts`, `src/mcp/{http,server}.ts`, `scripts/{desktop-supervisor,mac-desktop-adapter}.mjs` and `native/macos-desktop/App.swift`. This is a **Windows portability/acceptance plan**, not Windows execution evidence. W0 captures the Mac bugfix evidence and expected Windows behavior without integrating `main` source. Windows-specific implementations must then be independently built and tested on Windows.
 
 ### R1 — Grant lock and lease recovery (W1-05, W1-06)
 
