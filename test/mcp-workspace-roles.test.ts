@@ -12,6 +12,7 @@ import {ControlLeaseStore} from "../src/local/control-lease.js";
 import {identityDirectory} from "../src/local/identity.js";
 import {enrollRolesTrustedBatch} from "../src/local/grants.js";
 import {loadTrustedRegistry} from "../src/local/grants.js";
+import {testIdentityRoot} from './helpers/identity-root.js';
 
 type FutureFactory=(registry:WorkspaceRegistry,nativeFiles?:null,sandbox?:null,ciStore?:null,artifacts?:null,logs?:null,nativeProcesses?:null,snapshots?:null,sourceCapture?:null,ciExecutor?:null,controlStore?:ControlLeaseStore|null,options?:{grantDirectory?:string})=>(call:any)=>Promise<any>;
 function createTools(registry:WorkspaceRegistry,grantDirectory:string,controlStore:ControlLeaseStore|null=null){
@@ -54,7 +55,7 @@ platformTest("read-only factory does not resolve an unsupported default identity
   const {WorkspaceRegistry}=await import(pathToFileURL(path.resolve("dist/src/core/workspace.js")));
   const {createReadOnlyTools}=await import(pathToFileURL(path.resolve("dist/src/mcp/server.js")));
   Object.defineProperty(process,"platform",{value:"linux"});
-  const invoke=createReadOnlyTools(new WorkspaceRegistry());
+  const invoke=createReadOnlyTools(new WorkspaceRegistry(),null,null,null,null,null,null,null,null,null,null,{identityRoot:${JSON.stringify(testIdentityRoot())}});
   const list=JSON.parse((await invoke({name:"list_workspaces"})).content[0].text);
   const status=JSON.parse((await invoke({name:"connector_status"})).content[0].text);
   process.stdout.write(JSON.stringify({list,status}));

@@ -8,6 +8,7 @@ import {CiJournalStore} from "../src/local/ci-store.js";
 import {CiSnapshotStore} from "../src/local/ci-snapshot-store.js";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
 import {createReadOnlyTools} from "../src/mcp/server.js";
+import {testIdentityRoot} from './helpers/identity-root.js';
 test("CI journal persists revisions and rejects stale updates",async()=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-ci-store-"));
  try{
@@ -33,7 +34,7 @@ test("CI tool history isolates Workspace IDs",async()=>{
   await store.save(a,null);
   const reg=new WorkspaceRegistry();
   await reg.enrollTrusted("a",dir,["read"]);await reg.enrollTrusted("b",dir,["read"]);
-  const invoke=createReadOnlyTools(reg,null,null,store);
+  const invoke=createReadOnlyTools(reg,null,null,store,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot()});
   const items=JSON.parse((await invoke({name:"ci_list_runs",arguments:{workspace_id:"a"}})).content[0].text);
   assert.deepEqual(items.result.map((x:any)=>x.run_id),[a.run_id]);
   const other=JSON.parse((await invoke({name:"ci_list_runs",arguments:{workspace_id:"b"}})).content[0].text);
@@ -70,7 +71,7 @@ test("queued CI can be cancelled, running CI cannot fake cancellation",async()=>
   const queued=createQueuedRun("A","build","c".repeat(64));await journal.save(queued,null);
   const registry=new WorkspaceRegistry();await registry.enrollTrusted("A",tmp,["read","execute"]);await registry.enrollTrusted("B",tmp,["read","execute"]);
   const snapshots=new CiSnapshotStore(path.join(tmp,"snapshots"));
-  const invoke=createReadOnlyTools(registry,null,null,journal,null,null,null,snapshots);
+  const invoke=createReadOnlyTools(registry,null,null,journal,null,null,null,snapshots,null,null,null,{identityRoot:testIdentityRoot()});
   const denied=await invoke({name:"ci_cancel",arguments:{workspace_id:"B",run_id:queued.run_id}});
   assert.equal(denied.isError,true);
   const approved=JSON.parse((await invoke({name:"ci_cancel",arguments:{workspace_id:"A",run_id:queued.run_id}})).content[0].text);
@@ -99,7 +100,7 @@ test("legacy failed CI without workflow provenance cannot be prepared for rerun"
   const running=transitionRun(preparing,"RUNNING",2);await journal.save(running,2);
   const failed=transitionRun(running,"FAILED",3,undefined,{exit_code:1,artifact_hashes:{}});await journal.save(failed,3);
   const reg=new WorkspaceRegistry();await reg.enrollTrusted("A",tmp,["read","execute"]);
-  const invoke=createReadOnlyTools(reg,null,null,journal,null,null,null,snapshots);
+  const invoke=createReadOnlyTools(reg,null,null,journal,null,null,null,snapshots,null,null,null,{identityRoot:testIdentityRoot()});
   const response=JSON.parse((await invoke({name:"ci_rerun_failed",arguments:{workspace_id:"A",run_id:start.run_id}})).content[0].text);
   assert.equal(response.ok,false);
   assert.equal((await journal.list()).length,1);

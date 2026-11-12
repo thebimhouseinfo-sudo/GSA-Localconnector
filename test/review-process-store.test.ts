@@ -42,6 +42,7 @@ test('corrupt journals are reported and preserved while valid history remains av
 });
 import {createReadOnlyTools} from '../src/mcp/server.js';
 import {WorkspaceRegistry} from '../src/core/workspace.js';
+import {testIdentityRoot} from './helpers/identity-root.js';
 test('a corrupt prior RUNNING intent degrades recovery and fences new command admission',{skip:process.platform==='win32'},async t=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'gsa-r3-corrupt-'));await fs.chmod(root,0o700);t.after(()=>fs.rm(root,{recursive:true,force:true}));
  const badId=randomUUID(),file=path.join(root,badId+'.json');await fs.writeFile(file,'{"status":{"state":"RUNNING"},',{mode:0o600});
@@ -50,7 +51,7 @@ test('a corrupt prior RUNNING intent degrades recovery and fences new command ad
  await manager.initialize();
  await assert.rejects(manager.run({workspace_id:'A',executable:'/bin/true',argv:[],cwd_relative:'.',time_limit_ms:1000,max_output_bytes:1024,network_allowed:false},sandbox),/PROCESS_RECOVERY_DEGRADED/);
  assert.equal(calls,0);assert.equal(await fs.readFile(file,'utf8'),'{"status":{"state":"RUNNING"},');
- const invoke=createReadOnlyTools(new WorkspaceRegistry(),null,null,null,null,null,null,null,null,null,null,{processPersistence:persistence});
+ const invoke=createReadOnlyTools(new WorkspaceRegistry(),null,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot(),processPersistence:persistence});
  const capability=JSON.parse((await invoke({name:'list_capabilities'})).content[0].text).result;
  assert.equal(capability.processRecovery.unreadable_records,1);assert.equal(capability.processRecovery.admission_blocked,true);assert.match(capability.restartRecovery,/degraded/i);
 });
@@ -105,7 +106,7 @@ test('a leftover journal lock preserves uncertain work and degrades recovery wit
  assert.equal(store.health().admission_blocked,true);
  let calls=0;const sandbox:any={verified:true,platform:'macos',policy_fingerprint:'fixture',execute:async()=>{calls++;throw Error('must not dispatch');}};
  await assert.rejects(manager.run({workspace_id:'A',executable:'/bin/true',argv:[],cwd_relative:'.',time_limit_ms:1000,max_output_bytes:1024,network_allowed:false},sandbox),/PROCESS_RECOVERY_DEGRADED/);assert.equal(calls,0);
- const invoke=createReadOnlyTools(new WorkspaceRegistry(),null,null,null,null,null,null,null,null,null,null,{processPersistence:persistence});
+ const invoke=createReadOnlyTools(new WorkspaceRegistry(),null,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot(),processPersistence:persistence});
  const capability=JSON.parse((await invoke({name:'list_capabilities'})).content[0].text).result;
  assert.equal(capability.processRecovery.unresolved_records,1);assert.equal(capability.processRecovery.admission_blocked,true);assert.match(capability.restartRecovery,/degraded/i);
  // Only the test removes its own synthetic lock; production must never break it.

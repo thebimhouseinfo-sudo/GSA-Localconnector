@@ -8,6 +8,7 @@ import {CiJournalStore} from "../src/local/ci-store.js";
 import {createQueuedRun} from "../src/core/ci-journal.js";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
 import {createReadOnlyTools} from "../src/mcp/server.js";
+import {testIdentityRoot} from './helpers/identity-root.js';
 test("durable CI logs read through owned Workspace and reject cross-workspace access",async()=>{
  const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-logs-"));
  try {
@@ -18,7 +19,7 @@ test("durable CI logs read through owned Workspace and reject cross-workspace ac
   await logs.append(r.run_id,2,"stderr","warning");
   assert.equal((await logs.page(r.run_id,0,1)).next_cursor,1);
   const reg=new WorkspaceRegistry();await reg.enrollTrusted("A",tmp,["read"]);await reg.enrollTrusted("B",tmp,["read"]);
-  const call=createReadOnlyTools(reg,null,null,journal,null,logs);
+  const call=createReadOnlyTools(reg,null,null,journal,null,logs,null,null,null,null,null,{identityRoot:testIdentityRoot()});
   const ok=JSON.parse((await call({name:"ci_logs",arguments:{workspace_id:"A",run_id:r.run_id}})).content[0].text);
   assert.equal(ok.result.entries.length,2);
   assert.equal((await call({name:"ci_logs",arguments:{workspace_id:"B",run_id:r.run_id}})).isError,true);

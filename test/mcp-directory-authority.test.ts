@@ -13,6 +13,7 @@ import {enrollRolesTrustedBatch,loadTrustedRegistry,revokeTrusted} from '../src/
 import {authorizeMcpWorkspace,withMacDirectoryCopies} from '../src/mcp/runtime-bootstrap.js';
 import {createReadOnlyTools,type ToolCall,type ToolResult} from '../src/mcp/server.js';
 import {createMacDirectoryCopies} from '../src/hosts/macos-directory-copy.js';
+import {testIdentityRoot} from './helpers/identity-root.js';
 
 const ids=['2e577d85-9ce1-4f08-a719-38b68745f2c1','2e577d85-9ce1-4f08-a719-38b68745f2c2','2e577d85-9ce1-4f08-a719-38b68745f2c3'];
 const bytes=new TextEncoder().encode('captured');
@@ -65,7 +66,7 @@ async function fixture(t:TestContext,copyId:string){
  const buildDispatcher=(newStore=new DirectoryCopyStore(journal))=>{
   const copies=createMacDirectoryCopies(registry,reader,base,newStore,authorize);
   const filesFacade=withMacDirectoryCopies(base,copies);
-  const dispatch=createReadOnlyTools(registry,filesFacade,null,null,null,null,null,null,null,null,controls,{grantDirectory:identity});
+  const dispatch=createReadOnlyTools(registry,filesFacade,null,null,null,null,null,null,null,null,controls,{identityRoot:testIdentityRoot(),grantDirectory:identity});
   return dispatch as Dispatch;
  };
  return {root,reference,work,identity,journal,copyId,registry,controls,store,base,reader,calls,captureEvents,directories,files,buildDispatcher,setHook(fn:()=>Promise<void>){hook=fn;},get hookReached(){return hookReached;},preserve(){retain=true;}};

@@ -6,6 +6,7 @@ import {WorkspaceRegistry} from "../src/core/workspace.js";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {testIdentityRoot} from './helpers/identity-root.js';
 
 test("BUG-02: signed backend may be blocked while grant-scoped file reads work",async()=>{
   const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-file-read-status-"));
@@ -15,7 +16,7 @@ test("BUG-02: signed backend may be blocked while grant-scoped file reads work",
     await fs.writeFile(path.join(ref,"README.md"),"reference\n");
     const registry=new WorkspaceRegistry();
     await registry.enrollRolesTrusted([{id:"work",root:work,role:"workspace"},{id:"ref",root:ref,role:"reference"}]);
-    const invoke=createReadOnlyTools(registry,null,null,null,null,null,null,null,null,null,null,{fileBlockedReason:"Scoped file grant set changed"});
+    const invoke=createReadOnlyTools(registry,null,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot(),fileBlockedReason:"Scoped file grant set changed"});
     const capabilities=JSON.parse((await invoke({name:"list_capabilities"})).content[0]!.text).result;
     assert.equal(capabilities.fileBackendAvailable,false);
     assert.equal(capabilities.fileReadAvailable,true);
@@ -44,7 +45,7 @@ test("full direct tool catalog is discoverable but unsafe operations are blocked
  assert.equal(names.includes("ci_run"),true);
 });
 test("unauthorized Workspace is never exposed",async()=>{
- const invoke=createReadOnlyTools(new WorkspaceRegistry());
+ const invoke=createReadOnlyTools(new WorkspaceRegistry(),null,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot()});
  const x=await invoke({name:"list_workspaces"});
  assert.deepEqual(JSON.parse(x.content[0].text).result,[]);
  const y=await invoke({name:"get_workspace",arguments:{workspace_id:"arbitrary"}});
@@ -58,7 +59,7 @@ test("unauthorized Workspace is never exposed",async()=>{
 test("partial scoped-file backends report only supported mutations",async()=>{
  const registry=new WorkspaceRegistry();
  const partial:any={supportedOperations:["create_file","create_directory","copy_file"],read:async()=>{throw Error("unused");},createExclusive:async()=>{},replaceIfHash:async()=>{},makeDirectory:async()=>{},copyExclusive:async()=>{},moveExclusive:async()=>{},trashIfHash:async()=>{}};
- const invoke=createReadOnlyTools(registry,partial);
+ const invoke=createReadOnlyTools(registry,partial,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot()});
  const result=JSON.parse((await invoke({name:"list_capabilities"})).content[0].text).result;
  assert.equal(result.fileBackendAvailable,true);
  assert.deepEqual(result.fileOperations,["create_file","create_directory","copy_file"]);
@@ -71,7 +72,7 @@ test("partial scoped-file backends report only supported mutations",async()=>{
 test("legacy scoped-file backends keep base mutations and batch support while directory copy stays blocked",async()=>{
  const registry=new WorkspaceRegistry();
  const legacy:any={read:async()=>{throw Error("unused");},createExclusive:async()=>{},replaceIfHash:async()=>{},makeDirectory:async()=>{},copyExclusive:async()=>{},moveExclusive:async()=>{},trashIfHash:async()=>{}};
- const result=JSON.parse((await createReadOnlyTools(registry,legacy)({name:"list_capabilities"})).content[0].text).result;
+ const result=JSON.parse((await createReadOnlyTools(registry,legacy,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot()})({name:"list_capabilities"})).content[0].text).result;
  assert.equal(result.fileBackendAvailable,true);
  assert.equal(result.hostFileWrites,false);
  assert.deepEqual(result.fileOperations,["create_file","update_file","edit_file","apply_patch","create_directory","delete_file","copy_file","move_file"]);

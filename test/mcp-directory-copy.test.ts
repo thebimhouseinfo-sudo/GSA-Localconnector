@@ -10,6 +10,7 @@ import {ControlLeaseStore} from '../src/local/control-lease.js';
 import {createReadOnlyTools,toolDefinitions} from '../src/mcp/server.js';
 import {controlledToolNames} from '../src/mcp/catalog.js';
 import {withMacDirectoryCopies} from '../src/mcp/runtime-bootstrap.js';
+import {testIdentityRoot} from './helpers/identity-root.js';
 
 const id='6c3cdce6-0d6d-4be5-93e9-c711ae66a009';
 const digest=directoryManifestDigest([{path:'',kind:'directory'}]);
@@ -36,7 +37,7 @@ async function fixture(t:TestContext,withExtension=true){
  }:undefined;
  const forbidden=async()=>{throw Error('legacy base IO must not serve directory tools');};
  const files={supportedOperations:withExtension?['create_file','copy_directory']:['create_file'],...(directoryCopies?{directoryCopies}:{}),read:forbidden,createExclusive:forbidden,replaceIfHash:forbidden,makeDirectory:forbidden,copyExclusive:forbidden,moveExclusive:forbidden,trashIfHash:forbidden} as unknown as NativeScopedFiles;
- const invoke=createReadOnlyTools(registry,files,null,null,null,null,null,null,null,null,controls);
+ const invoke=createReadOnlyTools(registry,files,null,null,null,null,null,null,null,null,controls,{identityRoot:testIdentityRoot()});
  const call=(name:string,args:Record<string,unknown>)=>invoke({name,arguments:controlledToolNames.has(name)?{...args,control_token:token}:args});
  return {root,registry,controls,token,calls,files,invoke,call};
 }

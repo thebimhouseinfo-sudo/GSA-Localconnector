@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {createReadOnlyTools} from "../src/mcp/server.js";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
+import {testIdentityRoot} from './helpers/identity-root.js';
 test("Workspace metadata and search are bounded and reject traversal",async()=>{
  const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-search-"));
  try {
@@ -13,7 +14,7 @@ test("Workspace metadata and search are bounded and reject traversal",async()=>{
   await fs.writeFile(path.join(root,"src","a.ts"),"const needle = 1;\nconst other = 2;\n");
   await fs.writeFile(path.join(tmp,"secret.txt"),"needle outside");
   const registry=new WorkspaceRegistry();await registry.enrollTrusted("w",root,["read"]);
-  const call=createReadOnlyTools(registry);
+  const call=createReadOnlyTools(registry,null,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot()});
   const info=JSON.parse((await call({name:"get_file_info",arguments:{workspace_id:"w",path:"src/a.ts"}})).content[0].text);
   assert.equal(info.result.kind,"file");assert.match(info.result.sha256,/^[a-f0-9]{64}$/);
   const match=JSON.parse((await call({name:"search",arguments:{workspace_id:"w",path:".",query:"needle"}})).content[0].text);

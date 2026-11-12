@@ -20,6 +20,7 @@ import {CiLogStore} from "../src/local/ci-log-store.js";
 import {createQueuedRun} from "../src/core/ci-journal.js";
 import {sha256} from "../src/core/edit-guards.js";
 import type {NativeScopedFiles,VerifiedNativeProcessController} from "../src/core/native-io.js";
+import {testIdentityRoot} from './helpers/identity-root.js';
 const parse=(r:{content:Array<{text:string}>})=>JSON.parse(r.content[0].text);
 const request={workspace_id:"A",executable:"node",argv:[],cwd_relative:".",time_limit_ms:100,max_output_bytes:65536,network_allowed:false};
 function controller():VerifiedNativeProcessController{
@@ -39,7 +40,7 @@ test("move requires source write permission while copy permits read-only source"
    createExclusive:async()=>{},replaceIfHash:async()=>{},makeDirectory:async()=>{},trashIfHash:async()=>{},
    copyExclusive:async(s,d)=>{files.set(d.workspace_id+"/"+d.path,files.get(s.workspace_id+"/"+s.path)!);},
    moveExclusive:async(s,d)=>{files.set(d.workspace_id+"/"+d.path,files.get(s.workspace_id+"/"+s.path)!);files.delete(s.workspace_id+"/"+s.path);}};
-  const call=createReadOnlyTools(reg,io);const args={source_workspace_id:"A",source_path:"f",destination_workspace_id:"B",destination_path:"g",expected_sha256:sha256(bytes)};
+  const call=createReadOnlyTools(reg,io,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot()});const args={source_workspace_id:"A",source_path:"f",destination_workspace_id:"B",destination_path:"g",expected_sha256:sha256(bytes)};
   assert.equal(parse(await call({name:"move_file",arguments:args})).code,"PERMISSION_DENIED");
   assert.equal(files.get("A/f")?.toString(),"source");
   assert.equal(parse(await call({name:"copy_file",arguments:args})).ok,true);
@@ -138,7 +139,7 @@ test("MCP log and process output cursors reach subsequent pages and retain owner
   const journal=new CiJournalStore(path.join(tmp,"runs")),logs=new CiLogStore(path.join(tmp,"logs"));
   const run=createQueuedRun("A","test","a".repeat(64));await journal.save(run,null);
   for(let i=1;i<=51;i++)await logs.append(run.run_id,i,"stdout",String(i));
-  const call=createReadOnlyTools(reg,null,null,journal,null,logs,controller());
+  const call=createReadOnlyTools(reg,null,null,journal,null,logs,controller(),null,null,null,null,{identityRoot:testIdentityRoot()});
   const first=parse(await call({name:"ci_logs",arguments:{workspace_id:"A",run_id:run.run_id}}));
   assert.equal(first.result.next_cursor,50);
   const next=parse(await call({name:"ci_logs",arguments:{workspace_id:"A",run_id:run.run_id,cursor:50,limit:1}}));

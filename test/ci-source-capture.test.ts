@@ -9,6 +9,7 @@ import {CiSourceCaptureService,type VerifiedWorkspaceSourceCapture} from "../src
 import {createReadOnlyTools} from "../src/mcp/server.js";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
 import type {VerifiedCiExecutor} from "../src/core/ci-run-service.js";
+import {testIdentityRoot} from './helpers/identity-root.js';
 test("source capture is native-gated and binds source to exactly one Workspace",async()=>{
  const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"ci-capture-"));
  try{
@@ -44,7 +45,7 @@ test("MCP CI source + run never executes unless both native verifiers are inject
   const executor:VerifiedCiExecutor={verified:true,policy_fingerprint:"stub-only",execute:async()=>({exit_code:0,source_verified:true})};
   const reg=new WorkspaceRegistry();await reg.enrollTrusted("A",tmp,["read","execute"]);await reg.enrollTrusted("B",tmp,["read","execute"]);
   await fs.writeFile(path.join(tmp,"ci.json"),JSON.stringify({name:"check",jobs:[{id:"test",steps:[{id:"one",command:"node"}]}]}));
-  const call=createReadOnlyTools(reg,null,null,journal,null,null,null,snapshots,native,executor);
+  const call=createReadOnlyTools(reg,null,null,journal,null,null,null,snapshots,native,executor,null,{identityRoot:testIdentityRoot()});
   const prepared=JSON.parse((await call({name:"ci_prepare_source",arguments:{workspace_id:"A"}})).content[0].text);
   assert.equal(prepared.ok,true,JSON.stringify(prepared));
   const id=prepared.result.source_run_id;
@@ -63,7 +64,7 @@ test("MCP CI source + run never executes unless both native verifiers are inject
    await new Promise(resolve=>setTimeout(resolve,20));
   }
   assert.equal(finalState,"PASSED",JSON.stringify({finalState,storageErrors}));
-  const denied=await createReadOnlyTools(reg)({name:"ci_prepare_source",arguments:{workspace_id:"A"}});
+  const denied=await createReadOnlyTools(reg,null,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot()})({name:"ci_prepare_source",arguments:{workspace_id:"A"}});
   assert.equal(denied.isError,true);
  }finally{await fs.rm(tmp,{recursive:true,force:true});}
 });

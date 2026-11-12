@@ -8,6 +8,7 @@ import {promisify} from "node:util";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
 import {WorkspaceReadSession} from "../src/core/workspace-read.js";
 import {createReadOnlyTools} from "../src/mcp/server.js";
+import {testIdentityRoot} from './helpers/identity-root.js';
 
 async function fixture(run:(root:string,session:WorkspaceReadSession,registry:WorkspaceRegistry)=>Promise<void>){
  const root=await fs.mkdtemp(path.join(os.tmpdir(),"workspace-read-"));
@@ -150,7 +151,7 @@ test("metadata hashes only bounded regular files",posix,async()=>fixture(async(r
 }));
 test("protocol listing refuses overflow and glob advertises scan truncation",posix,async()=>fixture(async(root,_s,r)=>{
  await Promise.all(Array.from({length:501},(_,i)=>fs.writeFile(path.join(root,`f${i}`),"")));
- const invoke=createReadOnlyTools(r);
+ const invoke=createReadOnlyTools(r,null,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot()});
  const list=JSON.parse((await invoke({name:"list_directory",arguments:{workspace_id:"fixture",path:"."}})).content[0].text);
  assert.equal(list.ok,false);assert.equal(list.code,"READ_LIMIT_EXCEEDED");
  const glob=JSON.parse((await invoke({name:"glob",arguments:{workspace_id:"fixture",path:".",pattern:"*"}})).content[0].text);
@@ -158,12 +159,12 @@ test("protocol listing refuses overflow and glob advertises scan truncation",pos
 }));
 test("search remembers dropped directory queue work",posix,async()=>fixture(async(root,_s,r)=>{
  await Promise.all(Array.from({length:101},(_,i)=>fs.mkdir(path.join(root,`d${i}`))));
- const response=JSON.parse((await createReadOnlyTools(r)({name:"search",arguments:{workspace_id:"fixture",path:".",query:"needle"}})).content[0].text);
+ const response=JSON.parse((await createReadOnlyTools(r,null,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot()})({name:"search",arguments:{workspace_id:"fixture",path:".",query:"needle"}})).content[0].text);
  assert.equal(response.ok,true);assert.equal(response.result.truncated,true);
 }));
 test("search at the exact result limit is complete until another match is omitted",posix,async()=>fixture(async(root,_s,r)=>{
  await fs.writeFile(path.join(root,"a"),Array(100).fill("needle").join("\n"));
- const invoke=createReadOnlyTools(r);
+ const invoke=createReadOnlyTools(r,null,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot()});
  const call=()=>invoke({name:"search",arguments:{workspace_id:"fixture",path:".",query:"needle"}});
  const exact=JSON.parse((await call()).content[0].text);
  assert.equal(exact.ok,true);assert.equal(exact.result.matches.length,100);assert.equal(exact.result.truncated,false);
@@ -177,7 +178,7 @@ test("search with exactly 100 matches remains complete across later nonmatching 
  assert.equal(listing.entries.length,2);
  await fs.writeFile(path.join(root,listing.entries[0].name),Array(100).fill("needle").join("\n"));
  await fs.writeFile(path.join(root,listing.entries[1].name),"no matching content");
- const call=()=>createReadOnlyTools(r)({name:"search",arguments:{workspace_id:"fixture",path:".",query:"needle"}});
+ const call=()=>createReadOnlyTools(r,null,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot()})({name:"search",arguments:{workspace_id:"fixture",path:".",query:"needle"}});
  const exact=JSON.parse((await call()).content[0].text);
  assert.equal(exact.ok,true);assert.equal(exact.result.matches.length,100);
  assert.equal(exact.result.files_examined,2);assert.equal(exact.result.truncated,false);

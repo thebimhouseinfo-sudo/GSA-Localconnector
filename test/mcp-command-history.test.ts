@@ -8,6 +8,7 @@ import {WorkspaceRegistry} from '../src/core/workspace.js';
 import {ProcessJournalStore} from '../src/local/process-store.js';
 import {createReadOnlyTools} from '../src/mcp/server.js';
 import {DurableProcessManager} from '../src/core/durable-process.js';
+import {testIdentityRoot} from './helpers/identity-root.js';
 const decode=(r:any)=>JSON.parse(r.content[0].text);
 const request={workspace_id:'A',executable:'/bin/tool',argv:['argument'],cwd_relative:'.',time_limit_ms:30000,max_output_bytes:65536,network_allowed:false} as const;
 const receipt={exit_code:0,signal:null,stdout:'command π',stderr:'warning',cancelled:false,timed_out:false,artifacts:[]};
@@ -18,7 +19,7 @@ async function fixture(t:any,execute:any){
  for(const id of ['A','B']){const p=path.join(root,id);await fs.mkdir(p);await registry.enrollTrusted(id,p,['read','execute']);}
  const store=new ProcessJournalStore(path.join(root,'runs')),persistence={store,ownerSession:randomUUID()};
  const sandbox:any={verified:true,platform:'macos',policy_fingerprint:'fake-only',execute};
- const invoke=createReadOnlyTools(registry,null,sandbox,null,null,null,null,null,null,null,null,{processPersistence:persistence});
+ const invoke=createReadOnlyTools(registry,null,sandbox,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot(),processPersistence:persistence});
  return {root,store,persistence,sandbox,registry,invoke};
 }
 test('run_command keeps its full receipt and is visible after dispatcher restart without backend',{skip:process.platform==='win32'},async t=>{
@@ -29,7 +30,7 @@ test('run_command keeps its full receipt and is visible after dispatcher restart
  const list=decode(await f.invoke({name:'list_processes',arguments:{workspace_id:'A'}}));
  assert.ok(list.result.some((r:any)=>r.process_id===id),'synchronous command must be listed');
  const bytes=await fs.readFile(path.join(f.root,'runs',id+'.json'));
- const restarted=createReadOnlyTools(f.registry,null,null,null,null,null,null,null,null,null,null,{processPersistence:{...f.persistence,ownerSession:randomUUID()}});
+ const restarted=createReadOnlyTools(f.registry,null,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot(),processPersistence:{...f.persistence,ownerSession:randomUUID()}});
  const status=decode(await restarted({name:'process_status',arguments:{workspace_id:'A',process_id:id}}));
  assert.equal(status.result.state,'SUCCEEDED');assert.equal(status.result.stopped,true);
  const output=decode(await restarted({name:'process_output',arguments:{workspace_id:'A',process_id:id}}));

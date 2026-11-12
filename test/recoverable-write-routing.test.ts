@@ -9,6 +9,7 @@ import type {FileTransactionOutcome} from "../src/core/file-transactions.js";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
 import {applyPatch as applyPatchWrite,editFile as editFileWrite,trashFile as trashFileWrite,updateFile as updateFileWrite} from "../src/core/write-engine.js";
 import {createReadOnlyTools} from "../src/mcp/server.js";
+import {testIdentityRoot} from './helpers/identity-root.js';
 
 const before=Buffer.from("old\n"),after=Buffer.from("new\n"),expected=sha256(before);
 const transactionId="11111111-1111-1111-1111-111111111111",handle="22222222-2222-2222-2222-222222222222";
@@ -25,7 +26,7 @@ async function fixture(t:any,outcome:FileTransactionOutcome|null){
   replaceIfHash:async(ref:ScopedFileRef,bytes:Uint8Array,hash:string)=>{transactions++;assert.deepEqual(ref,{workspace_id:"work",path:"a.txt"});assert.equal(hash,expected);assert.deepEqual(Buffer.from(bytes),after);return outcome;},
   trashIfHash:async(ref:ScopedFileRef,hash:string)=>{transactions++;assert.deepEqual(ref,{workspace_id:"work",path:"a.txt"});assert.equal(hash,expected);return outcome;}
  };
- const invoke=createReadOnlyTools(registry,backend);
+ const invoke=createReadOnlyTools(registry,backend,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot()});
  return {invoke:(name:string,args:Record<string,unknown>)=>invoke({name,arguments:args}),call:async(name:string,args:Record<string,unknown>={})=>{const response=await invoke({name,arguments:{workspace_id:"work",path:"a.txt",expected_sha256:expected,...args}});return {...JSON.parse(response.content[0]!.text),isError:response.isError===true};},counts:()=>({legacy,transactions})};
 }
 

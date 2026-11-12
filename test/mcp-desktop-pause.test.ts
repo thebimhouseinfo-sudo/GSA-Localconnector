@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
+import {testIdentityRoot} from './helpers/identity-root.js';
 
 const run=promisify(execFile);
 test("desktop Pause blocks new MCP effects but permits diagnostics and Recovery readback",async()=>{
@@ -20,7 +21,7 @@ test("desktop Pause blocks new MCP effects but permits diagnostics and Recovery 
    import path from "node:path";import {pathToFileURL} from "node:url";
    const {WorkspaceRegistry}=await import(pathToFileURL(path.resolve("dist/src/core/workspace.js")));
    const {createReadOnlyTools}=await import(pathToFileURL(path.resolve("dist/src/mcp/server.js")));
-   const invoke=createReadOnlyTools(new WorkspaceRegistry());
+   const invoke=createReadOnlyTools(new WorkspaceRegistry(),null,null,null,null,null,null,null,null,null,null,{identityRoot:${JSON.stringify(path.join(home,"Library/Application Support/GSA-Localconnector"))}});
    const parse=async(name,args={})=>JSON.parse((await invoke({name,arguments:args})).content[0].text);
    process.stdout.write(JSON.stringify({status:await parse("connector_status"),listed:await parse("list_workspaces"),blocked:await parse("bind_workspaces",{roots:[{path:"/private/tmp",role:"workspace"}]})}));
   `;

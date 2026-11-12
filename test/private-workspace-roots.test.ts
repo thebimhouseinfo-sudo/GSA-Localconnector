@@ -6,6 +6,7 @@ import path from 'node:path';
 import {WorkspaceRegistry} from '../src/core/workspace.js';
 import {enrollReadOnly,enrollRolesTrustedBatch,loadTrustedRegistry} from '../src/local/grants.js';
 import {createReadOnlyTools} from '../src/mcp/server.js';
+import {testIdentityRoot} from './helpers/identity-root.js';
 test('persistent enrollment rejects identity ancestors, descendants and aliases atomically',{skip:process.platform==='win32'},async t=>{
  const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-r3-private-')));t.after(()=>fs.rm(root,{recursive:true,force:true}));
  const identity=path.join(root,'identity'),nested=path.join(identity,'nested'),project=path.join(root,'project'),alias=path.join(root,'alias');
@@ -16,7 +17,7 @@ test('persistent enrollment rejects identity ancestors, descendants and aliases 
  }
  assert.equal(await fs.stat(path.join(identity,'trusted-workspaces.json')).then(()=>true,()=>false),false);
  await enrollReadOnly('good',project,identity);assert.equal((await loadTrustedRegistry(identity)).list().length,1);
- const invoke=createReadOnlyTools(new WorkspaceRegistry(),null,null,null,null,null,null,null,null,null,null,{grantDirectory:identity});
+ const invoke=createReadOnlyTools(new WorkspaceRegistry(),null,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot(),grantDirectory:identity});
  const response=JSON.parse((await invoke({name:'bind_workspaces',arguments:{roots:[{path:identity,role:'reference'}]}})).content[0].text);
  assert.equal(response.ok,false);assert.equal((await loadTrustedRegistry(identity)).list().length,1);
 });

@@ -12,6 +12,7 @@ import {type NativeScopedFiles} from '../src/core/native-io.js';
 import {newFileTransaction,fileTransactionOutcome,type FileTransactionOutcome} from '../src/core/file-transactions.js';
 import {FileTransactionStore} from '../src/local/file-transaction-store.js';
 import {createMacFileRecovery} from '../src/hosts/macos-file-recovery.js';
+import {testIdentityRoot} from './helpers/identity-root.js';
 const id='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222';
 const pending=newFileTransaction(id,{operation:'trash',source:{workspace_id:'work',path:'a.txt',revision:1,rootIdentity:{device:'1',inode:'2'}},destination:null,expected_sha256:'a'.repeat(64),after_sha256:null});
 function outcome(status:FileTransactionOutcome['status']):FileTransactionOutcome{return fileTransactionOutcome({...pending,status,reason:status==='APPLIED'?'VERIFIED_READBACK':status==='CONFLICT'?'HASH_CONFLICT':'IO_UNCERTAIN',observations:{...pending.observations,captured:true,capturedIdentity:{device:'1',inode:'3'},source_absent:status==='APPLIED'?true:null},retained_handles:[other]});}
@@ -24,7 +25,7 @@ async function fixture(t:TestContext){
  const recovery={async replaceIfHash(){throw Error('mutation forbidden');},async trashIfHash(){throw Error('mutation forbidden');},async readTransaction(value:string){assert.equal(this,recovery);await requireCurrentControl();calls.push(value);return outcome('UNKNOWN');}};
  const forbidden=async()=>{throw Error('legacy mutation forbidden');};
  const files={supportedOperations:[],recoverableMutations:recovery,read:forbidden,createExclusive:forbidden,replaceIfHash:forbidden,makeDirectory:forbidden,copyExclusive:forbidden,moveExclusive:forbidden,trashIfHash:forbidden} as NativeScopedFiles;
- const make=(backend:NativeScopedFiles|null=files,store:ControlLeaseStore|null=controls)=>createReadOnlyTools(registry,backend,null,null,null,null,null,null,null,null,store);
+ const make=(backend:NativeScopedFiles|null=files,store:ControlLeaseStore|null=controls)=>createReadOnlyTools(registry,backend,null,null,null,null,null,null,null,null,store,{identityRoot:testIdentityRoot()});
  return {root,registry,controls,token,calls,recovery,files,make,expire:()=>{now=3000;},call:(args:Record<string,unknown>={transaction_id:id})=>make()({name:'get_file_transaction',arguments:{control_token:token,...args}})};
 }
 test('catalog exposes only controlled UUID inspection schema',()=>{
@@ -39,7 +40,7 @@ test('protected storage unavailable blocks truthful discovery and dispatch',asyn
  const recovery={async replaceIfHash(){throw Error('protected backend must not mutate');},async trashIfHash(){throw Error('protected backend must not mutate');},async readTransaction(){inspections++;throw Error('protected backend must not inspect');}};
  const files:NativeScopedFiles={supportedOperations:[],recoverableMutations:recovery,read:forbidden,createExclusive:forbidden,replaceIfHash:forbidden,makeDirectory:forbidden,copyExclusive:forbidden,moveExclusive:forbidden,trashIfHash:forbidden};
  try{process.getuid=undefined as any;
-  const invoke=createReadOnlyTools(new WorkspaceRegistry(),files,null,null,null,null,null,null,null,null,controls);
+  const invoke=createReadOnlyTools(new WorkspaceRegistry(),files,null,null,null,null,null,null,null,null,controls,{identityRoot:testIdentityRoot()});
   const cap=decode(await invoke({name:'list_capabilities'})).result;assert.equal(cap.fileTransactionReadbackAvailable,false);assert(!cap.read.includes('get_file_transaction'));assert(cap.blocked.includes('get_file_transaction'));
   const result=await invoke({name:'get_file_transaction',arguments:{transaction_id:id,control_token:token}});assert.equal(decode(result).code,'SECURITY_BLOCKED');assert.equal(inspections,0);
  }finally{process.getuid=original;}

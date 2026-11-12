@@ -8,6 +8,7 @@ import {CiJournalStore} from "../src/local/ci-store.js";
 import {createQueuedRun,transitionRun} from "../src/core/ci-journal.js";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
 import {createReadOnlyTools} from "../src/mcp/server.js";
+import {testIdentityRoot} from './helpers/identity-root.js';
 test("protected CI artifacts return hashes and enforce run Workspace ownership",async()=>{
  const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"gsa-artifacts-"));
  try{
@@ -21,7 +22,7 @@ test("protected CI artifacts return hashes and enforce run Workspace ownership",
   r=transitionRun(r,"PASSED",r.revision,undefined,{exit_code:0,artifact_hashes:{"report.txt":meta.sha256}});await store.save(r,r.revision-1);
   const reg=new WorkspaceRegistry();
   await reg.enrollTrusted("A",tmp,["read"]);await reg.enrollTrusted("B",tmp,["read"]);
-  const call=createReadOnlyTools(reg,null,null,store,artifacts);
+  const call=createReadOnlyTools(reg,null,null,store,artifacts,null,null,null,null,null,null,{identityRoot:testIdentityRoot()});
   const listed=JSON.parse((await call({name:"ci_artifacts",arguments:{workspace_id:"A",run_id:r.run_id}})).content[0].text);
   assert.equal(listed.result.length,1);
   const fetched=JSON.parse((await call({name:"ci_read_artifact",arguments:{workspace_id:"A",run_id:r.run_id,artifact:"report.txt"}})).content[0].text);
@@ -37,7 +38,7 @@ test('artifact reads reject tampered content and missing run evidence',async()=>
   const store=new CiJournalStore(path.join(tmp,'journals')),artifacts=new CiArtifactStore(path.join(tmp,'artifacts'));
   let run=createQueuedRun('A','build','a'.repeat(64));await store.save(run,null);
   const meta=await artifacts.ingest(run.run_id,'report.txt',Buffer.from('original'));
-  const registry=new WorkspaceRegistry();await registry.enrollTrusted('A',tmp,['read']);const call=createReadOnlyTools(registry,null,null,store,artifacts);
+  const registry=new WorkspaceRegistry();await registry.enrollTrusted('A',tmp,['read']);const call=createReadOnlyTools(registry,null,null,store,artifacts,null,null,null,null,null,null,{identityRoot:testIdentityRoot()});
   const read=async()=>JSON.parse((await call({name:'ci_read_artifact',arguments:{workspace_id:'A',run_id:run.run_id,artifact:'report.txt'}})).content[0].text);
   const missingEvidence=await read();
   for(const state of ['PREPARING','RUNNING'] as const){run=transitionRun(run,state,run.revision);await store.save(run,run.revision-1);}

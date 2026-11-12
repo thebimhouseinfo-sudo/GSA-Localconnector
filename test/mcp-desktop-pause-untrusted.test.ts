@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
 import {createReadOnlyTools} from "../src/mcp/server.js";
+import './helpers/identity-root.js';
 
 const decode=(result:any)=>JSON.parse(result.content[0].text);
 

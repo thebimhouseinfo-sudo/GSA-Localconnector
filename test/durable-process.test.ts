@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import type {ProcessJournalRecord} from "../src/core/process-journal.js";
 import type {VerifiedNativeProcessController} from "../src/core/native-io.js";
+import {testIdentityRoot} from './helpers/identity-root.js';
 const request={workspace_id:"A",executable:"node",argv:["--version"],cwd_relative:".",time_limit_ms:30000,max_output_bytes:65536,network_allowed:false};
 test("durable process API fails closed without native controller",async()=>{
  const manager=new DurableProcessManager(null);
@@ -39,7 +40,7 @@ test("MCP native durable process registration is gated and workspace-owned",asyn
   const native:VerifiedNativeProcessController={verified:true,platform:"macos",policy_fingerprint:"stub",
    start:async()=>({native_id:"hostpid1"}),status:async()=>({state:"RUNNING",exit_code:null,started_at:"now",ended_at:null}),
    output:async()=>({stdout:"ok",stderr:"",next_cursor:null}),stop:async()=>({stopped:true,state:"CANCELLED"})};
-  const call=createReadOnlyTools(registry,null,null,null,null,null,native);
+  const call=createReadOnlyTools(registry,null,null,null,null,null,native,null,null,null,null,{identityRoot:testIdentityRoot()});
   const start=JSON.parse((await call({name:"start_process",arguments:{workspace_id:"A",command:"node",args:["--version"]}})).content[0].text);
   assert.equal(start.ok,true);
   const id=start.result.process_id as string;

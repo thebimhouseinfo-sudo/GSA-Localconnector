@@ -9,6 +9,7 @@ import {withControlToken,captureControlAuthorization,requireCurrentControl} from
 import {createReadOnlyTools,toolDefinitions} from "../src/mcp/server.js";
 import {WorkspaceRegistry} from "../src/core/workspace.js";
 import type {VerifiedNativeSandbox} from "../src/core/native-io.js";
+import {testIdentityRoot} from './helpers/identity-root.js';
 
 test("captured authorization retains its controller and observes later release and expiry",async()=>{
  const tmp=await fs.mkdtemp(path.join(os.tmpdir(),"control-context-"));let now=1000;
@@ -33,7 +34,7 @@ test("production MCP controller tools gate execution, strip credentials, and ret
    calls++;authorize=captureControlAuthorization();await authorize();
    return {exit_code:0,signal:null,stdout:"ok",stderr:"",timed_out:false,cancelled:false,source_verified:true};
   }};
-  const invoke=createReadOnlyTools(registry,null,sandbox,null,null,null,null,null,null,null,store);
+  const invoke=createReadOnlyTools(registry,null,sandbox,null,null,null,null,null,null,null,store,{identityRoot:testIdentityRoot()});
   const command={workspace_id:"A",command:"/bin/echo",args:["ok"]};
   const missing=JSON.parse((await invoke({name:"run_command",arguments:command})).content[0].text);
   assert.equal(missing.code,"SESSION_INVALID");assert.equal(calls,0);

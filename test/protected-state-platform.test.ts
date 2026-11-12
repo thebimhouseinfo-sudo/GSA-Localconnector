@@ -9,6 +9,7 @@ import {protectedStateCapability} from "../src/local/protected-state.js";
 import {loadTrustedRegistry,enrollReadOnly,enrollExecute} from "../src/local/grants.js";
 import {ControlLeaseStore} from "../src/local/control-lease.js";
 import {createReadOnlyTools} from "../src/mcp/server.js";
+import {testIdentityRoot} from './helpers/identity-root.js';
 
 test("Windows protected storage is explicitly unavailable without verified ACL support",()=>{
  const capability=protectedStateCapability("win32");
@@ -21,7 +22,7 @@ test("Windows starts status-only and refuses unverified persisted grants and con
   const identity=path.join(temporary,"local","GSA-Localconnector");await fs.mkdir(identity,{recursive:true});
   await fs.writeFile(path.join(identity,"trusted-workspaces.json"),JSON.stringify([{id:"A",root,permissions:["read","execute"]}]));
   const registry=await loadTrustedRegistry(identity);assert.deepEqual(registry.list(),[]);
-  const invoke=createReadOnlyTools(registry);
+  const invoke=createReadOnlyTools(registry,null,null,null,null,null,null,null,null,null,null,{identityRoot:testIdentityRoot()});
   const status=JSON.parse((await invoke({name:"connector_status"})).content[0].text);
   assert.equal(status.ok,true);assert.equal(status.result.readyForShell,false);
   assert.equal(status.result.protected_state_available,false);

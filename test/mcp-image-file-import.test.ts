@@ -8,6 +8,7 @@ import {WorkspaceRegistry} from "../src/core/workspace.js";
 import {createReadOnlyTools,toolDefinitions} from "../src/mcp/server.js";
 import {downloadChatGptImage} from "../src/mcp/image-file-transfer.js";
 import {ControlLeaseStore} from "../src/local/control-lease.js";
+import {testIdentityRoot} from './helpers/identity-root.js';
 
 const test=(name:string,fn:()=>Promise<void>)=>platformTest(name,{skip:process.platform==="win32"?"POSIX controller fixture":false},fn);
 const png=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/t1sAAAAASUVORK5CYII=","base64");
@@ -29,7 +30,7 @@ test("image file tool requires current controller, imports only to active worksp
    createExclusive:async(r:{path:string},b:Uint8Array)=>{saved.set(r.path,Buffer.from(b));await fs.writeFile(path.join(work,r.path),b,{flag:"wx"});},
    replaceIfHash:async()=>{},makeDirectory:async()=>{},copyExclusive:async()=>{},moveExclusive:async()=>{},trashIfHash:async()=>{}
   };
-  const tools=createReadOnlyTools(registry,backend,null,null,null,null,null,null,null,null,new ControlLeaseStore(identity),{
+  const tools=createReadOnlyTools(registry,backend,null,null,null,null,null,null,null,null,new ControlLeaseStore(identity),{identityRoot:testIdentityRoot(),
    grantDirectory:identity,
    downloadImageFile:async(file,target)=>downloadChatGptImage(file,target,(async()=>{downloads++;return new Response(Uint8Array.from(png).buffer as ArrayBuffer,{status:200});}) as typeof fetch)
   });
@@ -92,7 +93,7 @@ test("image file tool does not download when native file backend is unavailable"
  try{
   const registry=new WorkspaceRegistry();await registry.enrollRolesTrusted([{id:"work",root:dir,role:"workspace"}]);
   let downloaded=false;
-  const invoke=createReadOnlyTools(registry,null,null,null,null,null,null,null,null,null,new ControlLeaseStore(path.join(root,"identity")),{
+  const invoke=createReadOnlyTools(registry,null,null,null,null,null,null,null,null,null,new ControlLeaseStore(path.join(root,"identity")),{identityRoot:testIdentityRoot(),
    fileBackendState:()=>({files:null,fileBlockedReason:"Scoped file grant set changed"}),
    downloadImageFile:async()=>{downloaded=true;throw Error("NOT_ALLOWED");}
   });
