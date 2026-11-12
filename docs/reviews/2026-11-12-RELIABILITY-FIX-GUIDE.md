@@ -77,7 +77,13 @@ Thứ tự đề xuất: **3 → 4 → 9 → 8 → 1 → 2 → 5 → 6 → 7** (
 - **3d.** `status.json` chỉ có `desktopPaused: this.paused` (adapter:233), tức giá trị adapter **ghi thành công gần nhất**. Trường này không cho biết MCP đang thực sự áp dụng gì.
 
 **Quyết định thiết kế (đã chốt; gặp điểm không khớp thì dừng lại hỏi, không tự đổi).**
-- **Không nới kiểm tra.** File không phải `0600`, symlink, `nlink≠1`, sai owner, nội dung sai vẫn bị từ chối cả khi đọc lẫn khi ghi. Không tự `chmod`, không tự xoá. Việc sửa là thao tác thủ công của người dùng (3.7).
+- **Không nới kiểm tra metadata.** File không phải `0600`, symlink, `nlink≠1`, sai owner tiếp tục bị từ chối cả khi đọc (`desktop-pause.ts`) lẫn khi ghi (`leaf_info` trong private-file helper). Không tự `chmod`, không tự xoá. Việc sửa là thao tác thủ công của người dùng (3.7).
+- **Nội dung sai nhưng metadata an toàn (`INVALID_CONTENT`): đọc thì từ chối, ghi đè thì cho phép.** *(Bổ sung 2026-11-12 sau khi Codex báo không khớp.)* Code hiện tại đã làm đúng như vậy: helper chỉ kiểm metadata, không kiểm nội dung, nên `setPaused()` ghi đè được file `0600` chứa nội dung không phải JSON. Giữ nguyên hành vi này, **không** thêm kiểm tra nội dung trước khi ghi. Lý do:
+  - Metadata an toàn nghĩa là file thuộc chính tài khoản người dùng, nằm trong thư mục `0700`, không phải symlink hay hardlink. Ghi đè không chạm vào file nào khác và không nới kiểm tra nào.
+  - Phía đọc vẫn fail-closed: trong lúc nội dung sai, MCP coi như đang Pause (3.2).
+  - Nếu chặn ghi đè thì chỉ còn cách sửa thủ công, mà không được thêm bảo vệ nào. Ghi đè bằng Tạm dừng/Tiếp tục chính là cách sửa.
+  - `prepareProfile` lúc khởi động cũng ghi đè file này bằng `paused:false`. Điều này khớp với quy tắc "phiên mới luôn bắt đầu không tạm dừng" (adapter:151).
+  - Câu "nội dung sai bị từ chối cả khi đọc lẫn khi ghi" trong bản trước là sai, bỏ.
 - **Không xác minh được thì coi như đang Pause.** Tool trong `whilePaused` vẫn chạy, tool tạo hiệu ứng bị chặn. Không bao giờ coi `UNTRUSTED` là "không tạm dừng".
 - **`MISMATCH` không có nghĩa mặc định là "đang chặn".** MCP áp dụng giá trị trong file, nên thông báo phải nói đúng giá trị đó.
 - **File không tồn tại = không tạm dừng.** Đây là hành vi hiện tại của MCP (desktop-pause.ts:14), giữ nguyên. Adapter phải dùng **cùng hàm đọc** với MCP để thấy đúng cái MCP thấy.
@@ -164,16 +170,18 @@ if(desktopPaused!==false&&!pauseExempt)throw new ConnectorError("SECURITY_BLOCKE
   - `MISMATCH` với `effective==true`: "Trạng thái tạm dừng không khớp: connector đang **chặn** tác vụ mới. Bấm Tạm dừng hoặc Tiếp tục để đặt lại."
   - `MISMATCH` với `effective==false`: "Trạng thái tạm dừng không khớp: connector đang **cho phép** tác vụ mới. Bấm Tạm dừng hoặc Tiếp tục để đặt lại."
   - Với `MISMATCH`, bật **cả** hai mục Tạm dừng và Tiếp tục: file an toàn nên ghi lại được.
-  - `UNTRUSTED` với lý do khác `OBSERVER_UNAVAILABLE`: "Không xác minh được file tạm dừng; tác vụ mới bị chặn để an toàn. Cần sửa thủ công (xem hướng dẫn)." **Tắt** cả hai mục, vì ghi chắc chắn bị từ chối. Câu "đang bị chặn" chỉ dùng ở đây, vì MCP đọc cùng file bằng cùng hàm và coi `UNTRUSTED` như đang Pause (3.2).
+  - `UNTRUSTED` với lý do `INVALID_CONTENT`: "Nội dung file tạm dừng không hợp lệ; tác vụ mới bị chặn để an toàn. Bấm Tạm dừng hoặc Tiếp tục để ghi lại." **Bật** cả hai mục, vì ghi đè được (xem quyết định thiết kế).
+  - `UNTRUSTED` với lý do `NOT_PRIVATE`, `LINK_COUNT`, `STAT_FAILED`, `CHANGED_DURING_READ`: "Không xác minh được file tạm dừng; tác vụ mới bị chặn để an toàn. Cần sửa thủ công (xem hướng dẫn)." **Tắt** cả hai mục, vì ghi sẽ bị helper từ chối, hoặc trạng thái đang đổi (`CHANGED_DURING_READ` sẽ tự hết ở lần đọc sau nếu chỉ là race). Câu "đang bị chặn" chỉ dùng ở đây, vì MCP đọc cùng file bằng cùng hàm và coi `UNTRUSTED` như đang Pause (3.2).
   - `UNTRUSTED` với lý do `OBSERVER_UNAVAILABLE` (lỗi phía adapter, không phải lỗi file): dùng thông báo trung tính "Không quan sát được trạng thái tạm dừng." Bật/tắt hai mục như hành vi hiện tại theo `desktopPaused`. Không khẳng định là đang chặn, vì MCP có thể vẫn đọc file bình thường.
 - **Lỗi khởi động.** Trong nhánh `default:` (dòng 235–238), thêm `reason=="DESKTOP_PAUSE_STATE_UNSAFE"`: "File tạm dừng không an toàn nên connector không khởi động. Cần sửa thủ công (xem hướng dẫn)."
-- **Hash.** [scripts/mac-desktop-ui.mjs:28](../../scripts/mac-desktop-ui.mjs) pin SHA-256 của `App.swift`. Sửa App.swift thì phải cập nhật hash này theo quy trình build hiện có, rồi chạy `test/mac-desktop-ui.test.mjs`. Không bỏ pin.
+- **Hash (sửa lại 2026-11-12).** **Không** sửa pin ở [scripts/mac-desktop-ui.mjs:28](../../scripts/mac-desktop-ui.mjs). Bản trước nói pin này là của source hiện tại, nhưng thực ra nó thuộc profile `legacy` đã đóng băng (`mac-desktop-55ad-v1`, được `mac-desktop-508bf-v1` kế thừa), mô tả bundle đã build và ký, kèm cdhash. Nếu đổi pin, installer sẽ tưởng binary cũ khớp source mới và dùng lại nó, nên code Swift mới không bao giờ được build. Pin đã lệch với `App.swift` từ trước mục này, sau các commit `2e044f4` và `6849af3`. Vì vậy `test/mac-desktop-ui.test.mjs` (subtest `copied UI sources must reproduce the pinned intent`) đã đỏ sẵn trước khi sửa mục 3. Việc build lại UI và tạo descriptor pin mới qua quy trình build/ký thật là **một task riêng**, không thuộc mục 3.
 
 **3.7 Hướng dẫn sửa thủ công (đưa vào tài liệu người dùng; App chỉ trỏ tới đây).**
 ```bash
 F="$HOME/Library/Application Support/GSA-Localconnector/desktop/pause-state.json"
 ls -l "$F"; cat "$F"
 ```
+- Nếu file đúng quyền (`-rw-------`, owner là bạn, 1 link) nhưng nội dung sai: không cần dùng Terminal, chỉ cần bấm Tạm dừng hoặc Tiếp tục trên menu để ghi lại.
 - Nếu chỉ sai quyền (regular file, owner là bạn, 1 link, nội dung đúng dạng `{"format":"gsa-desktop-pause-v1","paused":true}` hoặc `false`): chạy `chmod 600 "$F"`.
 - Các trường hợp khác (symlink, hardlink, nội dung lạ, owner khác): chuyển file sang chỗ khác bằng `mv "$F" "$F.bad-$(date +%Y%m%d%H%M%S)"`. Khi file không còn, MCP coi là **không tạm dừng**; nếu cần tạm dừng thì bấm Tạm dừng sau đó, adapter sẽ tạo file mới `0600`.
 - Nếu connector không khởi động vì lỗi này: sửa như trên rồi mở lại app. Phiên mới luôn bắt đầu ở trạng thái không tạm dừng (adapter:151).
@@ -191,6 +199,7 @@ ls -l "$F"; cat "$F"
 - Adapter (`test/mac-desktop-adapter.test.mjs`):
   - **Ngoại lệ có chủ đích với quy tắc "không sửa test":** ba assert `deepEqual` ở dòng 48, 73 và 80 sẽ fail vì status có thêm trường. Cách sửa: trong các test đó đặt `adapter.config.directory` và inject `pauseReader:async()=>({exists:false,paused:false})`, rồi thêm vào expected `desktopPauseState:"VERIFIED",desktopPauseEffective:false,desktopPauseReason:null`. Không đổi `deepEqual` thành so khớp một phần.
   - File `0644` thật trong thư mục tạm `0700`: `publishStatus()` → `UNTRUSTED/NOT_PRIVATE`, `desktopPaused` vẫn là boolean; `setPaused(true)` reject `FILE_UNSAFE`; `requestPause(true)` → `pauseRequestStatus:"FAILED"`, `pauseRequestReason:"PAUSE_FILE_UNSAFE"`; mode và nội dung file **không đổi**.
+  - File `0600` nội dung không phải JSON (giữ hành vi hiện tại, đây là test bảo vệ): `publishStatus()` → `UNTRUSTED/INVALID_CONTENT`; `requestPause(true)` → `DONE`, file được thay bằng nội dung hợp lệ và mode vẫn `0600`; lần publish sau → `VERIFIED`, `effective:true`.
   - File hợp lệ `paused:true` trong khi `this.paused=false` → `MISMATCH`, `effective:true`; sau `requestPause(false)` → `DONE` và `VERIFIED`.
   - `pauseReader` ném lỗi thường → `publishStatus()` vẫn ghi `status.json`, với `UNTRUSTED/OBSERVER_UNAVAILABLE`.
   - Trong lúc `pauseWriteInFlight`, `publishStatus()` dùng lại `lastPauseObservation`: dùng `pauseReader` có bộ đếm, kiểm không bị gọi trong lúc ghi.
@@ -202,6 +211,7 @@ ls -l "$F"; cat "$F"
 - Không để `desktopPaused` trong `status.json` thành `null`.
 - Không dùng câu "tác vụ mới đang bị chặn" cho `MISMATCH`.
 - Không tự `chmod` hay tự xoá file, kể cả khi người dùng bấm Tạm dừng hoặc Tiếp tục.
+- Không thêm kiểm tra nội dung trước khi ghi trong `publish()` hay helper. Nội dung sai với metadata an toàn phải ghi đè được.
 
 ---
 
@@ -284,7 +294,9 @@ ls -l "$F"; cat "$F"
 - [src/mcp/runtime-bootstrap.ts:61](../../src/mcp/runtime-bootstrap.ts) mỗi lần server khởi động thì `invalidateAfterOwnerFence` xoá lease → token của client đang làm việc thành `SESSION_INVALID` sau mỗi lần tunnel kết nối lại (càng hay xảy ra khi mục 1 có auto-restart).
 - [src/local/control-lease.ts:144](../../src/local/control-lease.ts) client mất token → `SESSION_BUSY` tới 5 phút.
 
-**Cách sửa (cần Human quyết định, ảnh hưởng mô hình bảo mật).**
+**Đã quyết định (Human, 2026-11-12): chọn phương án A, cộng thêm `expires_at` trong `SESSION_BUSY`.** Lý do: connector chỉ có một người dùng, nên không có bên thứ hai tranh quyền điều khiển. Phương án B (takeover có xác nhận trên menu) không làm.
+
+**Cách sửa.**
 - Phương án A (khuyến nghị): giữ lease qua restart nếu chưa hết hạn, vì token chỉ lưu dưới dạng SHA-256 nên không lộ. Chỉ xoá lock file cũ, không xoá lease. Tiến trình con cũ đã bị owner fence chặn nên không còn dùng được lease.
 - Phương án B: thêm `acquire_control({takeover:true})` với xác nhận cục bộ trên menu bar ("Cho phép phiên mới giành quyền điều khiển?").
 - Trả `expires_at` trong lỗi `SESSION_BUSY` để client biết khi nào thử lại.
