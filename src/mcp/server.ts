@@ -665,7 +665,12 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
       return {content:[{type:"text",text:JSON.stringify({ok:true,result})}]};
     } catch(e) {
       const code=e&&typeof e==="object"&&"code" in e&&typeof e.code==="string"?e.code:e instanceof Error?e.message:"UNKNOWN_ERROR";
+      // A *public DNS suffix* can identify a missing allowlist entry without
+      // ever reflecting a signed URL, token, path, or subdomain.
+      const hostSuffix=code==="IMAGE_URL_HOST_REJECTED"&&e&&typeof e==="object"?
+        (e as {host_suffix?:unknown}).host_suffix:undefined;
       return {isError:true,content:[{type:"text",text:JSON.stringify({ok:false,code,
+        ...(typeof hostSuffix==="string"&&/^[a-z0-9-]{1,63}\.[a-z0-9-]{2,63}$/.test(hostSuffix)?{host_suffix:hostSuffix}:{}),
         ...(code==="FILE_GRANT_RECOVERY_REQUIRED"?{
           operation:call.name,
           backend_state:"REQUIRES_SIGNED_REINSTALL",

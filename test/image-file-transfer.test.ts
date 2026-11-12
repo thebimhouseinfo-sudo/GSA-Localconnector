@@ -64,15 +64,41 @@ test("opaque host file IDs are accepted as metadata without a prefix",async()=>{
   assert.equal(r.sha256,createHash("sha256").update(sample).digest("hex"));
  }
 });
-test("file input rejects arbitrary URL, local network, redirects, opaque file id and spoofed MIME",async()=>{
- for(const url of [
-  "http://files.oaiusercontent.com/image",
-  "https://127.0.0.1/image","https://localhost/a",
-  "https://files.oaiusercontent.com.evil.example/a",
-  "https://evil.example/a","https://user:secret@files.oaiusercontent.com/a",
-  "https://files.oaiusercontent.com:8443/a",
-  "file:///private/tmp/a.png"
- ])await assert.rejects(downloadChatGptImage({...file,download_url:url},"x.png",stub()),{code:"IMAGE_URL_REJECTED"});
+test("file URL rejects unsafe origins with finite, nonsecret diagnostics",async()=>{
+ const bad:Array<[string,string]>=[
+  ["http://files.oaiusercontent.com/image","IMAGE_URL_SCHEME_REJECTED"],
+  ["https://127.0.0.1/image","IMAGE_URL_HOST_REJECTED"],
+  ["https://localhost/a","IMAGE_URL_HOST_REJECTED"],
+  ["https://files.oaiusercontent.com.evil.example/a","IMAGE_URL_HOST_REJECTED"],
+  ["https://evil.example/a","IMAGE_URL_HOST_REJECTED"],
+  ["https://user:secret@files.oaiusercontent.com/a","IMAGE_URL_CREDENTIALS_REJECTED"],
+  ["https://files.oaiusercontent.com:8443/a","IMAGE_URL_PORT_REJECTED"],
+  ["file:///private/tmp/a.png","IMAGE_URL_SCHEME_REJECTED"],
+  ["https://files.oaiusercontent.com/a#frag","IMAGE_URL_FRAGMENT_REJECTED"],
+  ["not a valid URL","IMAGE_URL_MALFORMED"]
+ ];
+ let calls=0;
+ const noFetch=(async()=>{calls++;throw Error("SHOULD_NOT_FETCH");}) as typeof fetch;
+ for(const [url,code] of bad){
+  await assert.rejects(downloadChatGptImage({...file,download_url:url},"x.png",noFetch),
+   (e:unknown)=>{
+    assert.ok(e instanceof Error);
+    assert.equal((e as Error&{code?:string}).code,code);
+    assert.equal(e.message,code);
+    assert.ok(!JSON.stringify(e).includes(url),"error must never leak URL");
+    return true;
+   });
+ }
+ assert.equal(calls,0);
+ await assert.rejects(downloadChatGptImage({...file,download_url:"https://cdn.newvendor.example/download?secret=never-echo"},"x.png",noFetch),
+  (e:unknown)=>{
+   assert.ok(e instanceof Error);
+   assert.equal((e as Error&{code?:string}).code,"IMAGE_URL_HOST_REJECTED");
+   assert.equal((e as Error&{host_suffix?:string}).host_suffix,"newvendor.example");
+   assert.ok(!JSON.stringify(e).includes("never-echo"));
+   assert.ok(!JSON.stringify(e).includes("cdn."));
+   return true;
+  });
  await assert.rejects(downloadChatGptImage({...file,file_id:42},"x.png",stub()),{code:"FILEPARAM_FILE_ID_TYPE_INVALID"});
  await assert.rejects(downloadChatGptImage(file,"x.png",stub(sample,302,{Location:"http://169.254.169.254"})),{code:"IMAGE_DOWNLOAD_FAILED"});
  await assert.rejects(downloadChatGptImage({...file,mime_type:"image/jpeg"},"x.png",stub()),{code:"IMAGE_MIME_MISMATCH"});

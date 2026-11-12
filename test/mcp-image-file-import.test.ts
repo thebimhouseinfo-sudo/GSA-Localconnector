@@ -55,6 +55,12 @@ test("image file tool requires current controller, imports only to active worksp
   const typeInvalid=await call("import_image_file",{workspace_id:"workspace",path:"bad-id.png",file:{...source,file_id:42},control_token:token});
   assert.equal(typeInvalid.code,"FILEPARAM_FILE_ID_TYPE_INVALID");
   assert.equal(downloads,0,"invalid ID types must not fetch");
+  const unknownOrigin=await call("import_image_file",{workspace_id:"workspace",path:"unapproved.png",file:{...source,download_url:"https://cdn.newvendor.example/item?secret=topsecret"},control_token:token});
+  assert.equal(unknownOrigin.code,"IMAGE_URL_HOST_REJECTED");
+  assert.equal(unknownOrigin.host_suffix,"newvendor.example");
+  assert.ok(!JSON.stringify(unknownOrigin).includes("topsecret"));
+  assert.ok(!JSON.stringify(unknownOrigin).includes("cdn."));
+  assert.equal(downloads,0,"unapproved host must never be fetched");
   for(const r of [unresolved,nullFile,incomplete,missing])assert.equal(r.ok,false);
   const noWrite=await call("import_image_file",{workspace_id:"reference",path:"bad.png",file:source,control_token:token});
   assert.equal(noWrite.code,"PERMISSION_DENIED");

@@ -42,11 +42,24 @@ function source(value:unknown):ChatGptFileInput{
     v.file_name!==undefined&&typeof v.file_name!=="string")fail("FILEPARAM_OPTIONAL_FIELDS_INVALID");
  return v as ChatGptFileInput;
 }
+/** The eTLD+1-like suffix is diagnostic only, never an authority grant.
+ * Do not reveal a complete URL, signed query, arbitrary subdomain or secret.
+ */
+function unapprovedHost(hostname:string):never{
+ const labels=hostname.toLowerCase().split(".");
+ const suffix=labels.length>=2?labels.slice(-2).join("."):"";
+ if(!/^[a-z0-9-]{1,63}\.[a-z0-9-]{2,63}$/.test(suffix))return fail("IMAGE_URL_HOST_REJECTED");
+ throw Object.assign(new Error("IMAGE_URL_HOST_REJECTED"),{code:"IMAGE_URL_HOST_REJECTED",host_suffix:suffix});
+}
 function approvedUrl(downloadUrl:string):URL{
- if(downloadUrl.length>8192||/[\u0000-\u001f\u007f]/.test(downloadUrl))fail("IMAGE_URL_REJECTED");
+ if(downloadUrl.length>8192||/[\u0000-\u001f\u007f]/.test(downloadUrl))fail("IMAGE_URL_INPUT_REJECTED");
  let url:URL;
- try{url=new URL(downloadUrl);}catch{return fail("IMAGE_URL_REJECTED");}
- if(url.protocol!=="https:"||url.username||url.password||url.port||url.hash||!approvedHost(url.hostname))fail("IMAGE_URL_REJECTED");
+ try{url=new URL(downloadUrl);}catch{return fail("IMAGE_URL_MALFORMED");}
+ if(url.protocol!=="https:")fail("IMAGE_URL_SCHEME_REJECTED");
+ if(url.username||url.password)fail("IMAGE_URL_CREDENTIALS_REJECTED");
+ if(url.port)fail("IMAGE_URL_PORT_REJECTED");
+ if(url.hash)fail("IMAGE_URL_FRAGMENT_REJECTED");
+ if(!approvedHost(url.hostname))return unapprovedHost(url.hostname);
  return url;
 }
 function detectedType(bytes:Buffer):DownloadedImage["mime_type"]{
