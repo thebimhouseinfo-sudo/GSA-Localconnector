@@ -9,6 +9,7 @@ Nguyên tắc chung khi sửa:
 - Lỗi thoáng qua phải retry được; trạng thái lỗi không được "dính" vĩnh viễn trong bộ nhớ.
 - Tool chẩn đoán (`connector_status`, `list_capabilities`, `inspect_workspace_recovery`, `stop_process`, `release_control`) phải luôn trả lời được, kể cả khi hệ thống đang lỗi.
 - Mỗi mục là một commit nhỏ, có test RED trước rồi mới GREEN.
+- Số dòng được kiểm lại trên `main` @ `c389f2c` ngày 2026-11-12. Nếu hướng dẫn không khớp code, **dừng lại và hỏi**; không tự chọn cách nào nới kiểm tra an toàn.
 
 Thứ tự đề xuất: **3 → 4 → 9 → 8 → 1 → 2 → 5 → 6 → 7** (sửa nhỏ, tác động lớn lên trước; thay đổi vòng đời Desktop sau).
 
@@ -24,7 +25,7 @@ Thứ tự đề xuất: **3 → 4 → 9 → 8 → 1 → 2 → 5 → 6 → 7** (
 - [native/macos-desktop/App.swift:151](../../native/macos-desktop/App.swift) `terminationHandler` chỉ `refreshStatus()`, không khởi động lại.
 
 **Cách sửa.**
-1. Adapter: khi trạng thái cuối là `FAILED` với `reason` thuộc nhóm *có thể thử lại* (`CHILD_EXITED`, `CHILD_FAILED`, `RUNTIME_UNAVAILABLE`), đặt `process.exitCode = 75` (EX_TEMPFAIL) sau khi `publishStatus()` xong. Các lý do *không* thử lại (`SETUP_REQUIRED`, `AUTH_REJECTED`, `CONFIG_*`, `OWNER_ACTIVE`, `OWNER_RELEASE_FAILED`) giữ exit code hiện tại.
+1. Adapter: khi trạng thái cuối là `FAILED` với `reason` thuộc nhóm *có thể thử lại* (`CHILD_EXITED`, `CHILD_FAILED`, `RUNTIME_UNAVAILABLE`), đặt `process.exitCode = 75` (EX_TEMPFAIL) sau khi `publishStatus()` xong. Các lý do *không* thử lại (`SETUP_REQUIRED`, `AUTH_REJECTED`, `CONFIG_*`, `OWNER_ACTIVE`, `OWNER_RELEASE_FAILED`, `DESKTOP_PAUSE_STATE_UNSAFE` ở mục 3.5) giữ exit code hiện tại. Lưu ý: lỗi khi `adapter.start()` đi qua nhánh `catch` của `main()` (adapter:265–269, hiện đặt `exitCode = 1`), không đi qua timer ở dòng 279. Cả hai đường đều phải áp dụng cùng một danh sách.
 2. App.swift: trong `terminationHandler`, nếu `!quitRequested && process.terminationStatus == 75` thì lên lịch `startSupervisor()` với backoff `2s, 4s, 8s, … tối đa 60s`. Reset bộ đếm khi trạng thái `RUNNING/CONNECTED` giữ ổn định ≥ 5 phút. Hiện trạng thái "Đang kết nối lại (lần N)…".
 3. Giới hạn: sau 10 lần liên tiếp thất bại thì dừng và hiện "Connector liên tục thoát; xem desktop.log".
 4. Không tự restart khi người dùng đã chọn Quit hoặc khi đang `pruneRequested`.
@@ -57,37 +58,150 @@ Thứ tự đề xuất: **3 → 4 → 9 → 8 → 1 → 2 → 5 → 6 → 7** (
 
 ---
 
-## 3. File pause-state chặn cả tool chẩn đoán (cao, REPRO — đây là test đang fail)
+## 3. File pause-state: chặn cả tool chẩn đoán, lỗi không hiện và không sửa được trên App (cao, REPRO + CODE)
 
-**Triệu chứng.** `list_capabilities` trả `DESKTOP_PAUSE_STATE_UNTRUSTED` → test `protected storage unavailable blocks truthful discovery and dispatch` fail với `Cannot read properties of undefined (reading 'fileTransactionReadbackAvailable')`.
+> **Viết lại 2026-11-12 (bản 3).** Bản trước có hai chỗ sai so với code: (a) nó nói bấm Pause/Resume sẽ "ghi lại file và sửa trạng thái", nhưng với file không an toàn thì `publish()` từ chối ghi; (b) nó nói mọi trạng thái khác `VERIFIED` đều là "tác vụ mới đang bị chặn", nhưng với `MISMATCH` thì MCP áp dụng giá trị trong file, giá trị này có thể là `paused=false`. Lần review này còn tìm thêm ba điểm: file không an toàn chặn cả khởi động, lỗi Pause/Resume bị nuốt im lặng, và bản trước tự mâu thuẫn ở yêu cầu "không sửa test". Mục này thay toàn bộ bản trước.
+
+**Triệu chứng.**
+- Test `protected storage unavailable blocks truthful discovery and dispatch` fail với `Cannot read properties of undefined (reading 'fileTransactionReadbackAvailable')`, vì `list_capabilities` trả lỗi thay vì kết quả. Chạy lại ngày 2026-11-12, test **vẫn fail dù file thật đang `0600` và hợp lệ**. Lý do: test stub `process.getuid = undefined`, và máy có cài app nên `lstat` file thật thành công, rồi rơi vào nhánh "không có uid" → `UNTRUSTED`. Máy không cài app (ENOENT) thì test pass (xem mục 9).
+- File `pause-state.json` không an toàn (ví dụ mode `0644`): bấm Tạm dừng/Tiếp tục không có tác dụng gì và App không báo lỗi. Mở lại app thì connector không khởi động được, App chỉ hiện "Connector gặp lỗi khởi động."
 
 **Nguyên nhân.**
-- [src/mcp/server.ts:237](../../src/mcp/server.ts) `await isDesktopPaused()` chạy **trước** khi xét danh sách `whilePaused`, và ném lỗi cho mọi tool.
-- [src/local/desktop-pause.ts](../../src/local/desktop-pause.ts) báo `UNTRUSTED` khi `process.getuid` không có, khi nlink≠1, hoặc khi inode/ctime đổi giữa `lstat` và `open` (race khi Desktop `rename` lúc bấm Pause/Resume).
-- Lần ghi đầu dùng `os.link` rồi `os.unlink` ([scripts/mac-desktop-private-file.mjs:144](../../scripts/mac-desktop-private-file.mjs)) → có khoảnh khắc nlink=2.
+- **3a.** [src/mcp/server.ts:237](../../src/mcp/server.ts) gọi `await isDesktopPaused()` **trước** khi xét danh sách `whilePaused` (dòng 240–252), nên khi đọc lỗi thì mọi tool đều nhận lỗi.
+- **3b.** [src/local/desktop-pause.ts](../../src/local/desktop-pause.ts) dùng cùng một `Error("DESKTOP_PAUSE_STATE_UNTRUSTED")` (không có `code`, không có lý do con) cho hai loại lỗi:
+  - lỗi bền: không có uid, mode khác `0600`, symlink, sai owner, nội dung sai;
+  - lỗi thoáng qua khi adapter đang ghi: lần ghi đầu dùng `os.link` rồi `os.unlink` ([scripts/mac-desktop-private-file.mjs:144](../../scripts/mac-desktop-private-file.mjs)), nên có một khoảnh khắc `nlink=2`; các lần ghi sau dùng `os.rename` (dòng 150), nên ino/ctime đổi giữa `lstat` và `open`.
+- **3c.** `publish()` của adapter ([scripts/mac-desktop-adapter.mjs:50–54](../../scripts/mac-desktop-adapter.mjs)) đọc file cũ bằng `readVerified` để lấy identity trước khi ghi. Helper từ chối file không phải `0600` (`leaf_info`, private-file:24) với lỗi `FILE_UNSAFE`. `publish()` chỉ bỏ qua `FILE_MISSING`, nên:
+  - `setPaused()` (adapter:189) thất bại, và hai signal handler (adapter:283–284) nuốt lỗi bằng `.catch(()=>{})`: không có `publishStatus()`, nên App không biết gì;
+  - `prepareProfile` (adapter:154) cũng gọi `publish()` cho file này khi khởi động. Supervisor ([scripts/desktop-supervisor.mjs:161–164](../../scripts/desktop-supervisor.mjs)) đổi mọi lỗi thành `RUNTIME_START_FAILED`, rồi adapter `main()` (adapter:266) đổi tiếp thành `RUNTIME_UNAVAILABLE`. Kết quả: file hỏng chặn cả khởi động, và lý do thật bị che mất.
+- **3d.** `status.json` chỉ có `desktopPaused: this.paused` (adapter:233), tức giá trị adapter **ghi thành công gần nhất**. Trường này không cho biết MCP đang thực sự áp dụng gì.
+
+**Quyết định thiết kế (đã chốt; gặp điểm không khớp thì dừng lại hỏi, không tự đổi).**
+- **Không nới kiểm tra.** File không phải `0600`, symlink, `nlink≠1`, sai owner, nội dung sai vẫn bị từ chối cả khi đọc lẫn khi ghi. Không tự `chmod`, không tự xoá. Việc sửa là thao tác thủ công của người dùng (3.7).
+- **Không xác minh được thì coi như đang Pause.** Tool trong `whilePaused` vẫn chạy, tool tạo hiệu ứng bị chặn. Không bao giờ coi `UNTRUSTED` là "không tạm dừng".
+- **`MISMATCH` không có nghĩa mặc định là "đang chặn".** MCP áp dụng giá trị trong file, nên thông báo phải nói đúng giá trị đó.
+- **File không tồn tại = không tạm dừng.** Đây là hành vi hiện tại của MCP (desktop-pause.ts:14), giữ nguyên. Adapter phải dùng **cùng hàm đọc** với MCP để thấy đúng cái MCP thấy.
 
 **Cách sửa.**
-1. Trong `server.ts`, đổi thứ tự:
-   ```ts
-   const pauseExempt = whilePaused.has(call.name) || recoveryInspectOnly;
-   let desktopPaused: boolean | null;
-   try { desktopPaused = await isDesktopPaused(options.identityRoot); }
-   catch (e) {
-     if (!pauseExempt) throw new ConnectorError("SECURITY_BLOCKED", "DESKTOP_PAUSE_STATE_UNTRUSTED");
-     desktopPaused = null; // báo "không xác định" trong connector_status/list_capabilities
-   }
-   if (desktopPaused === true && !pauseExempt) throw new ConnectorError("SECURITY_BLOCKED", "CONNECTOR_PAUSED: …");
-   ```
-   Tool tạo hiệu ứng vẫn fail-closed; tool chẩn đoán luôn chạy và trả `desktopPaused: null` cùng `desktopPauseReason`.
-2. Trong `desktop-pause.ts`: khi lỗi là *dev/ino/ctime mismatch* hoặc *nlink=2*, retry tối đa 3 lần cách nhau 20ms rồi mới báo `UNTRUSTED`. Không retry với lỗi uid/mode/symlink/kích thước.
-3. Thêm `identityRoot` vào `options` của `createReadOnlyTools` và truyền xuống `isDesktopPaused`, để test dùng thư mục tạm thay vì `HOME` thật (liên quan mục 9).
-4. App.swift cần xử lý `desktopPaused == null` (hiện "Chưa xác minh trạng thái tạm dừng").
 
-**Test.**
-- Pause file hỏng (mode 0644): `connector_status` và `list_capabilities` vẫn `ok:true`, có `desktopPaused:null`; `create_file` trả `SECURITY_BLOCKED`.
-- `paused:true`: `fetch_file` chạy được, `run_command` bị chặn (giữ nguyên hành vi).
-- Race: stub `lstat`/`open` trả inode khác ở lần 1, đúng ở lần 2 → kết quả đúng, không lỗi.
-- Test hiện đang fail phải GREEN **mà không cần sửa test** sau khi có `identityRoot` trỏ vào thư mục tạm.
+**3.1 `src/local/desktop-pause.ts`: tách hàm đọc, thêm mã lỗi và retry có chọn lọc.**
+```ts
+export type PauseReason="UID_UNAVAILABLE"|"NOT_PRIVATE"|"LINK_COUNT"|"CHANGED_DURING_READ"|"INVALID_CONTENT"|"STAT_FAILED";
+export class DesktopPauseUntrusted extends Error {
+  readonly code="DESKTOP_PAUSE_STATE_UNTRUSTED";
+  constructor(readonly reason:PauseReason){super("DESKTOP_PAUSE_STATE_UNTRUSTED");}
+}
+export type PauseFileReading={exists:false;paused:false}|{exists:true;paused:boolean};
+export async function readDesktopPauseFile(file:string,opts:{attempts?:number;delayMs?:number}={}):Promise<PauseFileReading>;
+export async function isDesktopPaused(identityRoot?:string):Promise<boolean>; // giữ chữ ký; gọi readDesktopPauseFile(<root>/desktop/pause-state.json) và trả .paused
+```
+- Map lý do: `getuid` không có → `UID_UNAVAILABLE`; không phải regular file, symlink, uid khác, mode khác `0600`, size ngoài `1..512` → `NOT_PRIVATE`; `nlink≠1` → `LINK_COUNT`; dev/ino/ctime/mtime/size đổi giữa `lstat`, `open` và sau khi đọc → `CHANGED_DURING_READ`; JSON hoặc định dạng sai → `INVALID_CONTENT`; `lstat` lỗi khác ENOENT → `STAT_FAILED`.
+- Chỉ retry `LINK_COUNT` và `CHANGED_DURING_READ`: mặc định tổng cộng 3 lần, cách nhau 20ms. Không retry các lý do còn lại.
+- `process.platform!=="darwin"` → `{exists:false,paused:false}` như hiện tại.
+- Giữ chuỗi `UNTRUSTED` trong message, vì `test/mac-desktop-pause.test.ts` match `/UNTRUSTED/`.
+
+**3.2 `src/mcp/server.ts`: xét miễn trừ trước, coi "không xác minh được" như đang Pause.**
+```ts
+// Dời hai khai báo này lên trước khi đọc pause; xoá biến recoveryInspect trùng ở dòng 254.
+const whilePaused=new Set([/* giữ nguyên danh sách dòng 240–249 */]);
+const recoveryInspect=call.name==="bind_workspaces"&&args.inspect_recovery===true&&Object.keys(args).length===1;
+const pauseExempt=whilePaused.has(call.name)||recoveryInspect;
+let desktopPaused:boolean|null,desktopPauseReason:string|null=null;
+try{desktopPaused=await isDesktopPaused(options.identityRoot);}
+catch(e){desktopPaused=null;desktopPauseReason=e instanceof DesktopPauseUntrusted?e.reason:"UNKNOWN";}
+if(desktopPaused!==false&&!pauseExempt)throw new ConnectorError("SECURITY_BLOCKED",desktopPaused===null
+  ?"DESKTOP_PAUSE_STATE_UNTRUSTED: new effects are blocked until the pause state can be verified"
+  :"CONNECTOR_PAUSED: new effects are suspended by the desktop app");
+```
+- Thêm `identityRoot?:string` vào `options` của `createReadOnlyTools` (server.ts:96). Runtime thật không truyền, nên vẫn mặc định `identityDirectory()`.
+- `connector_status` (dòng 274) và `list_capabilities` (dòng 480): thêm `desktopPauseReason` cạnh `desktopPaused`. `desktopPaused` thành `boolean|null`; nếu mô tả tool hoặc schema nói kiểu boolean thì sửa theo.
+- Giữ mã lỗi `SECURITY_BLOCKED`: `test/mcp-desktop-pause.test.ts` kiểm `code==="SECURITY_BLOCKED"` và message `/CONNECTOR_PAUSED/`.
+
+**3.3 Adapter: báo trạng thái file mà MCP thực sự thấy (`scripts/mac-desktop-adapter.mjs`).**
+- Constructor nhận thêm `pauseReader=null` để test inject (cùng mẫu với `registrationPruner`). Mặc định dùng `(await import("../dist/src/local/desktop-pause.js")).readDesktopPauseFile`. Installer đã copy toàn bộ `dist/src` (mac-desktop-install.mjs:138), nên không cần thêm file vào danh sách.
+- File quan sát là `path.join(this.config.directory,"pause-state.json")`, tức đúng file adapter ghi. Không tự suy ra `identityRoot`.
+- Thêm `observePause()` (không bao giờ throw), gọi trong `publishStatus()` trước khi ghi:
+  - không có `this.config?.directory` → `{desktopPauseState:"UNTRUSTED",desktopPauseEffective:null,desktopPauseReason:"OBSERVER_UNAVAILABLE"}`;
+  - đang có ghi pause dở (`this.pauseWriteInFlight`) → trả lại `this.lastPauseObservation` (nếu chưa có thì đọc bình thường). Lý do: tránh tự đọc đúng lúc chính mình đang rename;
+  - đọc được → `effective = reading.paused` (file không tồn tại → `false`); `state = effective===this.paused ? "VERIFIED" : "MISMATCH"`; `reason=null`;
+  - lỗi `code==="DESKTOP_PAUSE_STATE_UNTRUSTED"` → `UNTRUSTED`, `effective=null`, `reason=error.reason`;
+  - lỗi khác (ví dụ import hỏng) → `UNTRUSTED`, `effective=null`, `reason:"OBSERVER_UNAVAILABLE"`.
+  Lưu kết quả vào `this.lastPauseObservation`. **Không** đổi `this.paused` theo kết quả quan sát.
+- `status.json` = `{...status, desktopPaused:this.paused, desktopPauseState, desktopPauseEffective, desktopPauseReason, ...quitOutcome, ...registrationPruneOutcome, ...pauseRequestOutcome}`.
+  - `desktopPaused` giữ là **boolean**, nghĩa là "giá trị ghi thành công gần nhất". Không đổi sang `null`: App đọc bằng `as? Bool ?? false`, nên `null` sẽ bị hiểu thành "không tạm dừng".
+  - `desktopPauseEffective` là `true|false|null`. App phải xử lý `null` một cách tường minh.
+
+**3.4 Adapter: báo kết quả Pause/Resume thay vì nuốt lỗi.**
+- `setPaused()` giữ nguyên hợp đồng: vẫn throw (test hiện có kiểm `rejects /DESKTOP_NOT_RUNNING/`). Thứ tự bên trong: `pauseWriteInFlight=true` → `publish(...)` → `this.paused=paused` → `pauseWriteInFlight=false` (đặt trong `finally`) → `publishStatus()`.
+- Thêm `requestPause(paused)`. Hàm này gọi `setPaused`, rồi ghi `this.pauseRequestOutcome={pauseRequestAttempt:++n, pauseRequestStatus:"DONE"|"FAILED", pauseRequestReason}` và `publishStatus()` trong cả hai nhánh (cùng mẫu với `pruneInactiveRegistrations`). Map lý do:
+  - `FILE_UNSAFE` → `PAUSE_FILE_UNSAFE`;
+  - `FILE_BUSY` hoặc `FILE_STALE` → `PAUSE_FILE_BUSY`;
+  - `DESKTOP_NOT_RUNNING` giữ nguyên;
+  - lỗi khác → `PAUSE_WRITE_FAILED`.
+  Không đưa message hay path thô vào status.
+- Signal handler SIGUSR2/SIGHUP (adapter:283–284) gọi `requestPause(true|false)`. `requestPause` không được reject.
+- Lưu ý: nếu helper đã `rename` xong nhưng bước đọc lại sau đó lỗi, file đã đổi mà `this.paused` chưa đổi. Lần quan sát sau sẽ báo `MISMATCH` với `effective` đúng, và người dùng bấm lại. Đây là hành vi mong muốn, không cần cơ chế bù.
+
+**3.5 Khởi động khi file không an toàn: báo đúng lý do, không tự restart.**
+- `prepareProfile` (adapter:154): bắt lỗi của `publish()` cho `pause-state.json`; nếu `error.code==="FILE_UNSAFE"` thì `throw fail("DESKTOP_PAUSE_STATE_UNSAFE")`. Các file khác giữ nguyên.
+- Supervisor (desktop-supervisor.mjs:161–164): đổi `} catch {` thành `} catch (error) {`, giữ nguyên `if (!child) await release();`, rồi `throw failure(error?.code==="DESKTOP_PAUSE_STATE_UNSAFE"?error.code:"RUNTIME_START_FAILED")`. Chỉ cho đúng mã này đi qua, không mở rộng danh sách tuỳ tiện.
+- Adapter `main()` (adapter:266): `reason = ["OWNER_ACTIVE","DESKTOP_PAUSE_STATE_UNSAFE"].includes(error.code) ? error.code : "RUNTIME_UNAVAILABLE"`.
+- **Liên quan mục 1:** `DESKTOP_PAUSE_STATE_UNSAFE` thuộc nhóm **không** tự restart, vì restart không sửa được file.
+
+**3.6 `native/macos-desktop/App.swift`.**
+- **Kết quả Pause/Resume.** Thêm `pauseRequested`, `pauseAttemptBaseline`, `pauseRequestedAt` theo đúng mẫu prune (dòng 158–182 và 261–269). Khi `pauseRequestAttempt > baseline`:
+  - `DONE` → để luồng thường hiển thị;
+  - `FAILED` → giữ thông báo ít nhất 8 giây (nhánh prune hiện chỉ hiện 1 giây rồi bị ghi đè; không lặp lại lỗi đó):
+    - `PAUSE_FILE_UNSAFE`: "Không ghi được trạng thái tạm dừng: file không an toàn. Cần sửa thủ công (xem hướng dẫn)."
+    - `PAUSE_FILE_BUSY`: "File tạm dừng đang bận; thử lại sau giây lát."
+    - `DESKTOP_NOT_RUNNING`: "Connector không chạy; không đổi được trạng thái tạm dừng."
+    - lý do khác: "Không đổi được trạng thái tạm dừng."
+  - Sau 10 giây vẫn chưa có kết quả: "Chưa xác nhận được yêu cầu tạm dừng/tiếp tục."
+- **Trạng thái pause.** Xét khi `state=="RUNNING"`, **trước** nhánh `paused` ở dòng 216–223:
+  - Không có `desktopPauseState` (adapter cũ) → hành vi hiện tại.
+  - Chỉ coi là bất thường khi giá trị khác `VERIFIED` ở **hai lần đọc liên tiếp**, để không nháy cảnh báo đúng lúc đang ghi.
+  - `VERIFIED` → hành vi hiện tại.
+  - `MISMATCH` với `effective==true`: "Trạng thái tạm dừng không khớp: connector đang **chặn** tác vụ mới. Bấm Tạm dừng hoặc Tiếp tục để đặt lại."
+  - `MISMATCH` với `effective==false`: "Trạng thái tạm dừng không khớp: connector đang **cho phép** tác vụ mới. Bấm Tạm dừng hoặc Tiếp tục để đặt lại."
+  - Với `MISMATCH`, bật **cả** hai mục Tạm dừng và Tiếp tục: file an toàn nên ghi lại được.
+  - `UNTRUSTED` với lý do khác `OBSERVER_UNAVAILABLE`: "Không xác minh được file tạm dừng; tác vụ mới bị chặn để an toàn. Cần sửa thủ công (xem hướng dẫn)." **Tắt** cả hai mục, vì ghi chắc chắn bị từ chối. Câu "đang bị chặn" chỉ dùng ở đây, vì MCP đọc cùng file bằng cùng hàm và coi `UNTRUSTED` như đang Pause (3.2).
+  - `UNTRUSTED` với lý do `OBSERVER_UNAVAILABLE` (lỗi phía adapter, không phải lỗi file): dùng thông báo trung tính "Không quan sát được trạng thái tạm dừng." Bật/tắt hai mục như hành vi hiện tại theo `desktopPaused`. Không khẳng định là đang chặn, vì MCP có thể vẫn đọc file bình thường.
+- **Lỗi khởi động.** Trong nhánh `default:` (dòng 235–238), thêm `reason=="DESKTOP_PAUSE_STATE_UNSAFE"`: "File tạm dừng không an toàn nên connector không khởi động. Cần sửa thủ công (xem hướng dẫn)."
+- **Hash.** [scripts/mac-desktop-ui.mjs:28](../../scripts/mac-desktop-ui.mjs) pin SHA-256 của `App.swift`. Sửa App.swift thì phải cập nhật hash này theo quy trình build hiện có, rồi chạy `test/mac-desktop-ui.test.mjs`. Không bỏ pin.
+
+**3.7 Hướng dẫn sửa thủ công (đưa vào tài liệu người dùng; App chỉ trỏ tới đây).**
+```bash
+F="$HOME/Library/Application Support/GSA-Localconnector/desktop/pause-state.json"
+ls -l "$F"; cat "$F"
+```
+- Nếu chỉ sai quyền (regular file, owner là bạn, 1 link, nội dung đúng dạng `{"format":"gsa-desktop-pause-v1","paused":true}` hoặc `false`): chạy `chmod 600 "$F"`.
+- Các trường hợp khác (symlink, hardlink, nội dung lạ, owner khác): chuyển file sang chỗ khác bằng `mv "$F" "$F.bad-$(date +%Y%m%d%H%M%S)"`. Khi file không còn, MCP coi là **không tạm dừng**; nếu cần tạm dừng thì bấm Tạm dừng sau đó, adapter sẽ tạo file mới `0600`.
+- Nếu connector không khởi động vì lỗi này: sửa như trên rồi mở lại app. Phiên mới luôn bắt đầu ở trạng thái không tạm dừng (adapter:151).
+
+**3.8 Test (RED trước, rồi GREEN; mỗi nhóm một commit).**
+- `test/mac-desktop-pause.test.ts` (mở rộng):
+  - mode `0644` → `reason==="NOT_PRIVATE"` và chỉ đọc 1 lần (gọi với `attempts:3` nhưng thời gian < 20ms, hoặc đếm qua hook);
+  - stub `getuid` → `UID_UNAVAILABLE`;
+  - hai hardlink + `attempts:1` → `LINK_COUNT`;
+  - hai hardlink, tháo link thừa sau 5ms, gọi với `attempts:3, delayMs:20` → đọc thành công.
+- MCP:
+  - Test đang fail (`protected storage unavailable…`) phải GREEN **mà không sửa test**. Nó GREEN nhờ 3.2, không nhờ `identityRoot`, vì test này không truyền `options`. `list_capabilities` và `get_file_transaction` đều nằm trong `whilePaused`, nên vẫn chạy rồi bị chặn bởi kiểm tra protected storage như test mong đợi.
+  - Test mới dùng `identityRoot` là thư mục tạm, file mode `0644`: `connector_status` và `list_capabilities` trả `ok:true`, `desktopPaused:null`, `desktopPauseReason:"NOT_PRIVATE"`; `fetch_file` vẫn chạy; `create_file` trả `SECURITY_BLOCKED` với message `/DESKTOP_PAUSE_STATE_UNTRUSTED/`.
+  - `paused:true`: giữ nguyên `test/mcp-desktop-pause.test.ts`.
+- Adapter (`test/mac-desktop-adapter.test.mjs`):
+  - **Ngoại lệ có chủ đích với quy tắc "không sửa test":** ba assert `deepEqual` ở dòng 48, 73 và 80 sẽ fail vì status có thêm trường. Cách sửa: trong các test đó đặt `adapter.config.directory` và inject `pauseReader:async()=>({exists:false,paused:false})`, rồi thêm vào expected `desktopPauseState:"VERIFIED",desktopPauseEffective:false,desktopPauseReason:null`. Không đổi `deepEqual` thành so khớp một phần.
+  - File `0644` thật trong thư mục tạm `0700`: `publishStatus()` → `UNTRUSTED/NOT_PRIVATE`, `desktopPaused` vẫn là boolean; `setPaused(true)` reject `FILE_UNSAFE`; `requestPause(true)` → `pauseRequestStatus:"FAILED"`, `pauseRequestReason:"PAUSE_FILE_UNSAFE"`; mode và nội dung file **không đổi**.
+  - File hợp lệ `paused:true` trong khi `this.paused=false` → `MISMATCH`, `effective:true`; sau `requestPause(false)` → `DONE` và `VERIFIED`.
+  - `pauseReader` ném lỗi thường → `publishStatus()` vẫn ghi `status.json`, với `UNTRUSTED/OBSERVER_UNAVAILABLE`.
+  - Trong lúc `pauseWriteInFlight`, `publishStatus()` dùng lại `lastPauseObservation`: dùng `pauseReader` có bộ đếm, kiểm không bị gọi trong lúc ghi.
+- Supervisor (`test/desktop-supervisor.test.mjs`): `prepareProfile` ném `DESKTOP_PAUSE_STATE_UNSAFE` → `startDesktopRuntime` reject với đúng mã đó; mã khác → `RUNTIME_START_FAILED`.
+- Thủ công trên app đã cài: `chmod 644` file thật → menu hiện cảnh báo `UNTRUSTED` sau khoảng 2 giây, cả hai mục bị tắt. `chmod 600` → về bình thường. Bấm Tạm dừng/Tiếp tục liên tục trong lúc gọi `connector_status` → không có `UNTRUSTED` nào lọt ra.
+
+**Không được làm.**
+- Không nới kiểm tra mode/owner/link trong `mac-desktop-private-file.mjs` hay `desktop-pause.ts` để `publish()` ghi đè được file không an toàn.
+- Không để `desktopPaused` trong `status.json` thành `null`.
+- Không dùng câu "tác vụ mới đang bị chặn" cho `MISMATCH`.
+- Không tự `chmod` hay tự xoá file, kể cả khi người dùng bấm Tạm dừng hoặc Tiếp tục.
 
 ---
 
@@ -97,7 +211,7 @@ Thứ tự đề xuất: **3 → 4 → 9 → 8 → 1 → 2 → 5 → 6 → 7** (
 
 **Nguyên nhân.**
 - [src/core/durable-process.ts:60](../../src/core/durable-process.ts) `this.ready` tạo một lần trong constructor; reject thì giữ reject.
-- [src/mcp/server.ts:689](../../src/mcp/server.ts) wrapper `await durable.initialize()` trước **mọi** tool; `catch` gán mã `SESSION_INVALID` khi lỗi không có `code`.
+- [src/mcp/server.ts:688](../../src/mcp/server.ts) wrapper `await durable.initialize()` trước **mọi** tool; `catch` (dòng 694) gán mã `SESSION_INVALID` khi lỗi không có `code`.
 
 **Cách sửa.**
 1. `DurableProcessManager`: thay `readonly ready` bằng hàm `ensureReady()`:
@@ -137,6 +251,7 @@ Thứ tự đề xuất: **3 → 4 → 9 → 8 → 1 → 2 → 5 → 6 → 7** (
 3. Adapter, sau khi lấy `desktop-owner.lock` và trước khi spawn tunnel: xoá lock `holder:"desktop"` có `session` khác session hiện tại.
 4. Lock không parse được (định dạng cũ / rỗng): chỉ xoá trong bước phục hồi của server **và** khi `lstat` cho thấy nó cũ hơn lúc owner fence được lấy. Ngoài ra trả `GRANT_STORE_RECOVERY_REQUIRED` với hướng dẫn rõ ràng thay vì `GRANT_STORE_BUSY`.
 5. Thêm `stale_grant_lock` vào `inspect_workspace_recovery` để người dùng thấy nguyên nhân.
+6. `withGrantLock` ném `Error("GRANT_STORE_BUSY")` không có thuộc tính `code` (grants.ts:228), trong khi adapter so `error?.code==="GRANT_STORE_BUSY"` (adapter:219). Vì vậy trên menu, lý do luôn hiện là `REGISTRATION_PRUNE_FAILED`. Sửa bằng `new ConnectorError("GRANT_STORE_BUSY", …)` (hoặc gắn `code`), cùng chỗ với mã mới `GRANT_STORE_RECOVERY_REQUIRED`.
 
 **Test.**
 - Lock `server` của session cũ → khởi động xong thì `enrollReadOnly` thành công.
@@ -181,8 +296,8 @@ Thứ tự đề xuất: **3 → 4 → 9 → 8 → 1 → 2 → 5 → 6 → 7** (
 ## 8. Mã lỗi bị ghi đè, khó chẩn đoán (trung bình, CODE)
 
 **Nguyên nhân.**
-- [src/mcp/server.ts:695](../../src/mcp/server.ts) lỗi không có `code` → `SESSION_INVALID`.
-- [src/mcp/server.ts:690](../../src/mcp/server.ts) `return invoke(call)` không có `await` nên exception thoát khỏi `try/catch`.
+- [src/mcp/server.ts:694](../../src/mcp/server.ts) lỗi không có `code` → `SESSION_INVALID`.
+- [src/mcp/server.ts:689](../../src/mcp/server.ts) `return invoke(call)` không có `await` nên exception thoát khỏi `try/catch`. (`invoke` bên trong đã có `catch` riêng, ở dòng 664–681, dùng `e.message` khi không có `code`. Vì vậy fallback `SESSION_INVALID` chủ yếu rơi vào lỗi từ `durable.initialize()` và `withControlToken`.)
 - [src/mcp/http.ts:114](../../src/mcp/http.ts) mọi exception (trừ `SERVER_BUSY`) → `-32602 Invalid params`.
 
 **Cách sửa.**
@@ -197,7 +312,7 @@ Thứ tự đề xuất: **3 → 4 → 9 → 8 → 1 → 2 → 5 → 6 → 7** (
 
 ## 9. Test phụ thuộc `HOME` thật (thấp, REPRO)
 
-**Nguyên nhân.** Test trong [test/mcp-file-transaction-readback.test.ts](../../test/mcp-file-transaction-readback.test.ts) (và có thể các test khác gọi `createReadOnlyTools` không truyền thư mục) đọc `~/Library/Application Support/GSA-Localconnector/desktop/pause-state.json` của máy thật. Kết quả đổi tuỳ app Desktop đã cài hay chưa.
+**Nguyên nhân.** Test trong [test/mcp-file-transaction-readback.test.ts](../../test/mcp-file-transaction-readback.test.ts) (và có thể các test khác gọi `createReadOnlyTools` không truyền thư mục) đọc `~/Library/Application Support/GSA-Localconnector/desktop/pause-state.json` của máy thật. Kết quả đổi tuỳ app Desktop đã cài hay chưa. Cụ thể, test này stub `process.getuid = undefined`. Nếu file thật tồn tại (dù đúng `0600`), `isDesktopPaused` ném `UNTRUSTED`; nếu không tồn tại (ENOENT) thì trả `false` và test pass. Đã xác nhận ngày 2026-11-12: file thật `0600` hợp lệ, test vẫn fail.
 
 **Cách sửa.**
 1. Sau mục 3, mọi test truyền `options.identityRoot` là thư mục tạm.
