@@ -1,11 +1,11 @@
 # Windows Native Connector — Technical Proposal
 
-**Updated:** 2026-11-12 (V2 shared-source reconciliation)  
+**Updated:** 2026-11-12 (V3 Mac reliability comparison)  
 **Status:** PRE-CODE — technical review required  
 **Repository/branch:** `thebimhouseinfo-sudo/GSA-Localconnector` / `feat/windows-native-connector-20261109`  
-**Branch fork:** `41102fa3e9d2a187c8373b1474e9377b737c66b1`; **newer `main` inspected, not merged:** `bce187542ec68491f29a95b4a876fd7b4dc5648e`
+**Branch fork:** `41102fa3e9d2a187c8373b1474e9377b737c66b1`; **newer `main` inspected, not merged:** `9d66c60c4f31cae6cfed64838468b5558973ab0c` (83 commits ahead of Windows at inspection)
 
-## 0. Goal, authority and non-goals
+## GOAL
 
 Deliver a native Windows backend beneath the **existing** GSA-Localconnector MCP interface. Preserve approved workspace/reference behavior and existing API/result formats; GSA owns planning and reasoning. Share TypeScript core contracts, role/revision checks, CAS, diff, Git plans, process and transaction state. Replace only host-specific implementations, platform wiring and installer/lifecycle.
 
@@ -13,7 +13,7 @@ Read in order: `docs/CRITERIA.md` (especially §§1,5,7–10) → `docs/DECISION
 
 Most recent user-scoped lifecycle decision: **Open/Quit only**. Older Mac Pause/Resume text is not Windows scope. Reboot acceptance is excluded in this iteration; process-crash/relaunch evidence still required. Outdated Criteria wording to be reconciled through a reviewed documentation change, not an implicit new product requirement.
 
-## GOAL
+## 0. Scope and intent
 
 Build the second native Windows host beneath the existing MCP contract, reusing tested Mac-side product semantics without importing POSIX/Swift/launchd implementation. Prove native scoped-file authority and process ownership on Windows and confirm outcomes through selected-plugin readback. No VM, local AI, additional CI platform, Pause/Resume, per-operation work approval or misleading sandbox claims.
 
@@ -49,6 +49,42 @@ The Windows MCP capability status must differentiate (1) read/list ability, (2) 
 - Windows hosted test gate: actual Win32 filesystem+Job Object fixtures, real tool dispatch, exact commit/source provenance, explicit fail on required skip/missing runner. Mac source/regression gate on the same integration commit is separate.
 - Real Windows plugin acceptance after reviewed hosted CI and installer authorization; user-owned test roots only; verify imported image original bytes against file API readback rather than asserting success from an MCP response.
 - Review source interfaces before replacing or extending any shared contract; one integrator owns `src/mcp/server.ts`, `catalog.ts`, `runtime-bootstrap.ts` and `write-dispatch.ts`.
+
+## V3 — Reliability parity decisions from newer Mac source (2026-11-12)
+
+**Independent evidence inspected:** 16 commits after `bce1875`, latest `main` `9d66c60`; `docs/reviews/2026-11-12-RELIABILITY-FIX-GUIDE.md` lists nine Mac defects, and current implementation shows selected source fixes under `src/core/durable-process.ts`, `src/local/control-lease.ts`, `src/local/grants.ts`, `src/mcp/{http,server}.ts`, `scripts/{desktop-supervisor,mac-desktop-adapter}.mjs` and `native/macos-desktop/App.swift`. This is a **Windows portability/acceptance plan**, not Windows execution evidence. W0 must incorporate updated shared source before any source implementation; native correctness must be retested on Windows.
+
+### R1 — Grant lock and lease recovery (W1-05, W1-06)
+
+- **Reused policy:** grant lock carries trusted holder type and session; fence a dead server/desktop owner independently before a lock is recoverable. Never infer death from PID, timestamp, age or matching executable. An unparseable/legacy/unowned lock stays intact with `GRANT_STORE_RECOVERY_REQUIRED`; live owner yields `GRANT_STORE_BUSY`. Recovery inspection should expose a safe action without granting rights or auto-deleting protected state.
+- **Windows mechanism to prove:** mutually exclusive cross-process lock, atomic publication/identity verification and crash/restart readback, using Windows-native handles/locking suited to the selected filesystem. POSIX `fs.link`, `O_NOFOLLOW`, `uid`, `dev/ino` assumptions are **NOT** portable proof. Check both selected-root rebind and file backend qualified generation; stale grant recovery is independent from signed file broker activation.
+- **Controller lease:** preserve a valid hashed controller token through a verified owner/tunnel restart; expose `SESSION_BUSY.expires_at`; allow renew/release/expiry; do not add takeover UI or reset the lease on every reconnect. Confirm Windows protected identity root ownership. Validate revoked/expired sessions remain denied.
+- **Tests:** two competing writers (only one wins), fenced old server lock recovery, still-running Desktop owner lock not removed, malformed/legacy lock requires manual operator action, stale root not promoted, failed installer preserving journal and old generation, unexpired lease renews after reconnect.
+
+### R2 — Durable process journal and degraded tools (W3-05, W4-01)
+
+- The `src/core/durable-process.ts` current `ensureReady` clears its rejected initialization promise so a later request can try again. Keep one in-flight initialization per journal. A journal load error means `PROCESS_JOURNAL_UNAVAILABLE` for dependent process operations, not `SESSION_INVALID` for all tools.
+- MCP status, capabilities, control release, workspace recovery inspection and stopping an already-owned job when provable must remain diagnostically reachable. If process state cannot be proven, cancellation returns `UNKNOWN` or a bounded blocked reason; never kill a guessed PID. Expose `processHistoryState=DEGRADED` while not ready and prove it becomes READY upon recovery.
+- **Windows-specific check:** persistent Windows process/Job Object handles must not be assumed live merely from a journal record after the host runner restarts. Fence/hydrate under verified owner and never replay a process solely because records exist. Tests fail first journal read then succeed; permanently failing journal still allows non-process diagnostics; simultaneous calls share one load.
+
+### R3 — HTTP/stdio transport & error semantics (W4-04)
+
+- Reuse current `src/mcp/http.ts` scheme: bounded headers and request receipt, then suspend socket idle timeout during active tool execution, restore after response. This does **not** grant unlimited tool execution; `run_command` itself still has a bounded maximum.
+- Keep precise JSON-RPC classes: invalid request `-32600`, unknown method `-32601`, invalid params `-32602`, internal error `-32603`. Use application codes `INTERNAL_ERROR`, `PROCESS_JOURNAL_UNAVAILABLE` and `SESSION_INVALID` only for their actual conditions, without exposing raw local file paths/credential material. HTTP and stdio parity is required.
+- **Windows tests:** >30s bounded benign command returns a response and recoverable process ID/output; slow/oversize HTTP request denied, known invalid argument mapped correctly, internal thrown error not presented as invalid params or auth failure, secret strings absent from results/log snapshots.
+
+### R4 — Windows tray reconnect, Quit and owned work (W4-05)
+
+- Mac's adapter distinguishes retryable child/tunnel failures from config/auth and intentional Quit, then uses bounded exponential reconnect with a maximum attempt count. Windows implements **the same behavior**, not a port of its Swift/launchd/signal mechanics. Failures that still require human repair must not spin in a retry loop or replace owner state.
+- A Quit request first inspects durable owned-process work state: `IDLE` permits shutdown; `ACTIVE` or `UNKNOWN` must not silently destroy work. Offer **confirmed Force Quit inside the existing Quit workflow** and stop only connector-owned Windows Job Objects/tunnel; do not kill by process name or entire system PID tree. Status must accurately reflect confirmed stop, refusal or unknown result.
+- **Explicit exclusion:** do **not** port `desktop-pause.ts`, pause-state repair UI, Pause/Resume buttons or macOS Dock UX. The general rule that diagnosis works in degraded state survives.
+- **Tests:** unexpected tunnel exit reconnects without duplicating owner; auth failure not retried; bounded attempt ceiling; Quit while idle; ACTIVE/UNKNOWN refusal; confirmed force stops owned child, neighbor untouched; no auto-restart after explicit Quit.
+
+### R5 — Test-host isolation and evidence (W1-03, W4-03, W5)
+
+- The latest Mac fixes isolate test identity from the user's installed `HOME`. A real Windows runner must use synthetic `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, TEMP/identity state, isolated connector runtime keys and disposable projects. Never test a live user's grants, lock, tunnel or task journal by default.
+- Every regression requires **exact Windows runner commit SHA and executed step log**; a test `skip` for Windows is `CHƯA KIỂM`, not PASS. Repeat selected-plugin cases for reconnect, session continuity, grant lock diagnosis, long HTTP tool and journal recovery after installed candidate approval. Reboot remains expressly excluded.
+- The Mac reliability guide is **review history**, not the Windows implementation recipe. New Windows tests/requirements must preserve the approved Criteria and native/file-tool boundary; do not weaken safety or invent an extra local agent.
 
 ## 1. Baseline and integration seams
 
@@ -157,8 +193,8 @@ Deliver one reviewed install/update/uninstall workflow, no unnecessary administr
 | F1 | Grants, aliases/junction escape, root swap, reference no-write | `windows-latest` real Windows filesystem | Actual Win32 negative cases PASS |
 | F2 | file CAS, crash/partial journal, copy/move, directory traversal, binary/image import and readback | `windows-latest` | Native backend receipts and no unintended writes |
 | F3 | PowerShell/CMD/node/Git, Job Object owned cancellation, neighbor unaffected | `windows-latest` | Actual process+child handles verified |
-| F4 | MCP tool invocation, two workspaces and reference, Mac regression | Windows + Mac CI | Exact SHA both platforms PASS, no misleading capability flags |
-| F5 | tray Open/Quit, protected tunnel setup, installer repair/uninstall | Hosted package smoke then user Windows | No secret exposure; normal app and tunnel lifecycle |
+| F4 | MCP tool invocation, degraded journal diagnostics, >30s HTTP response and exact JSON-RPC errors, two workspaces and reference, Mac regression | Windows + Mac CI | Exact SHA both platforms PASS, no misleading capability flags |
+| F5 | tray Open/Quit, confirmed owned-only Force Quit, bounded retry, protected tunnel setup, installer repair/uninstall | Hosted package smoke then user Windows | No secret exposure; normal app and tunnel lifecycle |
 | F6 | selected user Windows full workflow including genuine image host fileParam and independent SHA readback | Windows PC via its own plugin | Real outputs and user acceptance; reboot excluded |
 
 CI YAML must make required native suites explicit. No `skip`/fixture absence treated as success. Test only disposable directories and benign processes; do not install drivers, alter global policy, kill neighboring processes, use VM or write outside approved test roots. If platform lacks a required API, surface a finding and alternative design, not a fabricated PASS.
@@ -180,6 +216,7 @@ Before implementation:
 - **Decision:** No unverified experimental AppContainer as `VerifiedNativeSandbox`.
 - **Decision:** Minimal user-facing lifecycle = Open/Quit; reboot not a gate this round.
 - **Decision:** Truthful `UNKNOWN` and retained journals dominate convenience/autoretry.
+- **Decision:** Port Mac reliability behavior for bounded reconnect, owner/lease/lock recovery, degraded process journal and HTTP/error correctness, but do NOT port Mac-only Pause/Resume UX.
 - **Not done:** Windows native code, security probe, GitHub `windows-latest` CI, selected Windows host test, Windows acceptance and independent Critic review.
 
 **This document proposes an implementation, not a certification. No Windows product code is authorized or marked complete by writing it.**
