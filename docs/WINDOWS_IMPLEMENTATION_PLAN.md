@@ -1,9 +1,9 @@
 # Windows Native Connector — Implementation Plan
 
 **Date:** 2026-11-09  
-**Status:** PRE-CODE / V3 RELIABILITY UPDATE — REVIEW PENDING (2026-11-12)  
+**Status:** PRE-CODE / V3 WINDOWS-INDEPENDENT DESIGN — REVIEW PENDING (2026-11-12)  
 **Branch:** `feat/windows-native-connector-20261109`  
-**Branch origin:** `41102fa3e9d2a187c8373b1474e9377b737c66b1`; **newer main inspected:** `9d66c60c4f31cae6cfed64838468b5558973ab0c` (83 commits ahead of Windows, NOT merged yet)  
+**Branch origin:** `41102fa3e9d2a187c8373b1474e9377b737c66b1`; **Mac read-only reference:** `main@9d66c60c4f31cae6cfed64838468b5558973ab0c` (not an integration target)  
 **Authority:** `docs/CRITERIA.md` §§1–10 and user acceptance of Mac (2026-11-09); `docs/DECISIONS.md`; Mac `docs/{IMPLEMENTATION_PLAN,MILESTONES,TECHNICAL_PROPOSAL}.md`. See companion `WINDOWS_MILESTONES.md`, `WINDOWS_TECHNICAL_PROPOSAL.md`, `WINDOWS_JOB_GUIDE.md`.
 
 ## GOAL
@@ -26,9 +26,9 @@ Mac is user-accepted and **frozen as the reference behavior**, not a Windows tes
 - Real Windows reboot acceptance is **deferred** under the current user direction about reboot. Preserve crash/restart recovery design and test what is safely testable without reboot; do not report reboot PASS.
 - The older `CRITERIA.md` §8 and `DECISIONS.md` still mention Pause/Resume. This is an **outdated-document reconciliation** required before implementation approval; the user explicitly superseded it with Open/Quit, not an invented requirement change. Do not silently edit approved criteria during this pre-code task.
 
-## 2026-11-12 V2 baseline and integration assessment
+## 2026-11-12 V3 — Mac as read-only lessons, Windows as independent development
 
-The Windows branch currently contains **four planning-document commits only** (HEAD `aca0bb3ac0b74215d6a2b7b6d7402d777ea26785` before this V2 edit); no Windows feature implementation has been observed. At latest inspection, `main` was `9d66c60c4f31cae6cfed64838468b5558973ab0c`: 83 commits ahead of the Windows branch, including 16 newer commits since `bce1875`. **Reading these newer changes is not merging them.** Revalidate heads and merge or safely integrate the current `main` into this Windows branch as a separately reviewed W0 action, with no force push and no loss of the four Windows docs. Do not edit `main` or install on a real host as part of W0.
+The Windows branch was created with four planning documents; Windows native product code has not been implemented in this phase. The comparison to `main@9d66c60` (including 16 recent Mac reliability fixes) is **read-only reference research**. **Do not merge, rebase, cherry-pick or synchronize `main` into the Windows development branch, and do not modify `main`.** Instead record each Mac bug, its root cause, corrected behavior, reusable API contract, Windows-specific mechanism, and Windows test. Any Windows code is authored and tested independently on `feat/windows-native-connector-20261109`; Mac's Swift/launchd/FD/POSIX implementation is not copied. New Mac fixes can be read and evaluated later as references without becoming automatic dependencies or approval gates.
 
 GSA Project Memory branch authority was changed on 2026-11-12 to `feat/windows-native-connector-20261109` after explicit user instruction; historical Mac planning Job `J-F33D` remains a distinct READY planning record. Do not silently replay or reuse its old evidence for Windows.
 
@@ -47,13 +47,13 @@ GSA Project Memory branch authority was changed on 2026-11-12 to `feat/windows-n
 ### Updated W0 actions before implementation
 
 - **W0-00 (Completed governance only):** GSA branch authority updated with exact Memory Repo CAS and readback; no Windows source/code capability was enabled.
-- **W0-05 (Pending source reconciliation):** Re-read current Windows/main heads, retain the four docs and integrate later shared changes with a reviewable merge; document conflicts and keep user-owned uncommitted files intact.
+- **W0-05 (Read-only Mac lessons):** Inspect `main` source, commits, bug reports and tests without Git integration; produce a Mac bug -> behavior -> Windows design -> Windows test matrix. Do not merge, rebase, cherry-pick, or write to `main`.
 - **W0-07 (Pending reliability classification):** Map nine Mac defect categories to shared fixes, Windows-specific implementation and negative tests; finish before W0-06.
 - **W0-06 (Pending review):** Cross-check these four Windows docs against exact revision and obtain independent Planner/Reviewer findings closure; obtain separate Human authorization before W1 source coding.
 
 ## 2026-11-12 V3 — Latest macOS reliability lessons for Windows
 
-**Observed evidence:** 16 new `main` commits since `bce1875`; current `main` `9d66c60`; source paths `src/core/durable-process.ts`, `src/local/{control-lease,grants}.ts`, `src/mcp/{http,server}.ts`, `scripts/{desktop-supervisor,mac-desktop-adapter}.mjs`, `native/macos-desktop/App.swift`, tests and `docs/reviews/2026-11-12-RELIABILITY-FIX-GUIDE.md`. The guide describes nine Mac defects and includes historical repair steps; current checked source contains corresponding fixes. **Neither documentation nor Mac execution certifies a Windows implementation.** First synchronize these common changes into the Windows branch under W0-05; do not overwrite four Windows plans or mutate `main`.
+**Observed evidence:** 16 new `main` commits since `bce1875`; current `main` `9d66c60`; source paths `src/core/durable-process.ts`, `src/local/{control-lease,grants}.ts`, `src/mcp/{http,server}.ts`, `scripts/{desktop-supervisor,mac-desktop-adapter}.mjs`, `native/macos-desktop/App.swift`, tests and `docs/reviews/2026-11-12-RELIABILITY-FIX-GUIDE.md`. The guide describes nine Mac defects and includes historical repair steps; current checked source contains corresponding fixes. **Neither documentation nor Mac execution certifies a Windows implementation.** W0-05 only reads the Mac fixes and captures requirements. Independently develop equivalent Windows behavior using the contracts applicable to the Windows branch; no integration of `main` is required or permitted by this plan.
 
 | Mac repair / failure mode | Windows treatment | Owner / acceptance |
 | --- | --- | --- |
@@ -70,6 +70,13 @@ GSA Project Memory branch authority was changed on 2026-11-12 to `feat/windows-n
 **New bounded planning tasks:** W0-07 (reliability evidence mapping and common vs Windows vs Mac-only classifications), W1-05 (grant lock recovery), W1-06 (controller lease continuity), W3-05 (journal retry/degraded state), W4-04 (HTTP/stdio error and duration handling), W4-05 (tray reconnect, safe Quit/confirmed force). Add matching exact-SHA Windows-hosted tests and separately selected-plugin acceptance in W5; do not create extra product agents, UI modes or connector-wide CI systems. Native Windows locking and process control must be proven on Win32; Mac FD/Swift/launchd/Unix signals cannot be copied as their implementation.
 
 **Distinct safety states:** a successfully reselected workspace is not proof its signed/qualified native file backend was refreshed; old or unparseable grants/locks do not authorize a new scope. `UNKNOWN` is never retried as a second file effect without readback. Real Windows plugin check is separate from hosted `windows-latest` checks. Mac Git remote and reboot remain outside this acceptance round.
+
+### Windows-only implementation policy
+
+- **Source of ideas:** read-only Mac production behavior, source, fix guides and tests from `main`.
+- **Source of Windows work:** the authorized Windows development branch only. The Windows implementation may mirror *interfaces and outcomes* of Mac, but must add Windows-specific code and tests, not import Mac commits.
+- **Source of acceptance:** actual Windows CI and selected Windows host evidence; no Mac PASS or commit comparison is a Windows PASS.
+- **W0 is complete when the requirements/negative-tests mapping and plan review are complete.** Divergent Git history is informational, never a blocker to writing reviewed Windows code.
 
 ## 3. Mac-to-Windows reuse matrix
 
@@ -128,7 +135,7 @@ User-selected Windows machine: install/update, connect from separate Windows plu
 
 ## 5. Development process and controls
 
-- **One Windows development branch:** `feat/windows-native-connector-20261109`; no edits to `main`, no merge or force-push during PRE-CODE.
+- **One Windows development branch:** `feat/windows-native-connector-20261109`; `main` is read-only reference for the entire Windows phase. No merge/rebase/cherry-pick from `main`, no edits to `main`, no force push. Develop native Windows code independently after approval.
 - Plan/Proposal/Guide are separate from production implementation; each task receives a Job Instruction derived from milestone and technical proposal, not a copied harness.
 - Parallel changes only where file ownership does not overlap. Source integration and MCP dispatch modifications are serial.
 - Every feature has (a) contract and path owner, (b) negative safety tests, (c) exact SHA Windows-hosted CI, (d) honest report, (e) Windows native acceptance when necessary.
