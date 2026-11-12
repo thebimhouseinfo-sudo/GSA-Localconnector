@@ -27,6 +27,7 @@ test("production bootstrap keeps controller enforcement when native installation
    assert.equal(status.ok,false);assert.equal(status.code,"UNSUPPORTED_PLATFORM");
   }
   const control=await call("acquire_control");assert.equal(control.ok,true);
+  const busy=await call("acquire_control");assert.equal(busy.ok,false);assert.equal(busy.code,"SESSION_BUSY");assert.equal(busy.expires_at,control.result.expires_at);
   const capabilities=await call("list_capabilities");
   assert.equal(capabilities.result.fileBackendAvailable,false);
   assert.deepEqual(capabilities.result.fileOperations,[]);
