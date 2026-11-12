@@ -17,6 +17,17 @@ Do not introduce or invoke a separate Base64 image-saving skill, synthesize a pl
 3. Acquire control, then call `import_image_file({workspace_id,path,file,control_token})` with the real host-provided `file` object. Use a new workspace-relative filename with an extension matching the source MIME. The native backend performs **exclusive create**, not overwrite.
 4. Independently verify with `get_file_info` and `fetch_file_bytes`: source/import SHA-256, readback SHA-256, and byte lengths must all match. Release the control token in `finally`; a failed write or a missing file is never PASS.
 
+## Response policy for local image generation
+
+When the user's request is **generate an image and save it to a local workspace** (rather than show an image in chat):
+
+1. Generate the **single requested image artifact** required by ImageGen, then import it using the verified `import_image_file` workflow above. Do not call ImageGen a second time merely to create an illustration for the chat.
+2. **After import and independent readback PASS, reply with only the verified local file path.** Prefer the absolute path if its workspace root is grounded; otherwise provide the verified workspace-relative path and workspace identifier. Do not invent a path.
+3. Do **not** attach/embed an additional image, Markdown image, duplicate preview, rendered illustration, sandbox copy or decorative art in the final chat answer unless the user expressly asks to see one there. The ImageGen host may itself display the original generated artifact; that automatic display is not a request to generate a duplicate.
+4. If saving or readback fails, state the failure instead of presenting a path as completed. When the user explicitly asks for both local saving and a chat preview, honor both without regenerating an unnecessary duplicate.
+
+This is a **response-format policy**, not a change to the native file importer, its permissions or the original image bytes.
+
 ## Security
 
 - The importer accepts only temporary host-provided HTTPS file URLs from approved ChatGPT origins and **one-label Azure Blob Storage endpoints** matching `*.blob.core.windows.net`; it does **not** allow all of `*.windows.net`.
