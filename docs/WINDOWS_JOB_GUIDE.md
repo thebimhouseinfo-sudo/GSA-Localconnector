@@ -3,7 +3,7 @@
 **Updated:** 2026-11-12 (V3 Mac reliability delta review)  
 **Status:** PRE-CODE / NOT AUTHORIZED TO IMPLEMENT  
 **Development branch (single):** `feat/windows-native-connector-20261109`  
-**Branch fork SHA:** `41102fa3e9d2a187c8373b1474e9377b737c66b1` · **Newer main inspected (not merged):** `9d66c60c4f31cae6cfed64838468b5558973ab0c` (83 commits ahead)  
+**Branch fork SHA:** `41102fa3e9d2a187c8373b1474e9377b737c66b1` · **Mac READ-ONLY source reference:** `main@9d66c60c4f31cae6cfed64838468b5558973ab0c` (not a merge target)  
 **Project:** `thebimhouseinfo-sudo/GSA-Localconnector`
 
 ## GOAL
@@ -12,13 +12,21 @@ Give each bounded Windows W0–W5 Job a single contract covering WHAT, WHERE, co
 
 ## 2026-11-12 V2 context and work boundary
 
-The Windows branch contained **four documentation commits** (HEAD `aca0bb3` before this planning update) and no Windows implementation diff. The inspected `main` source SHA `9d66c60` is 83 commits newer than the Windows branch at this review, including 16 more fixes since `bce1875`; later reconciliation/merge is W0 work, **not yet performed**. GSA branch authority was changed with Memory Repo readback to this Windows branch. Earlier Mac Planning Job `J-F33D` is historical and still READY; it is not Windows coding authorization.
+The Windows branch initially contained four planning-document commits and no Windows native feature diff. Mac reference `main@9d66c60` includes 16 newer reliability fixes after `bce1875`. **This comparison is read-only research; W0 does not require or permit merging, rebasing or cherry-picking Mac `main`.** GSA branch authority permits documentation work on the Windows branch. Earlier Mac Planning Job `J-F33D` is historical and does not authorize Windows coding.
 
 Relevant new shared-source contracts: `src/local/grants.ts` selected-only reauthorization, `src/mcp/server.ts` file-backend sync diagnostics, `src/mcp/image-file-transfer.ts` image fileParam/validated image download and `src/mcp/startup-registry.ts` lifecycle. These are **reusable interfaces**; actual Windows support and native testing remain open.
 
+## Windows-only source rule (corrected Human intent)
+
+- **Read/reference:** `main` is used to study Mac production bugs, fixes, tests and acceptance decisions. The read-only reference SHA may advance; changes in `main` are not mandatory imports.
+- **Write/implement:** all Windows plans, native adapters, tests, CI and eventual application code belong exclusively to `feat/windows-native-connector-20261109`.
+- **Prohibited:** changing `main`; merging, cherry-picking or rebasing from `main`; requiring Git history convergence for W0, W1 or acceptance; copying Mac-only POSIX/Swift runtime.
+- **Deliverable:** each Mac lesson has a Windows behavior, owner, implementation mechanism and Windows-run test. Existing identical code on the Windows branch may be used after inspection; newer code on Mac is only a design reference, not assumed present locally.
+- **Evidence:** Windows CI and selected installed Windows plugin must pass independently; no Mac test inheritance.
+
 ## 2026-11-12 V3 — Additional bounded Job instructions for Mac reliability parity
 
-**Baseline and provenance:** `main@9d66c60` was inspected; reliability guide `docs/reviews/2026-11-12-RELIABILITY-FIX-GUIDE.md`, 16 latest commits and relevant source/test bodies support the map. Guide snippets are historical repair instructions, **not proof of actual Windows delivery**. Common source sync (W0-05), independent V3 planning review (W0-06) and separate Human implementation approval are still pending. Each Coder must bind to the actual merged branch HEAD before implementation.
+**Baseline and provenance:** `main@9d66c60` was inspected; reliability guide `docs/reviews/2026-11-12-RELIABILITY-FIX-GUIDE.md`, 16 latest commits and relevant source/test bodies support the map. Guide snippets are historical repair instructions, **not proof of actual Windows delivery**. Mac lessons review (W0-05), independent V3 planning review (W0-06) and separate Human implementation approval remain the planning gates. Each Coder must use the current Windows branch HEAD; there is no merged-main prerequisite.
 
 | Task | WHAT / source-owner boundary | WHERE / minimum evidence and stop rule |
 | --- | --- | --- |
@@ -39,7 +47,7 @@ Relevant new shared-source contracts: `src/local/grants.ts` selected-only reauth
 
 Windows development starts from the **Mac-accepted existing source**, not a blank connector. The Mac milestone has been accepted by the user; its implementations are patterns, **not** Windows verification. Windows Plan, Milestones, Technical Proposal and the approved Criteria are the authority. This guide tells each assigned GSA role **WHAT / WHERE / CONSTRAINTS / DONE** and the necessary reading, not how to reason or a second copy of GSA Harness.
 
-A role performing a task must use its active GSA Harness and load only relevant Skills. Do not independently create a new project, overwrite main or automatically merge. Tasks remain on the single Windows branch unless the user changes branch governance.
+A role performing a task must use its active GSA Harness and load only relevant Skills. Do not independently create a new project, overwrite `main`, merge, rebase or cherry-pick from `main` into Windows. Tasks remain on the single Windows branch unless the user changes branch governance.
 
 **Mandatory pre-code gate:** W0 Reviewer/Critic assessment and explicit Human implementation authorization. Before that, only documentation, source reading and non-mutating verification are allowed. This guide is a job-pack template; it is **not** itself an instruction to start coding.
 
@@ -79,9 +87,9 @@ Do not paste full Criteria, Harness or Proposal into each job. Link exact sectio
 
 **W0-00 branch authority (DONE, not code):** Explicit Human instruction changed the Project's development branch to `feat/windows-native-connector-20261109`; the Memory manifest was written with exact SHA and read back. Preserve Mac Jobs and their evidence. No new Windows source write is implied.
 
-**W0-05 branch synchronization (PENDING):** verify both current Git HEADs; reconcile newer `main` common changes into the Windows branch through an authorized reviewable merge; protect all four Windows documents and any user-owned local work, do not force-push or write `main`. Re-pin exact merged revision before coding.
+**W0-05 Mac bugfix study (READ-ONLY):** inspect selected commits, code, fix guides and tests on `main`, and map each defect to corrected behavior, a native Windows mechanism and a Windows test. Do not write `main`, merge, rebase, cherry-pick or synchronize its code into Windows. Before coding, pin the current **Windows** branch commit only.
 
-**W0-07 reliability delta (mapped, not reviewed):** inspect nine Mac fixes against exact main source and mark shared reuse, Windows port and Mac-only exclusions with owner and test. **W0-06** must review this mapping after W0-05 sync.
+**W0-07 reliability delta (mapped, not reviewed):** inspect nine Mac fixes as reference and classify behavior/contracts to reproduce, Windows-specific mechanisms/tests and Mac-only exclusions. **W0-06** reviews the resulting Windows design without any source-merge gate.
 
 **W0-06 planning review (PENDING):** verify all four docs at their committed blobs, check Criteria §§1–10, exact dependency/acceptance traceability, and correct findings on this Windows branch. Present reviewed Plan for Human approval before starting Windows product coding.
 
@@ -199,6 +207,6 @@ No report may say full Windows accepted based solely on Mac PASS or on a GitHub 
 
 ## 11. Pre-code readiness and assignment policy
 
-This Job Guide and companion documents are **drafts**, not approval to execute W1–W5. W0 branch authority update is complete; source merge/reconciliation and V3 planning review remain open. The latest Mac reliability delta is incorporated as W0-07, W1-05/W1-06, W3-05 and W4-04/W4-05; none is Windows-native PASS. W0 Reviewer/Critic must inspect for missing file boundaries, feasibility blockers, contradictions and new unwanted requirements. If findings concern design rather than the approved Criteria, correct the design; do not call it a Criteria change. Once W0 receives approval, assign tasks in dependency order and continue automatically to DONE or a true human gate, with Planner refreshing provisional instructions when each upstream artifact is available.
+This Job Guide and companion documents are **drafts**, not approval to execute W1–W5. W0 branch authority update is complete; read-only Mac lessons and V3 planning review remain open. No merge of `main` is planned or required. The latest Mac reliability delta is incorporated as W0-07, W1-05/W1-06, W3-05 and W4-04/W4-05; none is Windows-native PASS. W0 Reviewer/Critic must inspect for missing file boundaries, feasibility blockers, contradictions and new unwanted requirements. If findings concern design rather than the approved Criteria, correct the design; do not call it a Criteria change. Once W0 receives approval, assign tasks in dependency order and continue automatically to DONE or a true human gate, with Planner refreshing provisional instructions when each upstream artifact is available.
 
 **Current state:** Windows code NOT started in this phase; no Windows native test or selected-host acceptance claimed.
