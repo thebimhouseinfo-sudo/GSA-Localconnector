@@ -7,7 +7,7 @@ import {identityDirectory} from "./identity.js";
 
 export type ControlLeaseCode="SESSION_BUSY"|"SESSION_INVALID"|"SESSION_EXPIRED"|"CONTROL_LEASE_UNSAFE"|"CONTROL_LEASE_LOCKED";
 export class ControlLeaseError extends Error {
- constructor(public readonly code:ControlLeaseCode,message:string){super(message);this.name="ControlLeaseError";}
+ constructor(public readonly code:ControlLeaseCode,message:string,public readonly expires_at?:number){super(message);this.name="ControlLeaseError";}
 }
 export interface ControlLease {session_id:string;expires_at:number;revision:number}
 interface StoredLease {version:1;installation_id:string;session_id:string|null;token_sha256:string|null;expires_at:number;revision:number}
@@ -139,7 +139,7 @@ export class ControlLeaseStore {
  async acquire():Promise<ControlLease&{control_token:string}>{
   return this.locked(async()=>{
    const installation_id=await this.identity(),previous=await this.load(installation_id),now=this.now();
-   if(previous?.token_sha256&&previous.expires_at>now)throw new ControlLeaseError("SESSION_BUSY","Another controller holds the lease");
+   if(previous?.token_sha256&&previous.expires_at>now)throw new ControlLeaseError("SESSION_BUSY","Another controller holds the lease",previous.expires_at);
    const control_token=randomBytes(32).toString("hex");
    const record:StoredLease&{session_id:string}={version:1,installation_id,session_id:randomUUID(),
     token_sha256:createHash("sha256").update(control_token).digest("hex"),expires_at:now+this.ttlMs,revision:this.revision(previous)};
@@ -176,7 +176,9 @@ export class ControlLeaseStore {
   }
   await this.withFileLock(async()=>{
    const installation_id=await this.identity(),previous=await this.load(installation_id);
-   if(previous?.token_sha256)await this.save({version:1,installation_id,session_id:null,token_sha256:null,expires_at:0,revision:this.revision(previous)});
+   // An unexpired lease survives the restart: it is bound to the client's SHA-256 token, not the owner session,
+   // and the kernel fence already proved every previous helper dead. Only expired records are cleared.
+   if(previous?.token_sha256&&previous.expires_at<=this.now())await this.save({version:1,installation_id,session_id:null,token_sha256:null,expires_at:0,revision:this.revision(previous)});
   });
   });
   this.pending=task.catch(()=>undefined);
