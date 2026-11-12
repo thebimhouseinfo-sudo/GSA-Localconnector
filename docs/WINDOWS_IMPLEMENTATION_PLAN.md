@@ -1,10 +1,14 @@
 # Windows Native Connector — Implementation Plan
 
 **Date:** 2026-11-09  
-**Status:** PRE-CODE / DRAFT FOR REVIEW  
+**Status:** PRE-CODE / V2 UPDATED FOR REVIEW (2026-11-12)  
 **Branch:** `feat/windows-native-connector-20261109`  
-**Baseline:** `41102fa3e9d2a187c8373b1474e9377b737c66b1` (`main` at branch creation)  
+**Branch origin:** `41102fa3e9d2a187c8373b1474e9377b737c66b1`; **newer main inspected:** `bce187542ec68491f29a95b4a876fd7b4dc5648e` (67 commits newer, NOT merged yet)  
 **Authority:** `docs/CRITERIA.md` §§1–10 and user acceptance of Mac (2026-11-09); `docs/DECISIONS.md`; Mac `docs/{IMPLEMENTATION_PLAN,MILESTONES,TECHNICAL_PROPOSAL}.md`. See companion `WINDOWS_MILESTONES.md`, `WINDOWS_TECHNICAL_PROPOSAL.md`, `WINDOWS_JOB_GUIDE.md`.
+
+## GOAL
+
+Deliver the already Mac-accepted connector experience as an independent native Windows host through existing GSA MCP tools, with Windows-scoped file authority, real commands and process ownership, reversible changes and truthful recovery. Preserve Mac behavior, workspace/reference roles and existing receipts. Do not implement a new agent, product VM, bespoke CI engine, Pause/Resume or per-operation approval gate.
 
 ## 1. GOAL and product boundary
 
@@ -21,6 +25,30 @@ Mac is user-accepted and **frozen as the reference behavior**, not a Windows tes
 - No anti-sleep, machine-wide global process kill, installer services with admin privileges by default, new VM, extra connector reasoning/orchestrator, per-operation human approval, or blanket network Git permission.
 - Real Windows reboot acceptance is **deferred** under the current user direction about reboot. Preserve crash/restart recovery design and test what is safely testable without reboot; do not report reboot PASS.
 - The older `CRITERIA.md` §8 and `DECISIONS.md` still mention Pause/Resume. This is an **outdated-document reconciliation** required before implementation approval; the user explicitly superseded it with Open/Quit, not an invented requirement change. Do not silently edit approved criteria during this pre-code task.
+
+## 2026-11-12 V2 baseline and integration assessment
+
+The Windows branch currently contains **four planning-document commits only** (HEAD `aca0bb3ac0b74215d6a2b7b6d7402d777ea26785` before this V2 edit); no Windows feature implementation has been observed. At inspection, `main` was `bce187542ec68491f29a95b4a876fd7b4dc5648e`: 67 commits ahead of the branch fork. **Reading these newer changes is not merging them.** Revalidate heads and merge or safely integrate the current `main` into this Windows branch as a separately reviewed W0 action, with no force push and no loss of the four Windows docs. Do not edit `main` or install on a real host as part of W0.
+
+GSA Project Memory branch authority was changed on 2026-11-12 to `feat/windows-native-connector-20261109` after explicit user instruction; historical Mac planning Job `J-F33D` remains a distinct READY planning record. Do not silently replay or reuse its old evidence for Windows.
+
+| Source delta observed on newer `main` | Reuse / Windows design requirement | Task |
+| --- | --- | --- |
+| `src/core/workspace.ts`, `src/local/grants.ts`, `docs/workspaces/LOCAL-ENROLLMENT.md` | Retain selected-only reauthorization, `ACTIVE/STALE/REAUTH_REQUIRED/REVOKED`, grant revision and unrelated stale root preservation; choose Windows volume/file ID rather than Unix inode identity | W1-01, W1-02 |
+| `src/mcp/server.ts`, `src/mcp/runtime-bootstrap.ts` and backend refresh tests | Separate a successful `bind_workspaces` result from an actually ready native file backend. A grant-set mismatch must remain fail-closed and expose a precise recovery action; never silently bypass signed/qualified backend checks | W1-04, W2-01, W4-01 |
+| `src/mcp/image-file-transfer.ts`, `src/mcp/server.ts`, `docs/workspaces/IMAGE-ASSET-TRANSFER.md` | Reuse the existing `import_image_file` fileParam schema, approved HTTPS origin and MIME/signature/size checks; implement a real Windows native exclusive-create backend and independent SHA-256 readback | W2-05, W4-01, W5-02 |
+| `src/mcp/startup-registry.ts` and Mac desktop installer/adapter lifecycle fixes | Reuse one owner and safe lifecycle semantics; use Windows-native tray, startup, tunnel and protected installer state | W1-03, W4-02 |
+| `docs/reports/2026-11-09-mac-native-user-acceptance.md` | Mac acceptance is bounded user evidence, not Windows test proof; no requirement for reboot, Pause/Resume or unverified remote Git | W0, W5 |
+
+**Shared functionality to retain without duplication:** `create_file_bytes`, `fetch_file_bytes`, transaction readback, trusted root/role binding, image downloader validation, MCP catalog and existing core process/Git state. The Mac file broker/signatures, macOS owner FD, Swift and launchd are **not** Windows implementations.
+
+**Special network clarification:** The Mac plugin's Git remote fetch/pull/push were not technically accepted; do not mark Windows remote Git PASS by inheritance or bypass a restriction through an unconfined shell. Source CI on Windows is not selected-plugin native host proof.
+
+### Updated W0 actions before implementation
+
+- **W0-00 (Completed governance only):** GSA branch authority updated with exact Memory Repo CAS and readback; no Windows source/code capability was enabled.
+- **W0-05 (Pending source reconciliation):** Re-read current Windows/main heads, retain the four docs and integrate later shared changes with a reviewable merge; document conflicts and keep user-owned uncommitted files intact.
+- **W0-06 (Pending review):** Cross-check these four Windows docs against exact revision and obtain independent Planner/Reviewer findings closure; obtain separate Human authorization before W1 source coding.
 
 ## 3. Mac-to-Windows reuse matrix
 
@@ -43,27 +71,39 @@ Do not copy macOS `codesign`, Seatbelt, launchd, `renameatx_np`, POSIX FDs/lock 
 
 ### W0 — Baseline and contract reconciliation (no product code)
 
+**GOAL:** Reconcile branch authority and inherited shared source without changing accepted Criteria or claiming Windows source proof; four matching documents reviewed at an exact Git revision.
+
 Inventory the exact Windows-relevant source entrypoints and tests; record API contracts and current gaps; fix out-of-date references to Pause/Resume by an explicitly reviewed documentation decision; define Windows-supported host versions and architectures through evidence, not guesses. Pin branch SHA, workspace boundaries and acceptance fixtures. Critic/reviewer checks that no new authorization gate or VM was introduced.
 
 ### W1 — Windows host foundation and identity
 
-Create a Windows owner/session mechanism and persisted grant store; enforce exclusive connector owner without modifying unrelated processes; store secrets safely and separately from workspace roots. Prove durable root identity under rename/replacement, drive-letter aliases, case changes, junctions, symlinks, alternate data streams, UNC paths and inaccessible volumes. Implement read-only capability probes that never assert enforcement from API presence alone.
+**GOAL:** Establish one Windows owner and safe grant/root identity, including selected-only stale-root reauthorization and truthful native-backend freshness.
+
+Create a Windows owner/session mechanism and persisted grant store; enforce exclusive connector owner without modifying unrelated processes; store secrets safely and separately from workspace roots. Prove durable root identity under rename/replacement, drive-letter aliases, case changes, junctions, symlinks, alternate data streams, UNC paths and inaccessible volumes. Implement read-only capability probes that never assert enforcement from API presence alone. **W1-04:** define secure synchronization between reselected workspace grants and the verified native file-grant set. Rebinding an old root is not proof that native file mutations are enabled. Preserve previous native installation/recovery journals; report a blocked qualification/update step rather than assuming automatic refresh.
 
 ### W2 — Native files and directories
 
-Implement per-operation Win32 path/handle containment and recoverable mutations. No ordinary `path.resolve` + `fs` precheck is considered sufficient against TOCTOU. Deny unsafe reparse points and name ambiguities; implement versioned CAS replace/delete, atomic create, copy/move within/across approved roots, readback and conflict/UNKNOWN outcomes. Directory support separately qualifies traversal, manifest bounds and destination integrity. Stage in temporary fixture roots only; integration cannot enable unqualified capabilities.
+**GOAL:** Deliver real Windows-native scoped file and directory operations, durable CAS/recovery and binary/image import using existing tool schemas, with native negative proof.
+
+Implement per-operation Win32 path/handle containment and recoverable mutations. No ordinary `path.resolve` + `fs` precheck is considered sufficient against TOCTOU. Deny unsafe reparse points and name ambiguities; implement versioned CAS replace/delete, atomic create, copy/move within/across approved roots, readback and conflict/UNKNOWN outcomes. Directory support separately qualifies traversal, manifest bounds and destination integrity. Stage in temporary fixture roots only; integration cannot enable unqualified capabilities. **W2-05:** support existing binary tools and `import_image_file`, from genuine host-provided `file` metadata to exclusive Windows create, MIME/signature/extension checks, <=8 MiB, no redirects, no token logging, and SHA-256 source/import/readback equality; verify denial for reference targets, stale file grants, and collisions. A POSIX-only/Windows-skipped importer test does not satisfy Windows qualification.
 
 ### W3 — Native commands, Git, process and logs
+
+**GOAL:** Run real Windows scripts, local Git and owned processes with bounded results and truthful user-account, unconfined command semantics.
 
 Launch from the granted workspace or child cwd as the logged-in user. Under the approved §7 exception, this runner is **not OS-confined** and must advertise `command_confinement: none (user account)` and `state_integrity_vs_commands: not_protected`. Use a scoped initial cwd, minimal environment, bounded time/output; track process tree ownership (Job Objects) and avoid killing neighbors. Local Git and scripts/test/build in non-Git folders must work. Remote Git remains blocked until an independently reviewed, restricted network capability is demonstrated; report missing functionality truthfully, not as success.
 
 ### W4 — MCP integration, Windows CI and Desktop delivery
 
-One integration owner wires the verified Windows backends into the existing dispatch and capability status without breaking Mac. Dedicated `windows-latest` workflow exercises Node typecheck/tests plus actual Windows file, directory and process fixtures. Build/test a per-user installation with background/tray Open/Quit and tunnel initialization from saved protected configuration; never embed secrets in artifacts. GitHub CI runs on exact candidate SHA before user-machine installation.
+**GOAL:** Wire proven Windows capabilities through unchanged MCP contracts, ship per-user Windows Open/Quit and protected tunnel lifecycle and preserve Mac regression behavior.
+
+One integration owner wires the verified Windows backends into the existing dispatch and capability status without breaking Mac, including existing image fileParam protocol and grant-recovery diagnostic shapes. Dedicated `windows-latest` workflow exercises Node typecheck/tests plus actual Windows file, directory and process fixtures. Build/test a per-user installation with background/tray Open/Quit and tunnel initialization from saved protected configuration; never embed secrets in artifacts. GitHub CI runs on exact candidate SHA before user-machine installation.
 
 ### W5 — Real Windows acceptance and closure
 
-User-selected Windows machine: install/update, connect from separate Windows plugin, bind one workspace plus one reference, execute file and directory operations, projects with and without Git, build/test process lifecycle, safe cancellation, local Git, tunnel quit/relaunch, unknown/partial recovery and a second independent project. Confirm full workflow against the exact installed version; record failure/blocked/unverified cases instead of PASS. Reboot excluded; outstanding defects become Issues after explicit user acceptance.
+**GOAL:** Verify the installed Windows plugin's actual file, image import, process and lifecycle operations with independent source/byte readback before user acceptance.
+
+User-selected Windows machine: install/update, connect from separate Windows plugin, bind one workspace plus one reference, execute file and directory operations, genuine-host `import_image_file` with SHA-256 readback, selected grant rebind/qualification handling, projects with and without Git, build/test process lifecycle, safe cancellation, local Git, tunnel quit/relaunch, unknown/partial recovery and a second independent project. Confirm full workflow against the exact installed version; record failure/blocked/unverified cases instead of PASS. Reboot excluded; outstanding defects become Issues after explicit user acceptance.
 
 ## 5. Development process and controls
 
@@ -80,10 +120,10 @@ User-selected Windows machine: install/update, connect from separate Windows plu
 | --- | --- |
 | P0 planning | Four mutually consistent docs, criteria traceability, source inventory, Critic findings closed or recorded; human implementation approval |
 | G1 foundation | Windows user session, grants, owner/rebind, hostile path tests and persisted-state assertions on `windows-latest` |
-| G2 files | Native file+directory containment, conflicts and readback/UNKNOWN; signed/attested mechanism appropriate to Windows, not macOS analogies |
+| G2 files | Native file+directory+binary/image containment, conflicts and readback/UNKNOWN; signed/attested mechanism appropriate to Windows, not macOS analogies |
 | G3 commands | Real `powershell.exe`, `cmd.exe`, Git local, node and owned Job Object cancellation; neighbor process survives |
 | G4 integration | Same MCP schemas, cross-platform regression (Mac unaffected), all required Windows suites PASS at exact candidate commit |
-| G5 installed | Real Windows plugin and user workflow with receipts and version; Open/Quit/tunnel and multiple roots, no reboot requirement |
+| G5 installed | Real Windows plugin, real host fileParam/image E2E and user workflow with receipts and version; Open/Quit/tunnel and multiple roots, no reboot requirement |
 | Final | User accepts Windows; unresolved reproducible defects tracked as Issues, unimplemented restricted network Git disclosed |
 
 ## 7. Known open design questions to resolve before code
