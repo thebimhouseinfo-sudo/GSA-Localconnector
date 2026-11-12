@@ -32,6 +32,8 @@ test("authenticated tools/list advertises image importer as model-visible filePa
  assert.equal(importers.length,1);
  const importer=importers[0];
  assert.deepEqual(importer._meta?.["openai/fileParams"],["file"]);
+ assert.match(importer.description,/reply with only the verified local file path/);
+ assert.match(importer.description,/Do not generate another image/);
  assert.equal(importer._meta?.ui?.visibility,undefined,"default is model + app");
  assert.deepEqual(importer.inputSchema.required.sort(),["workspace_id","path","file","control_token"].sort());
  assert.deepEqual(importer.inputSchema.properties.file.required,["download_url","file_id"]);
