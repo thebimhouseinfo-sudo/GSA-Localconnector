@@ -35,7 +35,11 @@ test("malformed host fileParams are classified without fetch or disclosure",asyn
   [{...file,extra_field:"private"},"FILEPARAM_UNEXPECTED_FIELDS"],
   [{...file,download_url:123},"FILEPARAM_DOWNLOAD_URL_INVALID"],
   [{...file,download_url:""},"FILEPARAM_DOWNLOAD_URL_INVALID"],
-  [{...file,file_id:"unknown"},"FILEPARAM_FILE_ID_INVALID"],
+  [{...file,file_id:42},"FILEPARAM_FILE_ID_TYPE_INVALID"],
+  [{...file,file_id:null},"FILEPARAM_FILE_ID_TYPE_INVALID"],
+  [{...file,file_id:""},"FILEPARAM_FILE_ID_INVALID"],
+  [{...file,file_id:"\n"},"FILEPARAM_FILE_ID_INVALID"],
+  [{...file,file_id:"z".repeat(1025)},"FILEPARAM_FILE_ID_INVALID"],
   [{...file,file_name:123},"FILEPARAM_OPTIONAL_FIELDS_INVALID"],
   [{...file,mime_type:123},"FILEPARAM_OPTIONAL_FIELDS_INVALID"]
  ];
@@ -53,6 +57,13 @@ test("malformed host fileParams are classified without fetch or disclosure",asyn
  }
  assert.equal(calls,0,"bad host inputs must never trigger a download");
 });
+test("opaque host file IDs are accepted as metadata without a prefix",async()=>{
+ for(const id of ["unknown","9c031f/opaque:v2","chatgpt-artifact:2026-11-12"]){
+  const r=await downloadChatGptImage({...file,file_id:id},"output.png",stub());
+  assert.deepEqual(r.bytes,sample);
+  assert.equal(r.sha256,createHash("sha256").update(sample).digest("hex"));
+ }
+});
 test("file input rejects arbitrary URL, local network, redirects, opaque file id and spoofed MIME",async()=>{
  for(const url of [
   "http://files.oaiusercontent.com/image",
@@ -62,7 +73,7 @@ test("file input rejects arbitrary URL, local network, redirects, opaque file id
   "https://files.oaiusercontent.com:8443/a",
   "file:///private/tmp/a.png"
  ])await assert.rejects(downloadChatGptImage({...file,download_url:url},"x.png",stub()),{code:"IMAGE_URL_REJECTED"});
- await assert.rejects(downloadChatGptImage({...file,file_id:"unknown"},"x.png",stub()),{code:"FILEPARAM_FILE_ID_INVALID"});
+ await assert.rejects(downloadChatGptImage({...file,file_id:42},"x.png",stub()),{code:"FILEPARAM_FILE_ID_TYPE_INVALID"});
  await assert.rejects(downloadChatGptImage(file,"x.png",stub(sample,302,{Location:"http://169.254.169.254"})),{code:"IMAGE_DOWNLOAD_FAILED"});
  await assert.rejects(downloadChatGptImage({...file,mime_type:"image/jpeg"},"x.png",stub()),{code:"IMAGE_MIME_MISMATCH"});
  await assert.rejects(downloadChatGptImage(file,"x.jpg",stub()),{code:"IMAGE_EXTENSION_MISMATCH"});

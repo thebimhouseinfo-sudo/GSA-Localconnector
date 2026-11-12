@@ -52,6 +52,9 @@ test("image file tool requires current controller, imports only to active worksp
   const missing=await call("import_image_file",{workspace_id:"workspace",path:"missing.png",control_token:token});
   assert.equal(missing.code,"FILEPARAM_MISSING");
   assert.equal(downloads,0,"no fetch for unresolved, null, incomplete or missing file");
+  const typeInvalid=await call("import_image_file",{workspace_id:"workspace",path:"bad-id.png",file:{...source,file_id:42},control_token:token});
+  assert.equal(typeInvalid.code,"FILEPARAM_FILE_ID_TYPE_INVALID");
+  assert.equal(downloads,0,"invalid ID types must not fetch");
   for(const r of [unresolved,nullFile,incomplete,missing])assert.equal(r.ok,false);
   const noWrite=await call("import_image_file",{workspace_id:"reference",path:"bad.png",file:source,control_token:token});
   assert.equal(noWrite.code,"PERMISSION_DENIED");
