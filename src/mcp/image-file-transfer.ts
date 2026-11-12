@@ -35,8 +35,9 @@ function source(value:unknown):ChatGptFileInput{
  if(typeof v.download_url!=="string"||v.download_url.length===0)fail("FILEPARAM_DOWNLOAD_URL_INVALID");
  // file_id is opaque metadata; OpenAI's fileParam schema specifies string,
  // not a fixed file_ or file- prefix. Authorization comes from the bounded URL.
- if(typeof v.file_id!=="string")fail("FILEPARAM_FILE_ID_TYPE_INVALID");
- if(!v.file_id.length||v.file_id.length>1024||/[\u0000-\u001f\u007f]/.test(v.file_id))fail("FILEPARAM_FILE_ID_INVALID");
+ const fileId=v.file_id;
+ if(typeof fileId!=="string")fail("FILEPARAM_FILE_ID_TYPE_INVALID");
+ if(!fileId.length||fileId.length>1024||/[\u0000-\u001f\u007f]/.test(fileId))fail("FILEPARAM_FILE_ID_INVALID");
  if(v.mime_type!==undefined&&typeof v.mime_type!=="string"||
     v.file_name!==undefined&&typeof v.file_name!=="string")fail("FILEPARAM_OPTIONAL_FIELDS_INVALID");
  return v as ChatGptFileInput;
