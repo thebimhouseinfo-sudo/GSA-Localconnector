@@ -117,7 +117,7 @@ function safeEnvironment() {
 }
 
 export class MacDesktopAdapter {
-  constructor({configPath,registrationPruner=null}) {this.configPath = configPath; this.privateFile = createMacPrivateFile(); this.runtime = null; this.quitOutcome = null; this.paused = false; this.pauseQueue = Promise.resolve(); this.registrationPruneAttempt = 0; this.registrationPruneOutcome = null; this.registrationPruneQueue = Promise.resolve(); this.registrationPruner = registrationPruner;}
+  constructor({configPath,registrationPruner=null,pauseReader=null}) {this.configPath = configPath; this.pauseReader = pauseReader; this.pauseWriteInFlight = false; this.lastPauseObservation = null; this.pauseRequestAttempt = 0; this.pauseRequestOutcome = null; this.privateFile = createMacPrivateFile(); this.runtime = null; this.quitOutcome = null; this.paused = false; this.pauseQueue = Promise.resolve(); this.registrationPruneAttempt = 0; this.registrationPruneOutcome = null; this.registrationPruneQueue = Promise.resolve(); this.registrationPruner = registrationPruner;}
   ensureLogin(options) {return ensureLogin(options);}
   async start() {
     if (this.runtime) return this.runtime;
@@ -151,8 +151,13 @@ export class MacDesktopAdapter {
         // A fresh owner session starts unpaused, before the tunnel is spawned.
         // The sealed directory is never a workspace; only the menu supervisor
         // publishes this local admission flag.
-        await publish(this.privateFile,path.join(config.directory,"pause-state.json"),
-          Buffer.from(JSON.stringify({format:"gsa-desktop-pause-v1",paused:false})));
+        try {
+          await publish(this.privateFile,path.join(config.directory,"pause-state.json"),
+            Buffer.from(JSON.stringify({format:"gsa-desktop-pause-v1",paused:false})));
+        } catch (error) {
+          if (error?.code === "FILE_UNSAFE") throw fail("DESKTOP_PAUSE_STATE_UNSAFE");
+          throw error;
+        }
         this.paused=false;
         // Reset the owned private locator before launch: never accept a previous
         // session's readiness, or probe the default port of another connector.
@@ -192,13 +197,49 @@ export class MacDesktopAdapter {
       if(!this.runtime||!this.config)throw fail("DESKTOP_NOT_RUNNING");
       const observed=await this.runtime.status();
       if(observed.state!=="RUNNING")throw fail("DESKTOP_NOT_RUNNING");
-      await publish(this.privateFile,path.join(this.config.directory,"pause-state.json"),
-        Buffer.from(JSON.stringify({format:"gsa-desktop-pause-v1",paused})));
-      this.paused=paused;
+      this.pauseWriteInFlight=true;
+      try {
+        await publish(this.privateFile,path.join(this.config.directory,"pause-state.json"),
+          Buffer.from(JSON.stringify({format:"gsa-desktop-pause-v1",paused})));
+        this.paused=paused;
+      } finally {this.pauseWriteInFlight=false;}
       return this.publishStatus();
     });
     this.pauseQueue=request.then(()=>{},()=>{});
     return request;
+  }
+  /** Menu entry point: never rejects; the outcome is published for the app. */
+  async requestPause(paused) {
+    let outcome;
+    try {
+      await this.setPaused(paused);
+      outcome={pauseRequestStatus:"DONE",pauseRequestReason:null};
+    } catch(error) {
+      const code=error?.code;
+      outcome={pauseRequestStatus:"FAILED",pauseRequestReason:code==="FILE_UNSAFE"?"PAUSE_FILE_UNSAFE":
+        (code==="FILE_BUSY"||code==="FILE_STALE")?"PAUSE_FILE_BUSY":code==="DESKTOP_NOT_RUNNING"?"DESKTOP_NOT_RUNNING":"PAUSE_WRITE_FAILED"};
+    }
+    this.pauseRequestAttempt++;
+    this.pauseRequestOutcome={pauseRequestAttempt:this.pauseRequestAttempt,...outcome};
+    try {await this.publishStatus();} catch {}
+    return this.pauseRequestOutcome;
+  }
+  /** What the MCP process actually sees in the pause file. Never throws. */
+  async observePause() {
+    if (!this.config?.directory) return {desktopPauseState:"UNTRUSTED",desktopPauseEffective:null,desktopPauseReason:"OBSERVER_UNAVAILABLE"};
+    if (this.pauseWriteInFlight && this.lastPauseObservation) return this.lastPauseObservation;
+    let observation;
+    try {
+      const reader=this.pauseReader??(await import("../dist/src/local/desktop-pause.js")).readDesktopPauseFile;
+      const reading=await reader(path.join(this.config.directory,"pause-state.json"));
+      const effective=reading.paused;
+      observation={desktopPauseState:effective===this.paused?"VERIFIED":"MISMATCH",desktopPauseEffective:effective,desktopPauseReason:null};
+    } catch(error) {
+      observation={desktopPauseState:"UNTRUSTED",desktopPauseEffective:null,
+        desktopPauseReason:error?.code==="DESKTOP_PAUSE_STATE_UNTRUSTED"&&typeof error.reason==="string"?error.reason:"OBSERVER_UNAVAILABLE"};
+    }
+    this.lastPauseObservation=observation;
+    return observation;
   }
   /** A menu-only maintenance request. Never revokes ACTIVE workspaces, sessions,
    * controller leases or signed installation. The grant store owns its lock.
@@ -230,7 +271,8 @@ export class MacDesktopAdapter {
     if (this.statusPublication) return this.statusPublication;
     this.statusPublication = (async () => {
       const status = await this.status();
-      const published = {...status,desktopPaused:this.paused,...(this.quitOutcome??{}),...(this.registrationPruneOutcome??{})};
+      const pause = await this.observePause();
+      const published = {...status,desktopPaused:this.paused,...pause,...(this.quitOutcome??{}),...(this.registrationPruneOutcome??{}),...(this.pauseRequestOutcome??{})};
       await publish(this.privateFile, this.config.statusPath, Buffer.from(JSON.stringify(published)));
       return published;
     })();
@@ -263,7 +305,7 @@ async function main() {
   try {
     await adapter.start();
   } catch (error) {
-    const reason = error.code === "OWNER_ACTIVE" ? "OWNER_ACTIVE" : "RUNTIME_UNAVAILABLE";
+    const reason = ["OWNER_ACTIVE","DESKTOP_PAUSE_STATE_UNSAFE"].includes(error.code) ? error.code : "RUNTIME_UNAVAILABLE";
     await publish(privateFile, config.statusPath, Buffer.from(JSON.stringify({state: "FAILED", connection: "UNKNOWN", reason})));
     process.exitCode = 1;
     return;
@@ -280,8 +322,8 @@ async function main() {
   }).catch(() => {clearInterval(timer); process.exitCode = 1;}).finally(() => {publishing = false;});}, 1000);
   // UI-owned signals affect only admission of NEW MCP mutations. SIGUSR1
   // is deliberately unused because Node reserves it for debugging.
-  process.on("SIGUSR2",()=>{void adapter.setPaused(true).catch(()=>{});});
-  process.on("SIGHUP",()=>{void adapter.setPaused(false).catch(()=>{});});
+  process.on("SIGUSR2",()=>{void adapter.requestPause(true);});
+  process.on("SIGHUP",()=>{void adapter.requestPause(false);});
   // A dedicated menu signal asks the retained adapter to prune only inactive
   // registrations. No arbitrary PID, process kill or active-grant revocation.
   process.on("SIGWINCH",()=>{void adapter.pruneInactiveRegistrations().catch(()=>{});});

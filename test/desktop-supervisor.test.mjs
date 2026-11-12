@@ -140,6 +140,15 @@ test("releases installation ownership when profile preparation fails",async()=>{
  assert.equal(calls.released,1);
 });
 
+test("surfaces only the unsafe pause-state code from profile preparation",async()=>{
+ const unsafe=makeAdapter({prepareProfile:async()=>{throw Object.assign(new Error("DESKTOP_PAUSE_STATE_UNSAFE"),{code:"DESKTOP_PAUSE_STATE_UNSAFE"});}});
+ await assert.rejects(startDesktopRuntime({runtimeRoot:runtimeRoot(),envPath:"/fixture/setup/.env",platformAdapter:unsafe.adapter}),{code:"DESKTOP_PAUSE_STATE_UNSAFE"});
+ assert.equal(unsafe.calls.released,1);
+ const other=makeAdapter({prepareProfile:async()=>{throw Object.assign(new Error("FILE_UNSAFE"),{code:"FILE_UNSAFE"});}});
+ await assert.rejects(startDesktopRuntime({runtimeRoot:runtimeRoot(),envPath:"/fixture/setup/.env",platformAdapter:other.adapter}),{code:"RUNTIME_START_FAILED"});
+ assert.equal(other.calls.released,1);
+});
+
 test("releases installation ownership when child creation fails",async()=>{
  const {adapter,calls}=makeAdapter({spawn:async()=>{throw new Error("synthetic failure");}});
  await assert.rejects(startDesktopRuntime({runtimeRoot:runtimeRoot(),envPath:"/fixture/setup/.env",platformAdapter:adapter}),{code:"RUNTIME_START_FAILED"});

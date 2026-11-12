@@ -36,16 +36,16 @@ test('rejects missing or unsafe launch paths instead of rendering a partial agen
 test('overlapping slow status probes publish once and future refreshes still work',async()=>{
  const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-status-overlap-')));
  try{
-  const statusPath=path.join(root,'status.json'),adapter=new MacDesktopAdapter({configPath:path.join(root,'config.json')});
+  const statusPath=path.join(root,'status.json'),adapter=new MacDesktopAdapter({configPath:path.join(root,'config.json'),pauseReader:async()=>({exists:false,paused:false})});
   let release,count=0;
   const waiting=new Promise(resolve=>{release=resolve;});
-  adapter.config={statusPath};
+  adapter.config={directory:root,statusPath};
   adapter.runtime={status:async()=>{count++;await waiting;return {state:'RUNNING',connection:'CONNECTING'};}};
   const requests=Array.from({length:3},()=>adapter.publishStatus());
   release();
   const results=await Promise.all(requests);
   assert.equal(count,1);
-  assert.deepEqual(results,Array(3).fill({state:'RUNNING',connection:'CONNECTING',desktopPaused:false}));
+  assert.deepEqual(results,Array(3).fill({state:'RUNNING',connection:'CONNECTING',desktopPaused:false,desktopPauseState:'VERIFIED',desktopPauseEffective:false,desktopPauseReason:null}));
   adapter.runtime={status:async()=>({state:'RUNNING',connection:'CONNECTED'})};
   await adapter.publishStatus();
   assert.equal(JSON.parse(await fs.readFile(statusPath,'utf8')).connection,'CONNECTED');
@@ -65,19 +65,19 @@ test('stage readiness requires the same installation for both successful states'
 test('blocked Quit status is published without changing runtime state; retry can replace outcome',async()=>{
  const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'gsa-quit-outcome-')));
  try{
-  const statusPath=path.join(root,'status.json'),adapter=new MacDesktopAdapter({configPath:path.join(root,'config.json')});
-  adapter.config={statusPath};
+  const statusPath=path.join(root,'status.json'),adapter=new MacDesktopAdapter({configPath:path.join(root,'config.json'),pauseReader:async()=>({exists:false,paused:false})});
+  adapter.config={directory:root,statusPath};
   adapter.runtime={status:async()=>({state:'RUNNING',connection:'CONNECTED'})};
   adapter.quitOutcome={stopAttempt:1,stopBlockedReason:'ACTIVE_WORK_UNKNOWN'};
   const denied=await adapter.publishStatus();
-  assert.deepEqual(denied,{state:'RUNNING',connection:'CONNECTED',desktopPaused:false,stopAttempt:1,stopBlockedReason:'ACTIVE_WORK_UNKNOWN'});
+  assert.deepEqual(denied,{state:'RUNNING',connection:'CONNECTED',desktopPaused:false,desktopPauseState:'VERIFIED',desktopPauseEffective:false,desktopPauseReason:null,stopAttempt:1,stopBlockedReason:'ACTIVE_WORK_UNKNOWN'});
   assert.deepEqual(JSON.parse(await fs.readFile(statusPath,'utf8')),denied);
   adapter.quitOutcome={stopAttempt:2,stopBlockedReason:'ACTIVE_WORK_PRESENT'};
   assert.equal((await adapter.publishStatus()).stopAttempt,2);
   assert.equal(JSON.parse(await fs.readFile(statusPath,'utf8')).stopBlockedReason,'ACTIVE_WORK_PRESENT');
   adapter.quitOutcome={stopAttempt:3,stopBlockedReason:null};
   adapter.runtime={status:async()=>({state:'STOPPED',connection:'DISCONNECTED'})};
-  assert.deepEqual(await adapter.publishStatus(),{state:'STOPPED',connection:'DISCONNECTED',desktopPaused:false,stopAttempt:3,stopBlockedReason:null});
+  assert.deepEqual(await adapter.publishStatus(),{state:'STOPPED',connection:'DISCONNECTED',desktopPaused:false,desktopPauseState:'VERIFIED',desktopPauseEffective:false,desktopPauseReason:null,stopAttempt:3,stopBlockedReason:null});
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
 
@@ -143,4 +143,99 @@ test('menu Pause/Resume only changes private admission state; no process is kill
   await assert.rejects(adapter.setPaused(true),/DESKTOP_NOT_RUNNING/);
   assert.equal(JSON.parse(await fs.readFile(path.join(root,'pause-state.json'),'utf8')).paused,false);
  }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+
+const pauseJson=paused=>JSON.stringify({format:'gsa-desktop-pause-v1',paused});
+async function pauseFixture(prefix,{pauseReader}={}){
+ const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),prefix)));
+ await fs.chmod(root,0o700);
+ const statusPath=path.join(root,'status.json'),file=path.join(root,'pause-state.json');
+ const adapter=new MacDesktopAdapter({configPath:path.join(root,'config.json'),...(pauseReader?{pauseReader}:{})});
+ adapter.config={directory:root,statusPath};
+ adapter.runtime={status:async()=>({state:'RUNNING',connection:'CONNECTED'})};
+ return {root,statusPath,file,adapter};
+}
+
+test('unsafe 0644 pause file is reported UNTRUSTED and never rewritten or chmodded',async()=>{
+ const f=await pauseFixture('gsa-pause-unsafe-');
+ try{
+  await fs.writeFile(f.file,pauseJson(false),{mode:0o600});await fs.chmod(f.file,0o644);
+  const before=await fs.readFile(f.file,'utf8');
+  const status=await f.adapter.publishStatus();
+  assert.equal(status.desktopPauseState,'UNTRUSTED');
+  assert.equal(status.desktopPauseReason,'NOT_PRIVATE');
+  assert.equal(status.desktopPauseEffective,null);
+  assert.equal(typeof status.desktopPaused,'boolean');
+  await assert.rejects(f.adapter.setPaused(true),{code:'FILE_UNSAFE'});
+  const outcome=await f.adapter.requestPause(true);
+  assert.equal(outcome.pauseRequestStatus,'FAILED');
+  assert.equal(outcome.pauseRequestReason,'PAUSE_FILE_UNSAFE');
+  const published=JSON.parse(await fs.readFile(f.statusPath,'utf8'));
+  assert.equal(published.pauseRequestStatus,'FAILED');
+  assert.equal(published.pauseRequestReason,'PAUSE_FILE_UNSAFE');
+  assert.equal(published.desktopPaused,false);
+  assert.equal((await fs.stat(f.file)).mode&0o777,0o644);
+  assert.equal(await fs.readFile(f.file,'utf8'),before);
+ }finally{await fs.rm(f.root,{recursive:true,force:true});}
+});
+
+test('0600 pause file with invalid content stays overwritable by Pause',async()=>{
+ const f=await pauseFixture('gsa-pause-invalid-');
+ try{
+  await fs.writeFile(f.file,'not json at all',{mode:0o600});
+  const status=await f.adapter.publishStatus();
+  assert.equal(status.desktopPauseState,'UNTRUSTED');
+  assert.equal(status.desktopPauseReason,'INVALID_CONTENT');
+  const outcome=await f.adapter.requestPause(true);
+  assert.equal(outcome.pauseRequestStatus,'DONE');
+  assert.equal(JSON.parse(await fs.readFile(f.file,'utf8')).paused,true);
+  assert.equal((await fs.stat(f.file)).mode&0o777,0o600);
+  const after=await f.adapter.publishStatus();
+  assert.equal(after.desktopPauseState,'VERIFIED');
+  assert.equal(after.desktopPauseEffective,true);
+ }finally{await fs.rm(f.root,{recursive:true,force:true});}
+});
+
+test('valid file that disagrees with adapter state is MISMATCH and Resume repairs it',async()=>{
+ const f=await pauseFixture('gsa-pause-mismatch-');
+ try{
+  await fs.writeFile(f.file,pauseJson(true),{mode:0o600});
+  const status=await f.adapter.publishStatus();
+  assert.equal(f.adapter.paused,false);
+  assert.equal(status.desktopPauseState,'MISMATCH');
+  assert.equal(status.desktopPauseEffective,true);
+  assert.equal(status.desktopPauseReason,null);
+  const outcome=await f.adapter.requestPause(false);
+  assert.equal(outcome.pauseRequestStatus,'DONE');
+  const after=JSON.parse(await fs.readFile(f.statusPath,'utf8'));
+  assert.equal(after.desktopPauseState,'VERIFIED');
+  assert.equal(after.desktopPauseEffective,false);
+ }finally{await fs.rm(f.root,{recursive:true,force:true});}
+});
+
+test('pauseReader failure does not stop status publication',async()=>{
+ const f=await pauseFixture('gsa-pause-observer-',{pauseReader:async()=>{throw new Error('boom');}});
+ try{
+  const status=await f.adapter.publishStatus();
+  assert.equal(status.desktopPauseState,'UNTRUSTED');
+  assert.equal(status.desktopPauseReason,'OBSERVER_UNAVAILABLE');
+  assert.equal(status.desktopPauseEffective,null);
+  assert.equal(JSON.parse(await fs.readFile(f.statusPath,'utf8')).desktopPauseReason,'OBSERVER_UNAVAILABLE');
+ }finally{await fs.rm(f.root,{recursive:true,force:true});}
+});
+
+test('status publication during a pause write reuses the last observation',async()=>{
+ let reads=0;
+ const f=await pauseFixture('gsa-pause-inflight-',{pauseReader:async()=>{reads++;return {exists:false,paused:false};}});
+ try{
+  await f.adapter.publishStatus();
+  assert.equal(reads,1);
+  f.adapter.pauseWriteInFlight=true;
+  const during=await f.adapter.publishStatus();
+  assert.equal(reads,1,'reader must not be called while the adapter is writing');
+  assert.equal(during.desktopPauseState,'VERIFIED');
+  f.adapter.pauseWriteInFlight=false;
+  await f.adapter.publishStatus();
+  assert.equal(reads,2);
+ }finally{await fs.rm(f.root,{recursive:true,force:true});}
 });

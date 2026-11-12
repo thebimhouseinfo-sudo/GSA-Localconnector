@@ -11,7 +11,7 @@ import path from "node:path";
 import {createHash} from "node:crypto";
 import {enrollReadOnlyBatch,enrollRolesTrustedBatch,revokeTrusted,readTrustedRootBindings,loadTrustedRegistry,inspectTrustedWorkspaceRecovery} from "../local/grants.js";
 import {identityDirectory} from "../local/identity.js";
-import {isDesktopPaused} from "../local/desktop-pause.js";
+import {isDesktopPaused,DesktopPauseUntrusted} from "../local/desktop-pause.js";
 import {ConnectorError,type WorkspaceGrant,type WorkspaceRole} from "../core/contracts.js";
 import {plannedTools,plannedToolNames,controlledToolNames} from "./catalog.js";
 import {validateWorkflow} from "../core/ci-dag.js";
@@ -93,7 +93,7 @@ export function toolDefinitions() {return [...definitions,...plannedTools].map(d
   properties:{...definition.inputSchema.properties,...(controlledToolNames.has(definition.name)?{control_token:{type:"string"}}:{})},
   required:[...("required" in definition.inputSchema?definition.inputSchema.required:[]),...(controlledToolNames.has(definition.name)?["control_token"]:[])]}
  }));}
-export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null, logs:CiLogStore|null=null, nativeProcesses:VerifiedNativeProcessController|null=null, snapshots:CiSnapshotStore|null=null, sourceCapture:VerifiedWorkspaceSourceCapture|null=null, ciExecutor:VerifiedCiExecutor|null=null, controlStore:ControlLeaseStore|null=null,options:{grantDirectory?:string;fileBlockedReason?:string;directoryCopyBlockedReason?:string;fileBackendState?:()=>{files:NativeScopedFiles|null;fileBlockedReason?:string;directoryCopyBlockedReason?:string};onScopeChanged?:(kind:"bind"|"unbind")=>Promise<void>;processPersistence?:ProcessPersistence;
+export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:NativeScopedFiles|null=null, sandbox:VerifiedNativeSandbox|null=null, ciStore:CiJournalStore|null=null, artifacts:CiArtifactStore|null=null, logs:CiLogStore|null=null, nativeProcesses:VerifiedNativeProcessController|null=null, snapshots:CiSnapshotStore|null=null, sourceCapture:VerifiedWorkspaceSourceCapture|null=null, ciExecutor:VerifiedCiExecutor|null=null, controlStore:ControlLeaseStore|null=null,options:{identityRoot?:string;grantDirectory?:string;fileBlockedReason?:string;directoryCopyBlockedReason?:string;fileBackendState?:()=>{files:NativeScopedFiles|null;fileBlockedReason?:string;directoryCopyBlockedReason?:string};onScopeChanged?:(kind:"bind"|"unbind")=>Promise<void>;processPersistence?:ProcessPersistence;
  downloadImageFile?:(file:unknown,targetRelativePath:string)=>Promise<DownloadedImage>}={}) {
   const allFileOperations:readonly NativeFileOperation[]=["create_file","update_file","edit_file","apply_patch","create_directory","delete_file","copy_file","move_file","copy_directory"];
   const fileBackendState=options.fileBackendState??(()=>({files:nativeFiles,fileBlockedReason:options.fileBlockedReason,directoryCopyBlockedReason:options.directoryCopyBlockedReason}));
@@ -234,7 +234,6 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
         }
         throw Error("SECURITY_BLOCKED");
       };
-      const desktopPaused=await isDesktopPaused();
       // Pause rejects NEW effects. Readback/diagnostics/stopping owned work stay
       // available, and already-running operations are not interrupted.
       const whilePaused=new Set([
@@ -247,11 +246,15 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
        "list_processes","process_status","process_output","stop_process",
        "acquire_control","renew_control","release_control","ci_cancel"
       ]);
-      if(desktopPaused&&!whilePaused.has(call.name)&&!(call.name==="bind_workspaces"&&args.inspect_recovery===true&&Object.keys(args).length===1))throw new ConnectorError(
-       "SECURITY_BLOCKED","CONNECTOR_PAUSED: new effects are suspended by the desktop app"
-      );
-      const scopedRead=()=>readSession??(readSession=new WorkspaceReadSession(registry,args.workspace_id as string));
       const recoveryInspect=call.name==="bind_workspaces"&&args.inspect_recovery===true&&Object.keys(args).length===1;
+      const pauseExempt=whilePaused.has(call.name)||recoveryInspect;
+      let desktopPaused:boolean|null,desktopPauseReason:string|null=null;
+      try{desktopPaused=await isDesktopPaused(options.identityRoot);}
+      catch(error){desktopPaused=null;desktopPauseReason=error instanceof DesktopPauseUntrusted?error.reason:"UNKNOWN";}
+      if(desktopPaused!==false&&!pauseExempt)throw new ConnectorError("SECURITY_BLOCKED",desktopPaused===null
+       ?"DESKTOP_PAUSE_STATE_UNTRUSTED: new effects are blocked until the pause state can be verified"
+       :"CONNECTOR_PAUSED: new effects are suspended by the desktop app");
+      const scopedRead=()=>readSession??(readSession=new WorkspaceReadSession(registry,args.workspace_id as string));
       const diagnostic=["connector_status","inspect_workspace_recovery","acquire_control","renew_control","release_control","stop_process","ci_cancel"].includes(call.name)||call.name==="list_capabilities"&&args.workspace_id===undefined||recoveryInspect;
       if(!diagnostic)assertSynchronized();
       let result:unknown;
@@ -271,7 +274,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           {const base=connectorStatus(),protectedStorage=protectedStateCapability();result={...base,
            protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,
            capabilities:{...base.capabilities,shellIsolation:sandbox?.verified?"none (user account)":"blocked",localCi:ciExecutor?.verified?"available":"blocked"},
-           desktopPaused,readyForShell:!!sandbox?.verified,executionEnvironment:sandbox?.verified?"macos-native":null,
+           desktopPaused,desktopPauseReason,readyForShell:!!sandbox?.verified,executionEnvironment:sandbox?.verified?"macos-native":null,
            workspaceMode:sandbox?.verified?"host-workspace":null,...fileCapabilities(),git:sandbox?.verified?"local-only; network-blocked":"blocked",command_confinement:sandbox?.verified?"none (user account)":null,state_integrity_vs_commands:sandbox?.verified?"not_protected":null,
            workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",
            ...processHistory(),restartRecovery:options.processPersistence?.store.health?.().admission_blocked?"degraded-process-journal":"blocked"};}break;
@@ -477,7 +480,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
            if(directoryAvailable())read.push("inspect_directory","get_directory_copy");
            const files=protectedStorage.available?[...fileOperations,...(fileOperations.includes("create_file")&&controlStore?["create_file_bytes","import_image_file","edit_file_as_new_version"]:fileOperations.includes("create_file")?["create_file_bytes"]:[]),...(fileOperations.includes("update_file")?["update_file_bytes"]:[]),...(batchFileWrites?["batch_file_operations"]:[])]:[];
            const enabled=new Set([...read,...files,...execution,...ci,...(controlStore&&protectedStorage.available?["acquire_control","renew_control","release_control"]:[])]);
-           result={desktopPaused,workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,read,files,execution,ci,blocked:plannedTools.map(t=>t.name).filter(n=>!enabled.has(n)),shellIsolation:sandbox?.verified?"none (user account)":"blocked",...fileCapabilities(),...processHistory(),git:sandbox?.verified?"local-only; network-blocked":"blocked",command_confinement:sandbox?.verified?"none (user account)":null,state_integrity_vs_commands:sandbox?.verified?"not_protected":null,executionEnvironment:sandbox?.verified?"macos-native":null,workspaceMode:sandbox?.verified?"host-workspace":null,restartRecovery:options.processPersistence?.store.health?.().admission_blocked?"degraded-process-journal":"blocked"};
+           result={desktopPaused,desktopPauseReason,workspace_roles:["workspace","reference"],workspace_role_semantics:"grant-intent; backend-availability-reported-separately",protected_state_available:protectedStorage.available,protected_state_reason:protectedStorage.reason??null,read,files,execution,ci,blocked:plannedTools.map(t=>t.name).filter(n=>!enabled.has(n)),shellIsolation:sandbox?.verified?"none (user account)":"blocked",...fileCapabilities(),...processHistory(),git:sandbox?.verified?"local-only; network-blocked":"blocked",command_confinement:sandbox?.verified?"none (user account)":null,state_integrity_vs_commands:sandbox?.verified?"not_protected":null,executionEnvironment:sandbox?.verified?"macos-native":null,workspaceMode:sandbox?.verified?"host-workspace":null,restartRecovery:options.processPersistence?.store.health?.().admission_blocked?"degraded-process-journal":"blocked"};
           }break;
         case "glob":
           if(typeof args.workspace_id!=="string"||typeof args.path!=="string"||typeof args.pattern!=="string"||Object.keys(args).length!==3||args.pattern.length>160||!args.pattern)throw Error("INVALID_ARGUMENTS");

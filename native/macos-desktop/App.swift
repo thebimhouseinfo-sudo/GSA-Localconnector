@@ -50,6 +50,12 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
     private var pruneRequested = false
     private var pruneAttemptBaseline = 0
     private var pruneRequestedAt: Date?
+    private var pauseRequested = false
+    private var pauseAttemptBaseline = 0
+    private var pauseRequestedAt: Date?
+    private var pauseNotice: String?
+    private var pauseNoticeUntil: Date?
+    private var abnormalPauseReads = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -208,15 +214,87 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
             setStatus("Đang yêu cầu dừng connector an toàn…")
             return
         }
+        // Quit takes precedence over a pending Pause/Resume confirmation, and a
+        // supervisor that exited can no longer answer the pending request.
+        if pauseRequested && supervisor?.isRunning != true {
+            pauseRequested = false
+            pauseRequestedAt = nil
+        }
+        if pauseRequested {
+            if let statusPath, let status = try? privateJSON(statusPath),
+               let attempt = status["pauseRequestAttempt"] as? Int,
+               attempt > pauseAttemptBaseline {
+                pauseRequested = false
+                pauseRequestedAt = nil
+                if status["pauseRequestStatus"] as? String == "FAILED" {
+                    switch status["pauseRequestReason"] as? String {
+                    case "PAUSE_FILE_UNSAFE": pauseNotice = "Không ghi được trạng thái tạm dừng: file không an toàn. Cần sửa thủ công (xem hướng dẫn)."
+                    case "PAUSE_FILE_BUSY": pauseNotice = "File tạm dừng đang bận; thử lại sau giây lát."
+                    case "DESKTOP_NOT_RUNNING": pauseNotice = "Connector không chạy; không đổi được trạng thái tạm dừng."
+                    default: pauseNotice = "Không đổi được trạng thái tạm dừng."
+                    }
+                    pauseNoticeUntil = Date().addingTimeInterval(8)
+                }
+            } else if let started = pauseRequestedAt, Date().timeIntervalSince(started) > 10 {
+                pauseRequested = false
+                pauseRequestedAt = nil
+                setStatus("Chưa xác nhận được yêu cầu tạm dừng/tiếp tục.")
+                return
+            } else {
+                return
+            }
+        }
         guard !launchFailed else { return }
         guard let statusPath, let status = try? privateJSON(statusPath), let state = status["state"] as? String else {
             setStatus("Chưa đọc được trạng thái connector.")
             return
         }
         let paused = status["desktopPaused"] as? Bool ?? false
-        pauseItem?.isEnabled = state == "RUNNING" && supervisor?.isRunning == true && !paused
-        resumeItem?.isEnabled = state == "RUNNING" && supervisor?.isRunning == true && paused
-        pruneItem?.isEnabled = state == "RUNNING" && supervisor?.isRunning == true
+        let running = state == "RUNNING" && supervisor?.isRunning == true
+        var pauseEnabled = running && !paused
+        var resumeEnabled = running && paused
+        var pauseMessage: String?
+        // Pause state as the MCP process actually observes it. Only act on a
+        // value that stays abnormal across two consecutive reads (no flicker
+        // while the adapter is mid-write); an absent field means an older adapter.
+        if state == "RUNNING", let pauseState = status["desktopPauseState"] as? String, pauseState != "VERIFIED" {
+            abnormalPauseReads += 1
+            if abnormalPauseReads >= 2 {
+                let reason = status["desktopPauseReason"] as? String
+                if pauseState == "MISMATCH" {
+                    pauseEnabled = running
+                    resumeEnabled = running
+                    if status["desktopPauseEffective"] as? Bool == true {
+                        pauseMessage = "Trạng thái tạm dừng không khớp: connector đang chặn tác vụ mới. Bấm Tạm dừng hoặc Tiếp tục để đặt lại."
+                    } else {
+                        pauseMessage = "Trạng thái tạm dừng không khớp: connector đang cho phép tác vụ mới. Bấm Tạm dừng hoặc Tiếp tục để đặt lại."
+                    }
+                } else if pauseState == "UNTRUSTED" && reason == "OBSERVER_UNAVAILABLE" {
+                    pauseMessage = "Không quan sát được trạng thái tạm dừng."
+                } else if pauseState == "UNTRUSTED" && reason == "INVALID_CONTENT" {
+                    pauseEnabled = running
+                    resumeEnabled = running
+                    pauseMessage = "Nội dung file tạm dừng không hợp lệ; tác vụ mới bị chặn để an toàn. Bấm Tạm dừng hoặc Tiếp tục để ghi lại."
+                } else if pauseState == "UNTRUSTED" {
+                    pauseEnabled = false
+                    resumeEnabled = false
+                    pauseMessage = "Không xác minh được file tạm dừng; tác vụ mới bị chặn để an toàn. Cần sửa thủ công (xem hướng dẫn)."
+                }
+            }
+        } else {
+            abnormalPauseReads = 0
+        }
+        pauseItem?.isEnabled = pauseEnabled
+        resumeItem?.isEnabled = resumeEnabled
+        pruneItem?.isEnabled = running
+        if let notice = pauseNotice, let until = pauseNoticeUntil, Date() < until {
+            setStatus(notice)
+            return
+        }
+        if let message = pauseMessage {
+            setStatus(message)
+            return
+        }
         if state == "RUNNING" && paused {
             setStatus("Đã tạm dừng nhận tác vụ mới.")
             return
@@ -233,7 +311,9 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
         case "STARTING": setStatus("Đang khởi động connector…")
         case "STOPPED": setStatus("Connector đã dừng.")
         default:
-            if status["reason"] as? String == "CHILD_EXITED", let code = status["childExitCode"] as? Int {
+            if status["reason"] as? String == "DESKTOP_PAUSE_STATE_UNSAFE" {
+                setStatus("File tạm dừng không an toàn nên connector không khởi động. Cần sửa thủ công (xem hướng dẫn).")
+            } else if status["reason"] as? String == "CHILD_EXITED", let code = status["childExitCode"] as? Int {
                 setStatus("Tunnel tự kết thúc (mã " + String(code) + ").")
             } else { setStatus("Connector gặp lỗi khởi động.") }
         }
@@ -242,15 +322,23 @@ final class DesktopApp: NSObject, NSApplicationDelegate {
     // Signals target only the retained adapter Process object, never arbitrary PIDs.
     // The adapter updates the private admission flag; existing work continues.
     @objc private func requestPause(_ sender: Any?) {
-        guard let process = supervisor, process.isRunning else { return }
+        guard !pauseRequested, let process = supervisor, process.isRunning else { return }
+        pauseAttemptBaseline = (statusPath.flatMap { try? privateJSON($0) }?["pauseRequestAttempt"] as? Int) ?? 0
         if kill(pid_t(process.processIdentifier), SIGUSR2) == 0 {
+            pauseRequestedAt = Date()
+            pauseRequested = true
+            pauseNotice = nil
             setStatus("Đang tạm dừng nhận tác vụ mới…")
         } else { setStatus("Không gửi được yêu cầu tạm dừng.") }
     }
 
     @objc private func requestResume(_ sender: Any?) {
-        guard let process = supervisor, process.isRunning else { return }
+        guard !pauseRequested, let process = supervisor, process.isRunning else { return }
+        pauseAttemptBaseline = (statusPath.flatMap { try? privateJSON($0) }?["pauseRequestAttempt"] as? Int) ?? 0
         if kill(pid_t(process.processIdentifier), SIGHUP) == 0 {
+            pauseRequestedAt = Date()
+            pauseRequested = true
+            pauseNotice = nil
             setStatus("Đang tiếp tục nhận tác vụ…")
         } else { setStatus("Không gửi được yêu cầu tiếp tục.") }
     }

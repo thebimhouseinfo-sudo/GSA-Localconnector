@@ -158,8 +158,8 @@ export async function startDesktopRuntime({runtimeRoot, envPath, platformAdapter
     state = "RUNNING";
     if (child.exitCode !== null && child.exitCode !== undefined) onClose(child.exitCode);
     return runtime;
-  } catch {
+  } catch (error) {
     if (!child) await release();
-    throw failure("RUNTIME_START_FAILED");
+    throw failure(error?.code==="DESKTOP_PAUSE_STATE_UNSAFE"?error.code:"RUNTIME_START_FAILED");
   }
 }
