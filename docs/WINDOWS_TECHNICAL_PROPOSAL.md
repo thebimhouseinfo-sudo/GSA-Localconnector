@@ -1,9 +1,9 @@
 # Windows Native Connector — Technical Proposal
 
-**Date:** 2026-11-09  
+**Updated:** 2026-11-12 (V2 shared-source reconciliation)  
 **Status:** PRE-CODE — technical review required  
 **Repository/branch:** `thebimhouseinfo-sudo/GSA-Localconnector` / `feat/windows-native-connector-20261109`  
-**Source baseline:** `41102fa3e9d2a187c8373b1474e9377b737c66b1`
+**Branch fork:** `41102fa3e9d2a187c8373b1474e9377b737c66b1`; **newer `main` inspected, not merged:** `bce187542ec68491f29a95b4a876fd7b4dc5648e`
 
 ## 0. Goal, authority and non-goals
 
@@ -12,6 +12,43 @@ Deliver a native Windows backend beneath the **existing** GSA-Localconnector MCP
 Read in order: `docs/CRITERIA.md` (especially §§1,5,7–10) → `docs/DECISIONS.md` → `docs/WINDOWS_IMPLEMENTATION_PLAN.md` → `docs/WINDOWS_MILESTONES.md` → this proposal → relevant source → `docs/WINDOWS_JOB_GUIDE.md`. macOS `docs/TECHNICAL_PROPOSAL.md` is a design/reference, **not** a command to port its POSIX mechanisms. No VM, local AI, bespoke CI engine, admin daemon or per-operation approval gate.
 
 Most recent user-scoped lifecycle decision: **Open/Quit only**. Older Mac Pause/Resume text is not Windows scope. Reboot acceptance is excluded in this iteration; process-crash/relaunch evidence still required. Outdated Criteria wording to be reconciled through a reviewed documentation change, not an implicit new product requirement.
+
+## GOAL
+
+Build the second native Windows host beneath the existing MCP contract, reusing tested Mac-side product semantics without importing POSIX/Swift/launchd implementation. Prove native scoped-file authority and process ownership on Windows and confirm outcomes through selected-plugin readback. No VM, local AI, additional CI platform, Pause/Resume, per-operation work approval or misleading sandbox claims.
+
+## V2 — Inherited shared changes and Windows-specific decisions (2026-11-12)
+
+These requirements are derived from newer shared-source changes seen on `main`; they are **design and test obligations**, not Windows-native implementation evidence. Current Windows branch originally contained only four documentation files, ahead 4 / behind 67 at inspection. New branch policy has been persisted for the Windows branch; merge/reconcile newer common code before W1 implementation and re-pin the candidate SHA. Preserve Mac code and its real-host acceptance history, and do not mislabel remote Git as accepted.
+
+### A. Grant reauthorization and native backend readiness (W1-04, W2-01, W4-01)
+
+Reuse the common grant inventory and the selected-only root rebind semantics now found in `src/local/grants.ts`, `src/core/workspace.ts`, `src/mcp/server.ts` and `docs/workspaces/LOCAL-ENROLLMENT.md`: `ACTIVE`, `STALE`, `REAUTH_REQUIRED`, `REVOKED`, versioned root identity and independent preservation of unrelated stale grants. Windows root identity must be independently proven with volume/file handles and alias/reparse-negative tests.
+
+**Two different readiness layers:** `bind_workspaces` may persist an explicitly selected, newly verified root while the native file-grant/backend installation still refers to an older grant set. Report that mismatch with a structured actionable recovery diagnostic, *not* a false successful file capability. An attempted mutation must fail closed. W1-04 investigates a safe qualified update scheme with owner fencing, atomic install/readback and preserved previous generation/journals; only qualified proof may activate a new grant set. Never treat easier update UX as permission to skip signature/identity/recovery protections. Source tests and real selected Windows plugin evidence cover both successful sync and blocked mismatch.
+
+Required negatives: stale root replacement, unrelated stale record, root/volume alias, revoked control lease, protected store corruption, missing/failed native installer, owner still active during replacement and a failed upgrade preserving the previous installation. `UNKNOWN` is never automatically retried as a successful operation.
+
+### B. Existing binary/image import (W2-05, W4-01, W5-02)
+
+`src/mcp/image-file-transfer.ts` already defines the host-supplied `file` input, approved HTTPS download, no redirects/URL credentials, bounded image data, PNG/JPEG/WebP signature and extension validation. Keep the existing **MCP tool and `_meta["openai/fileParams"]=["file"]` protocol**; do not reimplement image parsing or use chat-assembled Base64 as a special Windows workaround.
+
+The Windows adapter must connect **that validated byte stream** to a native, scoped exclusive-create file operation. Existing `create_file_bytes` and `fetch_file_bytes` share the same workspace and write-grant authority; reject references as destinations and do not allow a failed native backend to trigger a generic unconfined `fs.writeFile` fallback. Responses require source/import SHA-256 and independently fetched local bytes/metadata. Every output path must be a grounded workspace-relative path; absolute output paths are derived only from verified Windows workspace identity.
+
+Tests: legitimate host fileParam object, unresolved string/ID, missing fields, bad/redirected URL, disallowed hostname, MIME/signature/extension mismatch, >8MiB, malicious relative path/ADS, collision, read-only reference, revoked controller, stale backend grant, short transfer/interrupted write and preserved source/readback hash. The existing `test/mcp-image-file-import.test.ts` contains a POSIX-controller fixture skipped on win32; **a Windows-skip does not count as Windows PASS**. Native fixtures on `windows-latest` and an end-to-end actual ChatGPT image artifact through the selected Windows plugin are separate gates.
+
+### C. Startup, installation and truthful capabilities (W1-03, W4)
+
+Examine `src/mcp/startup-registry.ts`, `scripts/desktop-install.mjs` and Mac adapter fixes for accepted *state semantics* (single instance, owner fence, no unverified ready/quit, preserve tunnel key and protected state). Implement Windows-native per-user tray and setup; do not import macOS `launchctl`, Dock or helper binaries. The user-facing design is Open/Quit only, no Pause/Resume. Quit may safely defer while owned work is not proven idle; never kill other apps or falsify completion. Reboot remains excluded from this iteration's acceptance while process crash/relaunch and stopped-owner maintenance can be tested on disposable fixtures.
+
+The Windows MCP capability status must differentiate (1) read/list ability, (2) native file mutation readiness and its grant-sync state, (3) binary/image operations, (4) command runner ownership and unconfined filesystem effect, (5) network Git blocked or proven, and (6) installed adapter/source identity. Do not enable methods merely because the schemas are present or Mac evidence is green.
+
+### D. Provenance and test strategy
+
+- During W0 integrate the **current** `main` into this Windows branch in a separately reviewed Git operation; preserve all four pre-code files and user-owned state, without force-push or writing `main`.
+- Windows hosted test gate: actual Win32 filesystem+Job Object fixtures, real tool dispatch, exact commit/source provenance, explicit fail on required skip/missing runner. Mac source/regression gate on the same integration commit is separate.
+- Real Windows plugin acceptance after reviewed hosted CI and installer authorization; user-owned test roots only; verify imported image original bytes against file API readback rather than asserting success from an MCP response.
+- Review source interfaces before replacing or extending any shared contract; one integrator owns `src/mcp/server.ts`, `catalog.ts`, `runtime-bootstrap.ts` and `write-dispatch.ts`.
 
 ## 1. Baseline and integration seams
 
@@ -22,6 +59,8 @@ Most recent user-scoped lifecycle decision: **Open/Quit only**. Older Mac Pause/
 | `src/core/write-engine.ts`, transaction/patch guards | Reuse pre/post SHA and statuses, with native Windows atomicity and identity readback |
 | `src/core/directory-copy.ts` and `src/local/directory-copy-store.ts` | Reuse manifest and acknowledgment format; new Win32 native traverser |
 | `src/hosts/macos-host-commands.ts` | Reference for outcomes, not POSIX spawn/group semantics |
+| `src/local/grants.ts`, `src/core/workspace.ts` (new selected-only recovery) | Reuse ACTIVE/STALE/REAUTH_REQUIRED/REVOKED and rebind-only-selected semantics; Windows root identity separately verified |
+| `src/mcp/image-file-transfer.ts`, `src/mcp/server.ts` (new import) | Preserve host fileParam, download validation and `import_image_file`; Windows exclusive create + native byte readback required |
 | `src/mcp/runtime-bootstrap.ts` | Currently Mac-only; introduce platform composition with strict selection; one integration owner |
 | `src/core/git-engine.ts` | Local Git plans reusable; remote remains blocked until limited network proof |
 | `src/hosts/windows-appcontainer-candidate.ts` and `scripts/native-gate-windows.ps1` | **Candidates/probes only**, never a verified host backend |
@@ -116,11 +155,11 @@ Deliver one reviewed install/update/uninstall workflow, no unnecessary administr
 | --- | --- | --- | --- |
 | F0 | Windows version/API probe, AppContainer candidate feasibility, filesystem type | Hosted Windows | Recorded availability, **not** security certification |
 | F1 | Grants, aliases/junction escape, root swap, reference no-write | `windows-latest` real Windows filesystem | Actual Win32 negative cases PASS |
-| F2 | file CAS, crash/partial journal, copy/move, directory traversal and readback | `windows-latest` | Native backend receipts and no unintended writes |
+| F2 | file CAS, crash/partial journal, copy/move, directory traversal, binary/image import and readback | `windows-latest` | Native backend receipts and no unintended writes |
 | F3 | PowerShell/CMD/node/Git, Job Object owned cancellation, neighbor unaffected | `windows-latest` | Actual process+child handles verified |
 | F4 | MCP tool invocation, two workspaces and reference, Mac regression | Windows + Mac CI | Exact SHA both platforms PASS, no misleading capability flags |
 | F5 | tray Open/Quit, protected tunnel setup, installer repair/uninstall | Hosted package smoke then user Windows | No secret exposure; normal app and tunnel lifecycle |
-| F6 | selected user Windows full workflow | Windows PC via its own plugin | Real outputs and user acceptance; reboot excluded |
+| F6 | selected user Windows full workflow including genuine image host fileParam and independent SHA readback | Windows PC via its own plugin | Real outputs and user acceptance; reboot excluded |
 
 CI YAML must make required native suites explicit. No `skip`/fixture absence treated as success. Test only disposable directories and benign processes; do not install drivers, alter global policy, kill neighboring processes, use VM or write outside approved test roots. If platform lacks a required API, surface a finding and alternative design, not a fabricated PASS.
 
