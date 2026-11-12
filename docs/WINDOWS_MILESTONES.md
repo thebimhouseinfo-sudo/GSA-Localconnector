@@ -1,10 +1,16 @@
 # Windows Native Connector — Milestones and Job DAG
 
-**2026-11-09 · Status: PRE-CODE / REVIEW PENDING**  
+**2026-11-12 · Status: V2 PRE-CODE / REVIEW PENDING**  
 **Branch:** `feat/windows-native-connector-20261109`  
-**Base SHA:** `41102fa3e9d2a187c8373b1474e9377b737c66b1`
+**Branch fork SHA:** `41102fa3e9d2a187c8373b1474e9377b737c66b1` · **Newer main inspected (not merged):** `bce187542ec68491f29a95b4a876fd7b4dc5648e`
 
 **GOAL:** Deliver the Mac-accepted GSA-Localconnector user workflow natively on Windows, retaining shared MCP schemas and user-approved workspace/reference semantics. Windows development and acceptance are sequentially *after* the user's Mac PASS; macOS source remains protected. No VM, separate AI, connector-level CI engine or Pause/Resume. See `WINDOWS_IMPLEMENTATION_PLAN.md` (WHAT/sequence), `WINDOWS_TECHNICAL_PROPOSAL.md` (design) and `WINDOWS_JOB_GUIDE.md` (handoff contracts).
+
+## GOAL
+
+Deliver the existing Mac-accepted GSA LocalConnector workflow natively on Windows through the same MCP schemas, with separately proven Windows file boundary, command/process control, installer and actual plugin E2E; preserve Mac regression behavior and honest blocked/unknown states. Do not add a product VM, local AI, new CI engine, Pause/Resume or per-call work approval.
+
+**V2 change tracking:** Four documentation additions already existed on this Windows branch; no Windows implementation source was observed at the branch fork. The newer `main` includes workspace/grant recovery, backend sync diagnostics, image binary transfer and desktop fixes. These are assigned below as **Windows work to qualify**, not completed Windows features. `J-F33D` is a distinct historical Mac planning record; old Mac evidence is not Windows PASS. Project branch authority was updated with readback to this Windows branch on 2026-11-12. Main reconciliation and independent planning review remain pending.
 
 ## Legend
 
@@ -18,24 +24,40 @@ No build/test result is inherited from macOS; actual Windows evidence is mandato
 
 ## W0 — Planning / decision gate
 
+### GOAL
+
+Reconcile current Windows branch with newer Mac/common source and produce four reviewed source-revision-bound planning documents before any Windows product implementation.
+
 | ID | Work owner / scope | Dependency | Done and evidence |
 | --- | --- | --- | --- |
+| W0-00 | Planner/GSA: change Project Memory development target to existing Windows branch (completed) | User's 2026-11-12 explicit instruction | CAS/readback of PROJECT.md; preserve historical Mac Job without changing its status |
 | W0-01 | Planner: read Criteria, Decisions, current Mac source + acceptance and Windows candidate | Mac user acceptance | Document reusable contracts, Windows gaps and latest Open/Quit-only decision |
 | W0-02 | Planner: Windows Plan and acceptance fixtures | W0-01 | Trace Criteria §§1–10, clarify trust/unconfined commands, remote Git and reboot exemption |
 | W0-03 | Planner: Windows Technical Proposal | W0-02 | Chosen alternatives and negative tests, no unjustified AppContainer `verified` claim |
 | W0-04 | Planner: Windows milestones + job instructions | W0-02/W0-03 | Every job has owner, required inputs/outputs, constraints, evidence and blockers |
+| W0-05 | Integrator/Planner: inspect and safely incorporate newer main changes into Windows working branch | W0-01; current live Git HEADs | Reviewable merge/reconciliation, 4 docs preserved, no force push, no unrelated local checkout mutation |
+| W0-06 | Planner + role-isolated Reviewer: recheck V2 traceability/revision and repair findings | W0-02..05 | PASS evidence for actual revision before Human authorizes product implementation |
 | **W0-G** | **Reviewer/Critic then Human** | W0-01..04 | Consistency review complete, **explicit implementation approval**; do not start Windows code earlier |
 
 ## W1 — Windows runtime foundation / owner / grants
+
+### GOAL
+
+Make Windows root identity, controller/grants and selected-only grant reauthorization safe and durably observable, without mistaking enrollment for native-file readiness.
 
 | ID | Owner & files (indicative) | Mode | Depends | Acceptance |
 | --- | --- | --- | --- | --- |
 | W1-01 | Coder / Windows owner, private state and grant adapters; reuse `src/core/workspace.ts` | P | W0-G | One owner only; protected durable Windows grants, per-root identity, roles/revision and revocation |
 | W1-02 | Coder / Windows read-only host probe, root/reparse/volume tests | P | W0-G | Drive-letter, case aliases, junctions, symlinks, UNC/non-existing inaccessible roots explicitly classified |
 | W1-03 | Tester / GitHub `windows-latest` baseline CI and fixture harness | P | W0-G | Node build+existing tests, genuine Windows host metadata, no false skips |
-| **G1** | **Integrator + Reviewer** | **I** | W1-01..03 | Exact-head Windows suite PASS for owner/grants/path negatives; no production mutation |
+| W1-04 | Coder/Tester: qualified file-grant synchronization and recovery-state contract | S | W1-01+W1-02 | `ACTIVE/STALE/REAUTH_REQUIRED/REVOKED` selected-only rebind; other stale grants retained; backend mismatch remains fail-closed and actionable; old installed generation/journals preserved |
+| **G1** | **Integrator + Reviewer** | **I** | W1-01..04 | Exact-head Windows suite PASS for owner/grants/path negatives; no production mutation |
 
 ## W2 — Native scoped files / recovery / directory
+
+### GOAL
+
+Prove Windows-native scoped text/binary/file/directory operations with CAS, recovery and honest `UNKNOWN`, including the existing host-injected image importer and SHA-256 readback.
 
 | ID | Owner & files (indicative) | Mode | Depends | Acceptance |
 | --- | --- | --- | --- | --- |
@@ -43,9 +65,14 @@ No build/test result is inherited from macOS; actual Windows evidence is mandato
 | W2-02 | Coder / Windows durable replace/delete + CAS, local recovery/readback | S | W2-01 | `APPLIED/CONFLICT/UNKNOWN` with journal, retained state and no automatic retry |
 | W2-03 | Coder / copy/move across authorized workspace/ref roles | S | W2-02 | Reference cannot be destination/source of move; copy into workspace only, SHA verified |
 | W2-04 | Coder / Windows tree reader, directory manifest/copy+readback | P after W2-01 | W2-01 | Reparse loops/junction escapes denied; bounded traversal, journal and conflict tests |
-| **G2** | **Integrator + Tester/Reviewer** | **I** | W2-02..04 | Exact SHA `windows-latest` native file+tree suite, negative cases and provenance retained; unsupported operations remain blocked |
+| W2-05 | Coder/Tester: Windows binary transfer and image fileParam import adapter using shared parser | S | W2-01+W1-04 | Real Windows exclusive-create, `create_file_bytes`/`fetch_file_bytes`/`import_image_file`; MIME+signature+extension, 8MiB, allowed HTTPS/no redirects, reference denial, stale grant, no secret log, collision, SHA-256 source/readback |
+| **G2** | **Integrator + Tester/Reviewer** | **I** | W2-02..05 | Exact SHA `windows-latest` native file+tree suite, negative cases and provenance retained; unsupported operations remain blocked |
 
 ## W3 — Native commands, Git and owned processes
+
+### GOAL
+
+Use the Windows logged-in user and native Job Objects to execute/observe only owned work, while disclosing no OS confinement and leaving remote Git blocked without separate capability proof.
 
 | ID | Owner & files (indicative) | Mode | Depends | Acceptance |
 | --- | --- | --- | --- | --- |
@@ -57,20 +84,28 @@ No build/test result is inherited from macOS; actual Windows evidence is mandato
 
 ## W4 — Windows MCP integration / Desktop / CI
 
+### GOAL
+
+Publish only qualified Windows native capabilities through shared MCP, retain fileParam/grant error semantics and Mac regression, and provide a minimal per-user Open/Quit desktop installation.
+
 | ID | Owner & files (indicative) | Mode | Depends | Acceptance |
 | --- | --- | --- | --- | --- |
-| W4-01 | **Single integrator** / `src/mcp/{runtime-bootstrap,server,catalog,write-dispatch}.ts` | S | G2+G3 | Platform selection without regressing Mac; identical MCP contract and truthful capabilities |
+| W4-01 | **Single integrator** / `src/mcp/{runtime-bootstrap,server,catalog,write-dispatch}.ts` | S | G2+G3 | Platform selection without regressing Mac; identical MCP contract, fileParam/image routing, rebind/recovery diagnostic shape and truthful capabilities |
 | W4-02 | Coder / Windows background/tray app and user-mode installer | P | G1 | Open/Quit only, login startup, protected tunnel config, no admin requirement by default |
 | W4-03 | Tester / Windows CI package/integration matrix and artifacts | P | W1-03 | Signed/verified provenance where applicable, exact SHA packages, no secrets |
 | **G4** | **Integrator + Reviewer** | **I** | W4-01..03 | `windows-latest` C0+files+process+desktop+packaging PASS; verify Mac CI remains PASS |
 
 ## W5 — Real Windows adoption and user acceptance
 
+### GOAL
+
+Verify the selected installed Windows plugin on disposable working and reference roots, including genuine host image artifact transfer, grant updates and independently read-back native effects.
+
 | ID | Owner | Mode | Depends | Acceptance |
 | --- | --- | --- | --- | --- |
 | W5-01 | Operator/Tester | H/I | G4 | Install only reviewed candidate on explicitly selected Windows host; confirm exact hash/version |
-| W5-02 | Operator/Tester | S | W5-01 | Plugin bind workspace/ref; read/edit/delete/move/directory copy; real local script/build and Git |
-| W5-03 | Operator/Tester | S | W5-02 | Two isolated projects, revoked grants, interrupted operation and truthful readback; neighbor process intact |
+| W5-02 | Operator/Tester | S | W5-01 | Plugin bind workspace/ref; read/edit/delete/move/directory copy; genuine host image `file` import + independent byte hash; real local script/build and Git |
+| W5-03 | Operator/Tester | S | W5-02 | Two isolated projects, revoked/stale grants and selected-only rebind with native backend qualification, interrupted operation and truthful readback; neighbor process intact |
 | W5-04 | Operator/Tester | S | W5-03 | Tray Open/Quit/tunnel stop/relaunch/login persistence without reboot |
 | **M6 ACCEPT** | **Human** | **H** | W5-01..04 | Accept user workflow; list all PASS/NOT_TESTED/BLOCKED accurately; issues used for later bugs |
 
@@ -78,7 +113,7 @@ No build/test result is inherited from macOS; actual Windows evidence is mandato
 
 ## Dependency and ownership rules
 
-`W0-G → {W1-01,W1-02,W1-03} → G1 → {W2-01,W3-01,W3-04,W4-02} → W2-02/W3-02 → W2-03/W2-04/W3-03 → G2,G3 → W4-01/W4-03 → G4 → W5 → M6`.
+`W0-G → {W1-01,W1-02,W1-03} → W1-04 → G1 → {W2-01,W3-01,W3-04,W4-02} → W2-02/W3-02 → {W2-03,W2-04,W2-05,W3-03} → G2,G3 → W4-01/W4-03 → G4 → W5 → M6`.
 
 One owner modifies MCP integration files, serially. Independent backend/test/docs tasks may use the same development branch with file-level ownership and separate commits; **do not create alternative parallel branches unless explicitly approved**. Job instructions specify required input versions, expected evidence and allowed paths, not copied harness. Tasks that depend on another job's results must have their instructions enriched by the Planner when those inputs exist.
 
@@ -95,6 +130,8 @@ One owner modifies MCP integration files, serially. Independent backend/test/doc
 - [x] Windows W0–W5 task graph and dependencies specified.
 - [x] All tasks have owners, scope and evidence.
 - [x] Open/Quit-only decision and reboot exemption carried forward.
+- [x] Windows V2 added grant-sync and real fileParam/image acceptance, with Mac shared-source traceability.
+- [ ] Reconcile 67 newer main commits on the Windows branch and review actual merged source.
 - [ ] Independent Critic / Reviewer of complete Plan + Proposal + Guide.
 - [ ] Human approves starting implementation.
 
