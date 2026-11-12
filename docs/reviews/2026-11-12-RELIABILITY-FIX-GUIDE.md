@@ -259,7 +259,7 @@ ls -l "$F"; cat "$F"
    - `holder:"server"` và `session !== owner.session` → xoá (kernel owner fence đã chứng minh server cũ đã chết).
    - `holder:"desktop"` → không đụng.
 3. Adapter, sau khi lấy `desktop-owner.lock` và trước khi spawn tunnel: xoá lock `holder:"desktop"` có `session` khác session hiện tại.
-4. Lock không parse được (định dạng cũ / rỗng): chỉ xoá trong bước phục hồi của server **và** khi `lstat` cho thấy nó cũ hơn lúc owner fence được lấy. Ngoài ra trả `GRANT_STORE_RECOVERY_REQUIRED` với hướng dẫn rõ ràng thay vì `GRANT_STORE_BUSY`.
+4. **Sửa lại 2026-11-12.** Lock không parse được (định dạng cũ hoặc rỗng) **không bao giờ bị xoá tự động**, kể cả khi so tuổi file với thời điểm lấy owner fence. Lý do: so tuổi như vậy trái với quy tắc "không dựa vào tuổi file", và lock đó có thể thuộc một adapter bản cũ vẫn đang chạy giữa lúc dọn đăng ký. Thay vào đó, các thao tác gặp lock này trả `GRANT_STORE_RECOVERY_REQUIRED` (có `code`) thay vì `GRANT_STORE_BUSY`, và `inspect_workspace_recovery` báo đây là lock không parse được để người dùng tự xoá bằng tay.
 5. Thêm `stale_grant_lock` vào `inspect_workspace_recovery` để người dùng thấy nguyên nhân.
 6. `withGrantLock` ném `Error("GRANT_STORE_BUSY")` không có thuộc tính `code` (grants.ts:228), trong khi adapter so `error?.code==="GRANT_STORE_BUSY"` (adapter:219). Vì vậy trên menu, lý do luôn hiện là `REGISTRATION_PRUNE_FAILED`. Sửa bằng `new ConnectorError("GRANT_STORE_BUSY", …)` (hoặc gắn `code`), cùng chỗ với mã mới `GRANT_STORE_RECOVERY_REQUIRED`.
 
