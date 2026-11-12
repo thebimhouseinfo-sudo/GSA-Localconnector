@@ -43,7 +43,7 @@ test("kernel owner lock fences another server and inherited workers after parent
   assert.equal((await fs.stat(path.join(identity,'server-owner.lock'))).mode&0o777,0o600);
  }finally{first.kill('SIGKILL');if(grandchild){try{process.kill(grandchild,'SIGKILL');}catch{}}await fs.rm(root,{recursive:true,force:true});}
 });
-test("a fenced production restart marks interrupted CI unknown and invalidates old control",{skip:process.platform!=="darwin"},async()=>{
+test("a fenced production restart marks interrupted CI unknown and keeps the unexpired control lease",{skip:process.platform!=="darwin"},async()=>{
  const home=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),"gsa-owner-restart-")));
  const identity=path.join(home,"Library/Application Support/GSA-Localconnector"),project=path.join(home,"project");await fs.mkdir(project);
  await enrollReadOnly("fixture",project,identity);
@@ -59,8 +59,9 @@ test("a fenced production restart marks interrupted CI unknown and invalidates o
  const call=(name:string,args:object={})=>new Promise<any>((resolve,reject)=>{const id=++sequence,timer=setTimeout(()=>reject(Error('owner recovery MCP timeout')),5000);pending.set(id,value=>{clearTimeout(timer);resolve(JSON.parse(value.result.content[0].text));});cli.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}})+'\n');});
  try{
   const recovered=await call('ci_status',{workspace_id:'fixture',run_id:queued.run_id});assert.equal(recovered.result.state,'UNKNOWN');
-  const stale=await call('renew_control',{control_token:old.control_token});assert.equal(stale.code,'SESSION_INVALID');
-  const fresh=await call('acquire_control');assert.equal(fresh.ok,true);assert(fresh.result.revision>old.revision);
+  // An unexpired lease survives the fenced restart; the old token keeps working.
+  const kept=await call('renew_control',{control_token:old.control_token});assert.equal(kept.ok,true);assert(kept.result.revision>old.revision);
+  const busy=await call('acquire_control');assert.equal(busy.code,'SESSION_BUSY');assert.equal(busy.expires_at,kept.result.expires_at);
   assert.equal((await journal.load(queued.run_id)).revision,4);
  }finally{cli.stdin.end();await new Promise<void>(resolve=>{cli.once('exit',()=>resolve());setTimeout(()=>{cli.kill('SIGTERM');resolve();},2000).unref();});await fs.rm(home,{recursive:true,force:true});}
 });

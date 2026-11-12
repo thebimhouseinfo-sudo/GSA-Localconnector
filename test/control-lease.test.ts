@@ -136,11 +136,83 @@ platformTest('owner-fence invalidation waits for an in-process lock whose metada
   await new Promise(r=>setTimeout(r,100));
   assert.equal((await fs.stat(lock)).ino,before.ino,'a live lock must not be unlinked before its metadata is written');
   unblock();const acquired=await acquiring;await invalidating;
-  await assert.rejects(store.require(acquired.control_token),code('SESSION_INVALID'));
+  assert.equal((await store.require(acquired.control_token)).session_id,acquired.session_id); // unexpired lease survives owner fence
  }finally{
   unblock();await Promise.allSettled([acquiring,...(invalidating?[invalidating]:[])]);
   if(previousFD===undefined)delete process.env.GSA_OWNER_LOCK_FD;else process.env.GSA_OWNER_LOCK_FD=previousFD;
   if(previousSession===undefined)delete process.env.GSA_OWNER_SESSION;else process.env.GSA_OWNER_SESSION=previousSession;
   await f.cleanup();
  }
+});
+async function withOwner<T>(owner:string,run:()=>Promise<T>):Promise<T>{
+ const previousFD=process.env.GSA_OWNER_LOCK_FD,previousSession=process.env.GSA_OWNER_SESSION;
+ process.env.GSA_OWNER_LOCK_FD='3';process.env.GSA_OWNER_SESSION=owner;
+ try{return await run();}
+ finally{
+  if(previousFD===undefined)delete process.env.GSA_OWNER_LOCK_FD;else process.env.GSA_OWNER_LOCK_FD=previousFD;
+  if(previousSession===undefined)delete process.env.GSA_OWNER_SESSION;else process.env.GSA_OWNER_SESSION=previousSession;
+ }
+}
+test("SESSION_BUSY exposes the blocking lease expires_at",async()=>{
+ const f=await fixture();
+ try{
+  let now=1_000_000;const store=new ControlLeaseStore(f.dir,300000,()=>now);
+  const lease=await store.acquire();now+=1000;
+  await assert.rejects(store.acquire(),(error:any)=>error.code==="SESSION_BUSY"&&error.expires_at===lease.expires_at);
+ }finally{await f.cleanup();}
+});
+test("an expired lease can be re-acquired immediately",async()=>{
+ const f=await fixture();
+ try{
+  let now=1_000_000;const store=new ControlLeaseStore(f.dir,300000,()=>now);
+  const first=await store.acquire();now=first.expires_at;
+  const second=await store.acquire();
+  assert.notEqual(second.control_token,first.control_token);
+  await assert.rejects(store.require(first.control_token),code("SESSION_INVALID"));
+ }finally{await f.cleanup();}
+});
+test("owner restart keeps an unexpired lease so the old token still renews",async()=>{
+ const f=await fixture();
+ try{
+  let now=1_000_000;const before=new ControlLeaseStore(f.dir,300000,()=>now);
+  const lease=await before.acquire();now+=1000;
+  await withOwner(randomUUID(),()=>new ControlLeaseStore(f.dir,300000,()=>now).invalidateAfterOwnerFence(process.env.GSA_OWNER_SESSION!));
+  const after=new ControlLeaseStore(f.dir,300000,()=>now);
+  const renewed=await after.renew(lease.control_token);
+  assert.equal(renewed.session_id,lease.session_id);
+  await assert.rejects(after.acquire(),code("SESSION_BUSY"));
+ }finally{await f.cleanup();}
+});
+test("owner restart still clears an expired lease record",async()=>{
+ const f=await fixture();
+ try{
+  let now=1_000_000;const before=new ControlLeaseStore(f.dir,300000,()=>now);
+  const lease=await before.acquire();now=lease.expires_at+1;
+  await withOwner(randomUUID(),()=>new ControlLeaseStore(f.dir,300000,()=>now).invalidateAfterOwnerFence(process.env.GSA_OWNER_SESSION!));
+  const record=JSON.parse(await fs.readFile(path.join(f.dir,"control-lease.json"),"utf8"));
+  assert.equal(record.token_sha256,null);
+  await assert.rejects(before.renew(lease.control_token),code("SESSION_INVALID"));
+ }finally{await f.cleanup();}
+});
+test("owner restart removes a stale lock of a previous owner but keeps the unexpired lease",async()=>{
+ const f=await fixture();
+ try{
+  let now=1_000_000;const store=new ControlLeaseStore(f.dir,300000,()=>now);
+  const lease=await store.acquire();
+  const lock=path.join(f.dir,"control-lease.lock");
+  await fs.writeFile(lock,JSON.stringify({owner_session:randomUUID()}),{mode:0o600});
+  await withOwner(randomUUID(),()=>new ControlLeaseStore(f.dir,300000,()=>now).invalidateAfterOwnerFence(process.env.GSA_OWNER_SESSION!));
+  assert.equal((await fs.readdir(f.dir)).includes("control-lease.lock"),false);
+  assert.equal((await store.require(lease.control_token)).session_id,lease.session_id);
+ }finally{await f.cleanup();}
+});
+test("owner restart never removes the current owner's own lock",async()=>{
+ const f=await fixture();
+ try{
+  const store=new ControlLeaseStore(f.dir);await store.acquire();
+  const owner=randomUUID(),lock=path.join(f.dir,"control-lease.lock");
+  await fs.writeFile(lock,JSON.stringify({owner_session:owner}),{mode:0o600});
+  await withOwner(owner,()=>assert.rejects(new ControlLeaseStore(f.dir).invalidateAfterOwnerFence(owner),code("CONTROL_LEASE_UNSAFE")));
+  assert.equal((await fs.readdir(f.dir)).includes("control-lease.lock"),true);
+ }finally{await f.cleanup();}
 });

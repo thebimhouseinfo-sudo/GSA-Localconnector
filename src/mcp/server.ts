@@ -677,6 +677,7 @@ export function createReadOnlyTools(registry: WorkspaceRegistry, nativeFiles:Nat
           required_action:"STOP_OWNER_AND_APPLY_QUALIFIED_RECOVERY",
           retryable_before_recovery:false
         }:{}),
+        ...(code==="SESSION_BUSY"&&e instanceof ControlLeaseError&&e.expires_at!==undefined?{expires_at:e.expires_at}:{}),
         ...(e instanceof Error?{message:e.message}:{})
       })}]};
     } finally {
