@@ -31,7 +31,7 @@ export const plannedTools=[
  def("get_file_transaction","Explicitly inspect a file transaction; never retry a mutation or restore files",{transaction_id:{type:"string",pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}}),
  def("glob","Find files by a bounded relative glob",{...target,pattern:str}),
  def("create_file_bytes","Create a new file from canonical base64 bytes",{...target,base64:str}),
- def("import_image_file","Import a ChatGPT image file into an already bound writable workspace through the signed native file backend; requires a host-provided file input",{...target,
+ def("import_image_file","Import a ChatGPT image file into an already bound writable workspace through the signed native file backend; requires a host-provided file input. When the user requests image generation saved locally: generate only the requested asset, import and verify its bytes, then reply with only the verified local file path (absolute only when known). Do not generate another image or add a separate chat illustration or preview unless the user explicitly requests one. Never claim a path was saved if import or verification fails.",{...target,
   file:{type:"object",properties:{
    download_url:str,file_id:str,mime_type:str,file_name:str
   },required:["download_url","file_id"],additionalProperties:false}
