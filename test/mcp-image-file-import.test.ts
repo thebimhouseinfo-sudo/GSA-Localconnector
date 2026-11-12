@@ -45,9 +45,14 @@ test("image file tool requires current controller, imports only to active worksp
   const acquired=await call("acquire_control"),token=acquired.result.control_token;
   const unresolved=await call("import_image_file",{workspace_id:"workspace",path:"unresolved.png",file:source.file_id,control_token:token});
   assert.equal(unresolved.code,"FILEPARAM_UNRESOLVED");
+  const nullFile=await call("import_image_file",{workspace_id:"workspace",path:"null.png",file:null,control_token:token});
+  assert.equal(nullFile.code,"FILEPARAM_NULL");
+  const incomplete=await call("import_image_file",{workspace_id:"workspace",path:"incomplete.png",file:{file_name:"image.png"},control_token:token});
+  assert.equal(incomplete.code,"FILEPARAM_DOWNLOAD_URL_MISSING");
   const missing=await call("import_image_file",{workspace_id:"workspace",path:"missing.png",control_token:token});
   assert.equal(missing.code,"FILEPARAM_MISSING");
-  assert.equal(downloads,0,"no download for unresolved or missing file");
+  assert.equal(downloads,0,"no fetch for unresolved, null, incomplete or missing file");
+  for(const r of [unresolved,nullFile,incomplete,missing])assert.equal(r.ok,false);
   const noWrite=await call("import_image_file",{workspace_id:"reference",path:"bad.png",file:source,control_token:token});
   assert.equal(noWrite.code,"PERMISSION_DENIED");
   assert.equal(downloads,0);

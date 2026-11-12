@@ -18,13 +18,40 @@ test("ChatGPT file param imports exact PNG bytes, MIME and SHA without altering 
  assert.equal(r.mime_type,"image/png");
  assert.equal(r.sha256,createHash("sha256").update(sample).digest("hex"));
 });
-test("unresolved fileParams produce a distinct error and never download",async()=>{
+test("malformed host fileParams are classified without fetch or disclosure",async()=>{
  let calls=0;
  const noFetch=(async()=>{calls++;throw Error("UNEXPECTED_DOWNLOAD");}) as typeof fetch;
- for(const input of [file.file_id,"chat_upload://image_0",{file_id:file.file_id}]){
-  await assert.rejects(downloadChatGptImage(input,"output.png",noFetch),{code:"FILEPARAM_UNRESOLVED"});
+ const cases:Array<[unknown,string]>=[
+  [null,"FILEPARAM_NULL"],
+  [undefined,"FILEPARAM_MISSING"],
+  [file.file_id,"FILEPARAM_UNRESOLVED"],
+  ["chat_upload://image_0","FILEPARAM_UNRESOLVED"],
+  [[], "FILEPARAM_ARRAY"],
+  [42,"FILEPARAM_INVALID_TYPE"],
+  [{},"FILEPARAM_EMPTY_OBJECT"],
+  [{file_id:file.file_id},"FILEPARAM_UNRESOLVED"],
+  [{file_name:"only.png"},"FILEPARAM_DOWNLOAD_URL_MISSING"],
+  [{download_url:file.download_url},"FILEPARAM_FILE_ID_MISSING"],
+  [{...file,extra_field:"private"},"FILEPARAM_UNEXPECTED_FIELDS"],
+  [{...file,download_url:123},"FILEPARAM_DOWNLOAD_URL_INVALID"],
+  [{...file,download_url:""},"FILEPARAM_DOWNLOAD_URL_INVALID"],
+  [{...file,file_id:"unknown"},"FILEPARAM_FILE_ID_INVALID"],
+  [{...file,file_name:123},"FILEPARAM_OPTIONAL_FIELDS_INVALID"],
+  [{...file,mime_type:123},"FILEPARAM_OPTIONAL_FIELDS_INVALID"]
+ ];
+ for(const [input,code] of cases){
+  await assert.rejects(
+   downloadChatGptImage(input,"output.png",noFetch),
+   (e:unknown)=>{
+    assert.ok(e instanceof Error);
+    assert.equal((e as Error&{code?:string}).code,code);
+    assert.equal(e.message,code);
+    assert.ok(!e.message.includes(file.download_url));
+    return true;
+   }
+  );
  }
- assert.equal(calls,0);
+ assert.equal(calls,0,"bad host inputs must never trigger a download");
 });
 test("file input rejects arbitrary URL, local network, redirects, opaque file id and spoofed MIME",async()=>{
  for(const url of [
@@ -35,7 +62,7 @@ test("file input rejects arbitrary URL, local network, redirects, opaque file id
   "https://files.oaiusercontent.com:8443/a",
   "file:///private/tmp/a.png"
  ])await assert.rejects(downloadChatGptImage({...file,download_url:url},"x.png",stub()),{code:"IMAGE_URL_REJECTED"});
- await assert.rejects(downloadChatGptImage({...file,file_id:"unknown"},"x.png",stub()),{code:"INVALID_IMAGE_FILE"});
+ await assert.rejects(downloadChatGptImage({...file,file_id:"unknown"},"x.png",stub()),{code:"FILEPARAM_FILE_ID_INVALID"});
  await assert.rejects(downloadChatGptImage(file,"x.png",stub(sample,302,{Location:"http://169.254.169.254"})),{code:"IMAGE_DOWNLOAD_FAILED"});
  await assert.rejects(downloadChatGptImage({...file,mime_type:"image/jpeg"},"x.png",stub()),{code:"IMAGE_MIME_MISMATCH"});
  await assert.rejects(downloadChatGptImage(file,"x.jpg",stub()),{code:"IMAGE_EXTENSION_MISMATCH"});

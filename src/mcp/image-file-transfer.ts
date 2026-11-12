@@ -17,17 +17,25 @@ function approvedHost(hostname:string):boolean{
   hostname.endsWith(".chatgpt.com");
 }
 function source(value:unknown):ChatGptFileInput{
- // ChatGPT may expose a host file parameter as a model-facing string.
- // File IDs alone are not authenticated image bytes; fail closed.
+ // An opaque model-facing string is not a host-provided download object.
+ // Diagnose the *shape only*, never values, keys, URLs, IDs, or tokens.
+ if(value===null)fail("FILEPARAM_NULL");
+ if(value===undefined)fail("FILEPARAM_MISSING");
  if(typeof value==="string")fail("FILEPARAM_UNRESOLVED");
- if(!value||typeof value!=="object"||Array.isArray(value))fail("INVALID_IMAGE_FILE");
- const v=value as Record<string,unknown>;
- if(typeof v.file_id==="string"&&!Object.hasOwn(v,"download_url"))fail("FILEPARAM_UNRESOLVED");
- if(Object.keys(v).some(key=>!["download_url","file_id","mime_type","file_name"].includes(key))||
-    typeof v.download_url!=="string"||typeof v.file_id!=="string"||
-    !/^(?:file_|file-)[A-Za-z0-9_-]{8,128}$/.test(v.file_id)||
-    (v.mime_type!==undefined&&typeof v.mime_type!=="string")||
-    (v.file_name!==undefined&&typeof v.file_name!=="string"))fail("INVALID_IMAGE_FILE");
+ if(Array.isArray(value))fail("FILEPARAM_ARRAY");
+ if(typeof value!=="object")fail("FILEPARAM_INVALID_TYPE");
+ const v=value as Record<string,unknown>,keys=Object.keys(v);
+ if(keys.length===0)fail("FILEPARAM_EMPTY_OBJECT");
+ if(keys.some(key=>!["download_url","file_id","mime_type","file_name"].includes(key)))fail("FILEPARAM_UNEXPECTED_FIELDS");
+ if(!Object.hasOwn(v,"download_url")){
+  if(Object.hasOwn(v,"file_id"))fail("FILEPARAM_UNRESOLVED");
+  fail("FILEPARAM_DOWNLOAD_URL_MISSING");
+ }
+ if(!Object.hasOwn(v,"file_id"))fail("FILEPARAM_FILE_ID_MISSING");
+ if(typeof v.download_url!=="string"||v.download_url.length===0)fail("FILEPARAM_DOWNLOAD_URL_INVALID");
+ if(typeof v.file_id!=="string"||!/^(?:file_|file-)[A-Za-z0-9_-]{8,128}$/.test(v.file_id))fail("FILEPARAM_FILE_ID_INVALID");
+ if(v.mime_type!==undefined&&typeof v.mime_type!=="string"||
+    v.file_name!==undefined&&typeof v.file_name!=="string")fail("FILEPARAM_OPTIONAL_FIELDS_INVALID");
  return v as ChatGptFileInput;
 }
 function approvedUrl(downloadUrl:string):URL{
