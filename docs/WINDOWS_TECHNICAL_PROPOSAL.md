@@ -1,6 +1,6 @@
 # Windows Native Connector — Technical Proposal
 
-**Updated:** 2026-11-12 (V3 Mac reliability comparison)  
+**Updated:** 2026-11-13 (V4 FIR-01..08 planning repair)  
 **Status:** PRE-CODE — technical review required  
 **Repository/branch:** `thebimhouseinfo-sudo/GSA-Localconnector` / `feat/windows-native-connector-20261109`  
 **Branch fork:** `41102fa3e9d2a187c8373b1474e9377b737c66b1`; **Mac READ-ONLY reference:** `main@9d66c60c4f31cae6cfed64838468b5558973ab0c` (not an integration target)
@@ -23,7 +23,7 @@ These requirements are derived from Mac fixes observed **read-only** on `main`; 
 
 ### A. Grant reauthorization and native backend readiness (W1-04, W2-01, W4-01)
 
-Reuse the common grant inventory and the selected-only root rebind semantics now found in `src/local/grants.ts`, `src/core/workspace.ts`, `src/mcp/server.ts` and `docs/workspaces/LOCAL-ENROLLMENT.md`: `ACTIVE`, `STALE`, `REAUTH_REQUIRED`, `REVOKED`, versioned root identity and independent preservation of unrelated stale grants. Windows root identity must be independently proven with volume/file handles and alias/reparse-negative tests.
+**The Windows branch contains the OLD grant store; it does NOT contain the newer Mac selected-only recovery implementation. Implement the target behavior on Windows rather than assuming these APIs exist.** The Mac read-only source illustrates the desired contract: `ACTIVE`, `STALE`, `REAUTH_REQUIRED`, `REVOKED`, versioned root identity and independent preservation of unrelated stale grants. Windows root identity must be independently proven with volume/file handles and alias/reparse-negative tests.
 
 **Two different readiness layers:** `bind_workspaces` may persist an explicitly selected, newly verified root while the native file-grant/backend installation still refers to an older grant set. Report that mismatch with a structured actionable recovery diagnostic, *not* a false successful file capability. An attempted mutation must fail closed. W1-04 investigates a safe qualified update scheme with owner fencing, atomic install/readback and preserved previous generation/journals; only qualified proof may activate a new grant set. Never treat easier update UX as permission to skip signature/identity/recovery protections. Source tests and real selected Windows plugin evidence cover both successful sync and blocked mismatch.
 
@@ -31,9 +31,9 @@ Required negatives: stale root replacement, unrelated stale record, root/volume 
 
 ### B. Existing binary/image import (W2-05, W4-01, W5-02)
 
-`src/mcp/image-file-transfer.ts` already defines the host-supplied `file` input, approved HTTPS download, no redirects/URL credentials, bounded image data, PNG/JPEG/WebP signature and extension validation. Keep the existing **MCP tool and `_meta["openai/fileParams"]=["file"]` protocol**; do not reimplement image parsing or use chat-assembled Base64 as a special Windows workaround.
+**MISSING on Windows source:** `src/mcp/image-file-transfer.ts` and the `import_image_file` MCP tool. These exist on newer Mac `main` only and are design references. W2-05 must write a Windows-branch validator/download interface with the same external host-supplied `file` behavior: approved HTTPS origin, no redirects/URL credentials, bounded image data, PNG/JPEG/WebP signature and extension validation. W4-01 must add tool metadata and dispatch on Windows; W4/G4 tests the actual tool. Keep the existing **MCP tool and `_meta["openai/fileParams"]=["file"]` protocol**; do not reimplement image parsing or use chat-assembled Base64 as a special Windows workaround.
 
-The Windows adapter must connect **that validated byte stream** to a native, scoped exclusive-create file operation. Existing `create_file_bytes` and `fetch_file_bytes` share the same workspace and write-grant authority; reject references as destinations and do not allow a failed native backend to trigger a generic unconfined `fs.writeFile` fallback. Responses require source/import SHA-256 and independently fetched local bytes/metadata. Every output path must be a grounded workspace-relative path; absolute output paths are derived only from verified Windows workspace identity.
+The Windows adapter must connect **that validated byte stream** (from newly implemented Windows fileParam code, not a missing reusable local module) to a native, scoped exclusive-create file operation. Existing `create_file_bytes` and `fetch_file_bytes` share the same workspace and write-grant authority; reject references as destinations and do not allow a failed native backend to trigger a generic unconfined `fs.writeFile` fallback. Responses require source/import SHA-256 and independently fetched local bytes/metadata. Every output path must be a grounded workspace-relative path; absolute output paths are derived only from verified Windows workspace identity.
 
 Tests: legitimate host fileParam object, unresolved string/ID, missing fields, bad/redirected URL, disallowed hostname, MIME/signature/extension mismatch, >8MiB, malicious relative path/ADS, collision, read-only reference, revoked controller, stale backend grant, short transfer/interrupted write and preserved source/readback hash. The existing `test/mcp-image-file-import.test.ts` contains a POSIX-controller fixture skipped on win32; **a Windows-skip does not count as Windows PASS**. Native fixtures on `windows-latest` and an end-to-end actual ChatGPT image artifact through the selected Windows plugin are separate gates.
 
@@ -45,7 +45,7 @@ The Windows MCP capability status must differentiate (1) read/list ability, (2) 
 
 ### D. Provenance and test strategy
 
-- During W0 **read** the relevant Mac fixes from `main` and record their problem/solution/negative-test lessons. Do **not** merge, rebase, cherry-pick or copy commits to Windows, and do not write `main`. Implement only approved Windows code on its own development branch.
+- During W0 **read** the relevant Mac fixes from `main` and audit the actual Windows branch for AVAILABLE, MISSING, and REQUIRES_ADAPTATION before assigning any source owner. Do **not** merge, rebase, cherry-pick or copy commits to Windows, and do not write `main`. Implement only approved Windows code on its own development branch.
 - Windows hosted test gate: actual Win32 filesystem+Job Object fixtures, real tool dispatch, exact commit/source provenance, explicit fail on required skip/missing runner. Mac source/regression gate on the same integration commit is separate.
 - Real Windows plugin acceptance after reviewed hosted CI and installer authorization; user-owned test roots only; verify imported image original bytes against file API readback rather than asserting success from an MCP response.
 - Review source interfaces before replacing or extending any shared contract; one integrator owns `src/mcp/server.ts`, `catalog.ts`, `runtime-bootstrap.ts` and `write-dispatch.ts`.
@@ -75,7 +75,7 @@ A shared contract documented in newer Mac code is a **target behavior** to match
 
 ### R3 — HTTP/stdio transport & error semantics (W4-04)
 
-- Reuse current `src/mcp/http.ts` scheme: bounded headers and request receipt, then suspend socket idle timeout during active tool execution, restore after response. This does **not** grant unlimited tool execution; `run_command` itself still has a bounded maximum.
+- **Windows branch still has the old 30-second socket timeout.** W4-04 must implement the referenced Mac outcome independently: bounded headers and request receipt, then suspend socket idle timeout during active tool execution, restore after response. This does **not** grant unlimited tool execution; `run_command` itself still has a bounded maximum.
 - Keep precise JSON-RPC classes: invalid request `-32600`, unknown method `-32601`, invalid params `-32602`, internal error `-32603`. Use application codes `INTERNAL_ERROR`, `PROCESS_JOURNAL_UNAVAILABLE` and `SESSION_INVALID` only for their actual conditions, without exposing raw local file paths/credential material. HTTP and stdio parity is required.
 - **Windows tests:** >30s bounded benign command returns a response and recoverable process ID/output; slow/oversize HTTP request denied, known invalid argument mapped correctly, internal thrown error not presented as invalid params or auth failure, secret strings absent from results/log snapshots.
 
@@ -109,7 +109,7 @@ A shared contract documented in newer Mac code is a **target behavior** to match
 | `scripts/desktop-*`, Mac app and tunnel code | Reuse config schema and startup invariants; Windows tray/installer native |
 | `src/local/*-store.ts` | Reuse schemas and record identity, implement Windows ACL/lock/readback equivalents |
 
-Record exact imports/callers before modifying these shared seams. A change to shared code requires both Windows tests and a Mac regression check.
+Record exact imports/callers before modifying these shared seams. A change to shared code requires both Windows tests and a Mac regression check **of the Mac code paths present in the Windows branch**; this does not imply the branch has newer `main` code.
 
 ## 2. Windows authority and threat model
 
@@ -123,13 +123,13 @@ Record exact imports/callers before modifying these shared seams. A change to sh
 
 Reject requests whose initial cwd is outside the granted workspace or in reference roots. State that child scripts can access outside workspace under Windows user privileges. Do not call that a sandbox. Keep timeout/output caps, minimal environment and correct ownership-based cancellation.
 
-**Network Git** must be a separate capability with enforceable endpoint/proxy/credential policy, not generic `run_command(["git","fetch"])` as a bypass. If no enforceable policy has been demonstrated, continue returning `SECURITY_BLOCKED` for fetch/pull/push and advertise it as unavailable. Review usability tradeoff with the user when that gate becomes material.
+**Connector-managed remote Git APIs** must be a separate capability with enforceable endpoint/proxy/credential policy; do not route them internally through an unconfined `run_command(["git","fetch"])` as an apparent enforcement bypass. **But the approved PowerShell/CMD runner itself is deliberately unconfined**: it can invoke network Git using the logged-in user's rights. Therefore the connector cannot claim an OS-wide Git/network prohibition. GSA/user task authorization for internet/credentials remains a distinct responsibility; no connector-issued secret may be inherited by shell processes. If no enforceable connector API policy has been demonstrated, remote Git APIs continue returning `SECURITY_BLOCKED` and advertise that API capability as unavailable; do not misrepresent this as shell/OS network confinement. Review usability tradeoff with the user when that gate becomes material.
 
 ### 2.2 Path identity, case, reparse points
 
-Root selection resolves through the Windows filesystem once, opens and pins a directory handle, and records stable volume identity + file ID/reparse characteristics + canonical resolved path and grant revision. Do not rely on `path.win32.resolve()` alone. Windows drive-letter mapping, volume GUID aliases, case-insensitivity, 8.3 names, junctions, mount points, symlinks, UNC, `\\?\` and alternate data streams need explicit classification. A new or replaced root, revoked grant, changed drive/volume or changed canonical identity blocks stale tool operations. Reject reserved device names, trailing dot/space ambiguity, embedded NUL, path segments `.`/`..`, alternate streams and unexpected reparse traversal. Do not assume every Windows filesystem exposes the same semantics; start from observed NTFS/Windows runner and record unsupported volumes.
+Root selection resolves through the Windows filesystem once, opens and pins a directory handle, and records stable volume identity + file ID/reparse characteristics + canonical resolved path and grant revision. Do not rely on `path.win32.resolve()` alone. Windows drive-letter mapping, volume GUID aliases, case-insensitivity, 8.3 names, junctions, mount points, symlinks, UNC, `\\?\` and alternate data streams need explicit classification. A new or replaced root, revoked grant, changed drive/volume or changed canonical identity blocks stale tool operations. Reject reserved device names, trailing dot/space ambiguity, embedded NUL, path segments `.`/`..`, alternate streams and unexpected reparse traversal. NTFS **hardlinks are not reparse points**: for links to objects outside a granted root, deny ambiguous multi-link targets for read/write or prove bounded authority under a separately reviewed design; initially fail closed when link count >1 if identity/containment cannot be verified. Test access to an out-of-root file via an in-root hardlink. Do not assume every Windows filesystem exposes the same semantics; start from observed NTFS/Windows runner and record unsupported volumes.
 
-For each file operation: validate a lexical relative path **then** traverse using pinned opened directory handles; recheck identity at the actual create/open/rename/delete, not only before. Prevent time-of-check/time-of-use escapes by adversarial junction swap tests. A path string returned to the model is not an authority token. Temporary paths, output artifacts and journal roots remain separated from authorized project data.
+For each file operation: validate a lexical relative path **then** traverse using pinned opened directory handles; recheck root volume/file ID, grant revision and target file identity at the actual create/open/rename/delete, not only before. Recheck role authorization before destructive commit. The operation must abort or return UNKNOWN/CONFLICT if grant changes, the file is renamed/replaced, a competing creator appears, or filesystem cannot provide needed atomicity. Prevent time-of-check/time-of-use escapes by adversarial junction swap tests. A path string returned to the model is not an authority token. Temporary paths, output artifacts and journal roots remain separated from authorized project data.
 
 ### 2.3 Durable private state and secrets
 
@@ -170,7 +170,7 @@ For unsupported filesystem atomicity or interrupted states, return `UNKNOWN`/blo
 
 ## 5. Git and network
 
-Use existing `gitPlan` allowlist and local `executeGit` with Windows native process adapter. It must work for local repositories and preserve unrelated dirty/untracked content. Validate executable and workspace identity; harden environment to prevent accidental token/helper leaks, and disable hooks for connector-authored operations where appropriate.
+Use the Git plan allowlist that actually exists on the Windows branch, and implement local `executeGit` with a Windows native process adapter. It must work for local repositories and preserve unrelated dirty/untracked content. Validate executable and workspace identity; harden environment to prevent accidental token/helper leaks, and disable hooks for connector-authored operations where appropriate.
 
 **Remote phase is separate**: a deliberate restricted-network adapter must prevent arbitrary remote URLs, `insteadOf` rewrites, unexpected redirects and unsafe credential helpers. It must pin permitted GitHub HTTPS endpoints, source grant and authorization; preserve proper user consent to network/key use and verify ff-only pull behavior. If the platform cannot prove this boundary, remote remains `NETWORK_CAPABILITY_NOT_VERIFIED` and is not part of falsely reported native PASS. May use the connected GitHub plugin for remote repository operations in ChatGPT, but this is **not** equivalent to local Git remote PASS.
 
@@ -190,6 +190,34 @@ Maintain old tool names, `workspace_id`, role semantics, hashes, transaction and
 Implement smallest per-user Windows tray/background application with **Open and Quit**; allow start at user login, one-instance owner, safe tunnel start/stop, saved per-machine connection settings, and observable status. No Pause/Resume, no anti-sleep, no hidden always-on daemon after Quit. Keep other Windows apps and services untouched. Quit must stop owned tunnel/helper processes only; when active operation state cannot be proven idle, fail safe and report inability to complete Quit rather than terminate unknown work.
 
 Deliver one reviewed install/update/uninstall workflow, no unnecessary administrator privilege, no unrelated registry/system changes. Protect API key/tunnel ID with per-user secrets storage, fail-closed parsing, ignore .env and generated private files in Git, no secrets in logs/CI artifacts. On failed upgrade preserve last working installation and journal.
+
+## V4 — FIR-01..08 corrected implementation mechanisms and proof split (2026-11-13)
+
+**Source truth:** On Windows branch at audited source HEAD `4dbb3f5`, MCP byte create/fetch schemas exist but still need native backend; the image-file-transfer module and `import_image_file` do not exist; `fileGrantSyncState`, selected-only reauthorization/new grant lock, journal rejected-promise retry, HTTP long-call fix and Windows native bootstrap are missing or old. Newer `main@9d66c60` is READ-ONLY, NEVER merged/cherry-picked. W0-08 owns a file/blob/API inventory before W1 implementation. See implementation Plan V4 for the full table.
+
+### D1 — Success-path grant lifecycle (FIR-03; W1-04/W2-01/G2/W5)
+
+After the initial per-user install and verified native backend qualification, a normal plugin bind/add/rebind/revoke must **atomically synchronize the backend grant generation** without requiring the user to reinstall/stop the connector each time. Stage the requested grant revision, prove selected folder identity/role and owner fence, validate qualified backend identity/signature and produce a new bound manifest under an exclusive trusted update transaction; publish only after durable backend readback. Retain previous version/journal for failure. W1-04 establishes protocol and simulated adapter test; W2-01 implements real Windows file broker transaction; W4-01 reports confirmed readiness vs blocked mismatch; W5 checks first bind and repeated rebind on the installed host. A broken sync must fail closed with actionable repair but cannot be accepted as normal behavior. No per-file or per-operation permission unlocks.
+
+### D2 — File TOCTOU, hardlink and recovery (FIR-05; W2/G2)
+
+Treat NTFS hardlinks, reparse/junction swaps, volume aliasing, short names, ADS, open-file identity replacement, grant revocation **during** an operation, simultaneous rename/delete and unavailable atomic rename as separate adversarial cases. Recheck opened Win32 handles, identity and current grant revision at the commit point; do not make path prechecks alone authoritative. For unsafe hardlink count/alias or unsupported filesystems, deny or return CONFLICT/UNKNOWN rather than mutating a physically out-of-scope file. Verify recorded intent and readback after interruption before allowing any repeat; protect preserved prior version. Test all on actual `windows-latest` NTFS fixtures before enabling file tools.
+
+### D3 — Split native adapters from MCP (FIR-02/FIR-08)
+
+**G1** test-only owner/grant state machine and mock qualified refresh; **G2** real Win32 native files/directories/bytes and newly authored secure fileParam parser with local fixtures; **G3** real Win32 user commands/Job Objects/journal/local Git with two concurrent workspaces and no G2 dependency. **G4** integrated MCP catalog/dispatch/status, host fileParam simulator through the new `import_image_file` tool, HTTP/stdio errors and desktop/package. **G5** real selected-plugin image artifact, native file/grant success and long-running jobs. G2/G3 may run in parallel; source APIs missing on Windows must be authored, not mislabeled reused.
+
+### D4 — Parallel jobs, logs and disconnect safety (FIR-06; W3/G3/W5)
+
+Persist each run ID, workspace ID, owning Job Object/process handle identity, cwd/argv, bounded stdout/stderr offsets, output artifact paths+SHA and exit/cancel outcome. Launch two harmless scripts at once in different disposable workspaces; query paginated incremental logs without mixing bytes or overwriting prior output; disconnect the plugin during one run then reconnect/read journal without replay; cancel only one owned Job Object, assert the other continues and an unrelated same-name process survives. If a handle cannot be reattached, return UNKNOWN rather than targeting a PID by name.
+
+### D5 — Installer, credentials and separate host identity (FIR-07; W4/G4/W5)
+
+Windows has its **own** plugin registration/transport identity and per-user installer separate from the Mac. Keep the user's chosen repo `.env` (ignored by Git) as an allowed config input, parsed as key/value **data only** via an allowlist (never executed). If private DPAPI-backed state also exists, define one precedence: valid, already-confirmed per-user connector state wins until the user explicitly changes settings; otherwise read the validated repo `.env` once and store securely for normal launches. On disagreement, display a safe conflict/reconfiguration outcome, never silently overwrite a valid tunnel ID/key. An update must not require reentry when valid keys exist; stage verified binaries, preserve identity/grants/journals, stop owned processes safely, atomically switch and roll back on failed launch. Remove only connector-owned installation artifacts; never modify other apps, Mac plugin or user projects. Tests cover upgrade, missing/corrupt `.env`, secret redaction, separate plugin identity, auth failure and rollback.
+
+### D6 — Git API transparency (FIR-04; W3/G3)
+
+Advertise **remote_git_api: BLOCKED/UNVERIFIED** separately from **command_confinement: none (user account)**. A trusted user-account shell can access remote network/Git outside connector's API controls; no OS-wide network confinement exists. Explicit user/GSA consent governs sensitive remote/network/credential requests; do not silently export connector secrets to the command environment. Local Git, including a non-Git folder receiving NOT_APPLICABLE, must remain usable.
 
 ## 8. Native feasibility & CI matrix
 
