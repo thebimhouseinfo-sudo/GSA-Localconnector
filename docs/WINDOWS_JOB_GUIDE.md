@@ -1,6 +1,6 @@
 # Windows Native Connector — Job Guide / Task Contracts
 
-**Updated:** 2026-11-12 (V3 Mac reliability delta review)  
+**Updated:** 2026-11-13 (V4 FIR-01..08 repair + reviewer handoff)  
 **Status:** PRE-CODE / NOT AUTHORIZED TO IMPLEMENT  
 **Development branch (single):** `feat/windows-native-connector-20261109`  
 **Branch fork SHA:** `41102fa3e9d2a187c8373b1474e9377b737c66b1` · **Mac READ-ONLY source reference:** `main@9d66c60c4f31cae6cfed64838468b5558973ab0c` (not a merge target)  
@@ -14,7 +14,7 @@ Give each bounded Windows W0–W5 Job a single contract covering WHAT, WHERE, co
 
 The Windows branch initially contained four planning-document commits and no Windows native feature diff. Mac reference `main@9d66c60` includes 16 newer reliability fixes after `bce1875`. **This comparison is read-only research; W0 does not require or permit merging, rebasing or cherry-picking Mac `main`.** GSA branch authority permits documentation work on the Windows branch. Earlier Mac Planning Job `J-F33D` is historical and does not authorize Windows coding.
 
-Relevant new shared-source contracts: `src/local/grants.ts` selected-only reauthorization, `src/mcp/server.ts` file-backend sync diagnostics, `src/mcp/image-file-transfer.ts` image fileParam/validated image download and `src/mcp/startup-registry.ts` lifecycle. These are **reusable interfaces**; actual Windows support and native testing remain open.
+Mac reference describes selected-only reauthorization, file-backend sync, fileParam validation and desktop lifecycle. **They are not all present in the Windows branch.** W0-08 pins Windows source: existing MCP byte create/fetch interfaces need native adaptation; selected-only recovery, `fileGrantSyncState`, `import_image_file` and `src/mcp/image-file-transfer.ts` are MISSING; controller lease/journal/HTTP need updates; Windows native bootstrap is absent. Never assign a job with a missing local function listed as a reusable local import.
 
 ## Windows-only source rule (corrected Human intent)
 
@@ -37,15 +37,43 @@ Relevant new shared-source contracts: `src/local/grants.ts` selected-only reauth
 | **W4-04** HTTP/stdio reliability and errors | Reuse HTTP active-call timeout split and exact JSON-RPC error mapping; add Windows-host proof, not another transport | `src/mcp/http.ts`, `src/mcp/server.ts`, Windows tests; >30s benign tool still returns result; header timeout remains; invalid params `-32602`, internal errors `-32603`, invalid request `-32600`, missing method `-32601`; no secret/path leak |
 | **W4-05** Windows tray restart & safe Quit | Implement bounded retryable tunnel restart, no retry on auth/config/explicit Quit; observe owned work and permit explicit confirm-force within Quit only | Windows tray/installer + Job Object adapter, tests: owner remains unique, retries capped, `IDLE/ACTIVE/UNKNOWN` honored, confirmed Force Quit stops only connector-owned tree; no Pause/Resume UI |
 
-**Shared-edit ownership:** exactly one integrator modifies `src/mcp/{runtime-bootstrap,server,catalog,write-dispatch}.ts`. Windows feature owners prepare independent Windows adapters/tests and interface requests. Whenever a shared TS fix from `main` already satisfies the contract, **do not reimplement it**; add Windows-native checks and truthfully record platform limitations. Source changes and app installation remain gated separately.
+**Shared-edit ownership:** exactly one integrator modifies `src/mcp/{runtime-bootstrap,server,catalog,write-dispatch}.ts`. Windows feature owners prepare independent Windows adapters/tests and interface requests. Only avoid implementation when that capability **already exists on the Windows branch** and is checked at the pinned Windows source SHA. A Mac `main` fix is design guidance only and must be authored independently when missing. Add Windows-native checks and truthfully record platform limitations. Source changes and app installation remain gated separately.
 
 **Test-host isolation:** synthetic `USERPROFILE`/`APPDATA`/`LOCALAPPDATA`/TEMP/identity for Windows tests; no real user grants, secrets, registry or installed connector modifications during hosted fixtures. No tests with Windows skips count as Windows native PASS. Preserve Mac CI on the same integration SHA.
 
 **W5 final acceptance supplement:** actual selected Windows plugin must (a) recover after a disposable retryable tunnel failure without owner duplication, (b) preserve and renew the same unexpired controller lease across reconnect, (c) diagnose stale/malformed grant lock without unsafe deletion, (d) report a temporarily unavailable journal without disabling status/discovery and recover later, (e) complete a benign long tool call through HTTP with correct status/output, and (f) perform normal Quit and explicitly confirmed owned-only Force Quit without killing an unrelated neighbor. Do not require physical reboot or Mac Pause/Resume. If no Windows host is connected, mark these `CHƯA KIỂM / PENDING USER REQUIRE`, never PASS.
 
+## V4 repair execution checklist — FIR-01..08 (2026-11-13)
+
+**Scope:** amend only approved Windows-branch planning and later Windows implementation. Mac `main` remains READ-ONLY and will not be merged, cherry-picked, rebased or modified. Status below is **documentation repaired; product implementation unverified**.
+
+| Finding | WHAT / owner / dependencies | DONE evidence (not inferred from Mac) |
+| --- | --- | --- |
+| FIR-01 | W0-08 exact Windows source audit first; W2-05 creates missing importer validator, W4-01 creates missing MCP `import_image_file`/fileGrantSyncState | Pinned Windows SHA, missing/available/adaptation table, native parser fixture G2, MCP schema+invocation G4 |
+| FIR-02 | G2 native scoped files+parser; G3 owned process/local Git independently, both after G1; W4-01 integrates only after both | G2+G3 reports independently PASS; G4 executes real `tools/list`, `tools/call`, HTTP and stdio with installed native backends |
+| FIR-03 | W1-04 simulated qualified grant update, W2-01 real native update, W4-01 status, W5 selected plugin | First install then bind/add/rebind/revoke without manual native reinstall; grant-set revision matches backend, failure preserves old signed generation and journal |
+| FIR-04 | W3-04 remote Git **API** policy; W3-01 command runner user account | Prove restricted Git API or BLOCKED; capabilities explicitly say PowerShell/CMD user-run commands are not OS/network confined; connector secrets absent from child env |
+| FIR-05 | W2-01..04 handle/root/file ID and grant revision, Win32 mutation backend | Native NTFS hardlink to ungranted file, reparse/junction/ADS, grant revoked mid-operation, concurrent rename/delete, identity swap, unsupported FS atomicity; no out-of-root effect |
+| FIR-06 | W3-02/05 and G3 fixture, W5 real plugin | Two concurrent separate workspace jobs with independent paginated logs/cwd/argv/artifacts/exit, stop only one Job Object, disconnect/reconnect readback, no replay or neighbor kill |
+| FIR-07 | W4-02/03/05 Windows installer+plugin registration, G4 packaging, W5 install | Keep Windows tunnel ID+runtime key in ignored `.env` data or documented protected state, explicit precedence, no secret in logs/artifacts, safe rollback, no reprompt or Mac plugin corruption |
+| FIR-08 | W2-G2 and W3-G3 concurrently, both inputs to W4-G4 | DAG has no cross-edge G2→G3 or G3→G2; detailed per-task dependencies match aggregate DAG and tests match gates |
+
+**Assignment safeguards:** Before code, W0-08 labels every referenced local import as PRESENT / MISSING; never let W2 owner edit integrator-owned `src/mcp/{server,catalog,runtime-bootstrap,write-dispatch}.ts`. W1-04 mock grant success is not real native G2 proof. A selected real Windows host is necessary only for W5 and not simulated by GitHub CI.
+
+### Windows source reality (FIR-01)
+
+- AVAILABLE as interface/handler: `create_file_bytes` and `fetch_file_bytes`; underlying qualified Windows-native file effects not proven.
+- MISSING: `src/mcp/image-file-transfer.ts`, `import_image_file`, `fileGrantSyncState`, modern grant recovery and Windows-native MCP bootstrap.
+- REQUIRES_ADAPTATION: old grant-store locking, controller lease reset/SESSION_BUSY expiry, process journal retry/DEGRADED, HTTP timeout/error semantics and Windows file/command backend.
+- Confirm this classification again against exact current Windows source commit before writing; if it changed, revise task owners and acceptance without importing `main`.
+
+### Reviewer criteria for W0-06 and later
+
+Reject planning if source-absent APIs are treated as already reusable, G2/G3 depend on each other, normal plugin bind requires manual reinstall, remote Git API denial is misrepresented as full shell network sandbox, hardlink/TOCTOU negatives are missing, installer secret precedence/rollback is unspecified, or hosted tests are called selected-plugin proof. Record finding IDs, exact file lines, current branch SHA and disposition.
+
 ## 1. Purpose and how to use this guide
 
-Windows development starts from the **Mac-accepted existing source**, not a blank connector. The Mac milestone has been accepted by the user; its implementations are patterns, **not** Windows verification. Windows Plan, Milestones, Technical Proposal and the approved Criteria are the authority. This guide tells each assigned GSA role **WHAT / WHERE / CONSTRAINTS / DONE** and the necessary reading, not how to reason or a second copy of GSA Harness.
+Windows development starts from the **existing Windows-branch codebase** and Mac-accepted behavior as read-only reference, not from a blank connector or a merge of newer Mac source. The Mac milestone has been accepted by the user; its implementations are patterns, **not** Windows verification. Windows Plan, Milestones, Technical Proposal and the approved Criteria are the authority. This guide tells each assigned GSA role **WHAT / WHERE / CONSTRAINTS / DONE** and the necessary reading, not how to reason or a second copy of GSA Harness.
 
 A role performing a task must use its active GSA Harness and load only relevant Skills. Do not independently create a new project, overwrite `main`, merge, rebase or cherry-pick from `main` into Windows. Tasks remain on the single Windows branch unless the user changes branch governance.
 
@@ -89,7 +117,7 @@ Do not paste full Criteria, Harness or Proposal into each job. Link exact sectio
 
 **W0-05 Mac bugfix study (READ-ONLY):** inspect selected commits, code, fix guides and tests on `main`, and map each defect to corrected behavior, a native Windows mechanism and a Windows test. Do not write `main`, merge, rebase, cherry-pick or synchronize its code into Windows. Before coding, pin the current **Windows** branch commit only.
 
-**W0-07 reliability delta (mapped, not reviewed):** inspect nine Mac fixes as reference and classify behavior/contracts to reproduce, Windows-specific mechanisms/tests and Mac-only exclusions. **W0-06** reviews the resulting Windows design without any source-merge gate.
+**W0-07 reliability delta (mapped, not reviewed):** inspect nine Mac fixes as reference and classify behavior/contracts to reproduce, Windows-specific mechanisms/tests and Mac-only exclusions. **W0-08 source inventory (review pending):** explicitly mark each Windows API AVAILABLE / MISSING / REQUIRES_ADAPTATION with exact file SHA and owner before W1. **W0-06** reviews both against the Windows design without any source-merge gate.
 
 **W0-06 planning review (PENDING):** verify all four docs at their committed blobs, check Criteria §§1–10, exact dependency/acceptance traceability, and correct findings on this Windows branch. Present reviewed Plan for Human approval before starting Windows product coding.
 
@@ -117,12 +145,12 @@ Do not paste full Criteria, Harness or Proposal into each job. Link exact sectio
 
 ## 5. W2 — Native file/recovery/directory contracts
 
-**W2-05 Windows bytes and image import (new, depends W2-01 and W1-04):**
+**W2-05 Windows bytes and NEW image import module (depends W2-01 and W1-04):**
 
-- **WHAT:** enable existing `create_file_bytes`, `fetch_file_bytes` and `import_image_file` on the qualified Windows file backend; do not add duplicate importer APIs.
-- **WHERE:** `src/mcp/image-file-transfer.ts` (reuse only), `src/mcp/server.ts` (integrator-owned), Windows native file adapter, Windows-specific tests; see `docs/workspaces/IMAGE-ASSET-TRANSFER.md` from current `main`.
+- **WHAT:** connect existing Windows-branch `create_file_bytes` / `fetch_file_bytes` schema+handlers to a qualified Win32 broker, **author missing host fileParam validator/HTTPS image intake module**, and provide a typed import service. `import_image_file` does **not** yet exist on Windows; the single integrator adds its MCP tool/dispatch during W4-01.
+- **WHERE:** NEW Windows-branch secure fileParam module (file path chosen in W2-05, not an already existing import), native file adapter and Windows tests. Mac `src/mcp/image-file-transfer.ts` + `docs/workspaces/IMAGE-ASSET-TRANSFER.md` are READ-ONLY examples; `src/mcp/server.ts`/catalog are W4-01 integrator-owned.
 - **CONSTRAINTS:** real host injected `file` parameter; HTTPS origin allowlist, no redirects, no logs with URL/tokens, MIME/signature/extension, 8 MiB, native exclusive create, current controller + workspace role. No Base64 chat-workaround or unconfined `fs.writeFile` fallback. Windows-skipped POSIX tests do not satisfy this job.
-- **DONE:** `windows-latest` native file import/bytes tests prove role denial, stale grant, path/ADS escape, interrupted transfer, collision and SHA-256 source/readback equality; selected Windows plugin genuine image artifact E2E is a later W5 test, not assumed by CI.
+- **DONE G2 only:** `windows-latest` adapter-level native file/byte tests + new image validator with simulated host metadata prove role denial, stale grant, allowed origin/redirect/MIME/signature/8MiB safety, path/ADS escape, interrupted transfer, collision and SHA-256 source/readback equality. **Not** actual MCP import. **DONE G4:** registered `import_image_file` schema/host fileParam and MCP dispatch test. **DONE W5:** selected Windows plugin real image artifact E2E.
 
 
 
@@ -140,13 +168,13 @@ Do not paste full Criteria, Harness or Proposal into each job. Link exact sectio
 **WHAT:** Run local Windows scripts/build/test/Git with process ownership and recoverable status; investigate restricted remote Git independently.  
 **WHERE:** Windows command/process adapter, `src/core/{process-manager,durable-process,git-engine,git-plans}.ts`, command and process journal tests.  
 **CONSTRAINTS:** Initial cwd must belong to granted workspace/subfolder; no executing directly from reference. **Shell not OS-confined:** advertise `command_confinement: none (user account)`, `state_integrity_vs_commands: not_protected`. No arbitrary machine-wide process kills; use Job Object/owned handles and log caps. Never bypass remote Git policy through shell.  
-**DONE:** Native PowerShell, CMD, node, non-Git script, Git local, timeout, stdout/stderr/exit, owned process tree stop, neighbor survival and UNKNOWN on unprovable kill, exact G3 Windows CI. Remote Git either has independently reviewed restricted-network proof or remains explicitly blocked.
+**DONE:** Native PowerShell, CMD, node, non-Git script, Git local, timeout, stdout/stderr/exit, owned process tree stop, neighbor survival and UNKNOWN on unprovable kill, exact G3 Windows CI. Remote Git API either has independently reviewed restricted-network proof or remains explicitly blocked; document that unconfined PowerShell/CMD may independently reach network Git and API blocking is not OS-wide network confinement.
 
 **Instruction update trigger:** After feasibility, Planner records whether remote Git is a separately approved follow-up; do not widen scope or weaken the command risk statement to make it pass.
 
 ## 7. W4 — MCP integration / Desktop / CI contracts
 
-**V2 integration requirement:** compose only verified Windows native grant-backed file capability; preserve `import_image_file` host fileParam and shared image validator, `fileGrantSyncState`/blocked diagnostic shapes and command confinement truth. The Windows desktop installer must preserve old state on failed update and must not mutate the Mac installation.
+**V4 integration requirement:** compose only verified Windows native grant-backed file capability; IMPLEMENT missing `import_image_file` MCP schema/host fileParam dispatch, and implement `fileGrantSyncState`/blocked diagnostic status (currently missing on Windows), while retaining the existing Windows API naming and unconfined command-truth contract. The Windows desktop installer must preserve old state on failed update and must not mutate the Mac installation.
 
 
 
@@ -203,7 +231,7 @@ Each job persists a compact report under a Windows-specific evidence directory, 
 - Reviewer findings, fixes and retests, dependency status and unverified assumptions.
 - Done/blocked disposition with reason; link commit, PR or issue and next owner.
 
-No report may say full Windows accepted based solely on Mac PASS or on a GitHub Windows VM that did not exercise the selected host behavior. Runner evidence is useful but bounded.
+No report may say full Windows accepted based solely on Mac PASS or on a GitHub Windows VM that did not exercise the selected host behavior. G2/G3 adapter-only PASS never means `import_image_file` or process controls passed over actual MCP; G4 and W5 have independent proof obligations. Runner evidence is useful but bounded.
 
 ## 11. Pre-code readiness and assignment policy
 
