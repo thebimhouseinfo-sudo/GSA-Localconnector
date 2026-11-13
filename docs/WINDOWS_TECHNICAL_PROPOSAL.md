@@ -96,13 +96,13 @@ A shared contract documented in newer Mac code is a **target behavior** to match
 
 | Existing contract or implementation | Retain / change |
 | --- | --- |
-| `src/core/native-io.ts`: `NativeScopedFiles`, `NativeDirectoryCopies`, `NativeRecoverableFileMutations`, `VerifiedNativeSandbox`, process controller | Retain schemas; Windows implementation implements real methods only when proven; unused `verified` marker must not imply OS sandbox |
+| Windows `src/core/native-io.ts`: `NativeScopedFiles`, `NativeDirectoryCopies`, `NativeRecoverableFileMutations`, `VerifiedNativeSandbox`, process controller | Retain only existing schemas; Windows implementation supplies qualified real backend methods; interface names or an unused `verified` marker must not imply OS sandbox or functional native operations |
 | `src/core/workspace.ts`: role/grant, immutable root identity and revision | Reuse role logic; Windows identity from canonical opened volume/file-ID handles, not Unix device/inode assumptions |
 | `src/core/write-engine.ts`, transaction/patch guards | Reuse pre/post SHA and statuses, with native Windows atomicity and identity readback |
 | `src/core/directory-copy.ts` and `src/local/directory-copy-store.ts` | Reuse manifest and acknowledgment format; new Win32 native traverser |
 | `src/hosts/macos-host-commands.ts` | Reference for outcomes, not POSIX spawn/group semantics |
-| `src/local/grants.ts`, `src/core/workspace.ts` (new selected-only recovery) | Reuse ACTIVE/STALE/REAUTH_REQUIRED/REVOKED and rebind-only-selected semantics; Windows root identity separately verified |
-| `src/mcp/image-file-transfer.ts`, `src/mcp/server.ts` (new import) | Preserve host fileParam, download validation and `import_image_file`; Windows exclusive create + native byte readback required |
+| `src/local/grants.ts`, `src/core/workspace.ts` (OLD implementations exist on Windows) | New Mac selected-only recovery states are MISSING in Windows branch; author equivalent state machine + Windows root identity in W1-04/05 and test W2 native qualification |
+| Mac `src/mcp/image-file-transfer.ts` and newer `src/mcp/server.ts` import (READ-ONLY reference, MISSING on Windows) | W2-05 authors secure fileParam validator; W4-01 authors `import_image_file` tool/dispatch; Windows exclusive create + independent native readback in G2/G4/W5 |
 | `src/mcp/runtime-bootstrap.ts` | Currently Mac-only; introduce platform composition with strict selection; one integration owner |
 | `src/core/git-engine.ts` | Local Git plans reusable; remote remains blocked until limited network proof |
 | `src/hosts/windows-appcontainer-candidate.ts` and `scripts/native-gate-windows.ps1` | **Candidates/probes only**, never a verified host backend |
