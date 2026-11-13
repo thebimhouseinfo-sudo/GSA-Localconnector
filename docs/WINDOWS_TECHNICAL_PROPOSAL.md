@@ -69,7 +69,7 @@ A shared contract documented in newer Mac code is a **target behavior** to match
 
 ### R2 — Durable process journal and degraded tools (W3-05, W4-01)
 
-- The `src/core/durable-process.ts` current `ensureReady` clears its rejected initialization promise so a later request can try again. Keep one in-flight initialization per journal. A journal load error means `PROCESS_JOURNAL_UNAVAILABLE` for dependent process operations, not `SESSION_INVALID` for all tools.
+- The newer **Mac `main`** implementation of `src/core/durable-process.ts` uses `ensureReady` to clear a rejected initialization promise; **the Windows branch lacks this fix** and W3-05 must author/adapt the retry. Keep one in-flight initialization per journal. A journal load error means `PROCESS_JOURNAL_UNAVAILABLE` for dependent process operations, not `SESSION_INVALID` for all tools.
 - MCP status, capabilities, control release, workspace recovery inspection and stopping an already-owned job when provable must remain diagnostically reachable. If process state cannot be proven, cancellation returns `UNKNOWN` or a bounded blocked reason; never kill a guessed PID. Expose `processHistoryState=DEGRADED` while not ready and prove it becomes READY upon recovery.
 - **Windows-specific check:** persistent Windows process/Job Object handles must not be assumed live merely from a journal record after the host runner restarts. Fence/hydrate under verified owner and never replay a process solely because records exist. Tests fail first journal read then succeed; permanently failing journal still allows non-process diagnostics; simultaneous calls share one load.
 
