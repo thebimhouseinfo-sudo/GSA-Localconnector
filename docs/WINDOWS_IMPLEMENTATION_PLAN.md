@@ -100,7 +100,7 @@ GSA Project Memory branch authority was changed on 2026-11-12 to `feat/windows-n
 
 **FIR-04 policy honesty:** connector Git remote tool gating and credential flow cannot stop an unconfined PowerShell/CMD from initiating network Git using user-account authority. Expose both facts distinctly.
 
-**FIR-05/06 negative evidence:** hardlink to ungranted file, reparse/junction swap, file ID change, grant revision change during operation, colliding destination, parallel rename/delete, unsupported volume/atomicity, two concurrent project jobs, paginated logs, disconnect/readback and selective cancellation are required (native fixture and selected-host evidence at appropriate gates).
+**FIR-05 + FIR-06 negative evidence:** hardlink to ungranted file, reparse/junction swap, file ID change, grant revision change during operation, colliding destination, parallel rename/delete, unsupported volume/atomicity, two concurrent project jobs, paginated logs, disconnect/readback and selective cancellation are required (native fixture and selected-host evidence at appropriate gates).
 
 **FIR-07 installer contract:** per-user installer/update/uninstall must preserve the selected Windows plugin identity and tunnel ID/runtime key, source secrets only from the user's existing ignored `.env` as data (strictly parsed, never executed) or explicitly protected per-user state according to precedence documented in Proposal, avoid rebinding the Mac plugin, and roll back a failed update without corrupting grants/journals. No extra login prompts on a valid upgrade.
 
