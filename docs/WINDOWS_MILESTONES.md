@@ -85,7 +85,7 @@ Use the Windows logged-in user and native Job Objects to execute/observe only ow
 | W3-03 | Coder / local Git and bounded diff integration | S | W3-01 | Local status/diff/log/commit in disposable repository, dirty files not lost |
 | W3-04 | Technical reviewer: connector Git remote API feasibility and unconfined user-shell risk | P | G1 | API remote permission proven or BLOCKED; acknowledge PowerShell/CMD can use user-account network/`git fetch` independently; no claim of OS-wide network/Git confinement or credential leakage |
 | W3-05 | Coder/Tester: Windows process journal retry and degraded-read diagnostics (Mac behavior as test oracle, no source import) | S | W3-02 | Transient store load failure retries, permanent failure yields `PROCESS_JOURNAL_UNAVAILABLE` for process tools while status/list capabilities remain available and `processHistoryState=DEGRADED`; two concurrent callers share one load |
-| **G3** | **Process adapter Tester/Reviewer** | **I** | W3-01..05 (NOT G2) | Win32 PowerShell/CMD/Node, Job Objects, local Git, two concurrent workspace jobs, paged independent logs, selective cancellation, disconnect readback and journal recovery PASS; MCP end-to-end reserved G4, remote Git may be BLOCKED |
+| **G3** | **Process adapter Tester/Reviewer** | **I** | W3-01..05 | Independent of G2; Win32 PowerShell/CMD/Node, Job Objects, local Git, two concurrent workspace jobs, paged independent logs, selective cancellation, disconnect readback and journal recovery PASS; MCP end-to-end reserved G4, remote Git may be BLOCKED |
 
 ## W4 — Windows MCP integration / Desktop / CI
 
