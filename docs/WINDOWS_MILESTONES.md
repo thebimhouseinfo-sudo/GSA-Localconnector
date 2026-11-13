@@ -61,7 +61,7 @@ Make Windows root identity, controller/grants and selected-only grant reauthoriz
 
 ### GOAL
 
-Prove Windows-native scoped text/binary/file/directory operations with CAS, recovery and honest `UNKNOWN`, including the existing host-injected image importer and SHA-256 readback.
+Prove Windows-native scoped text/binary/file/directory operations with CAS, recovery and honest `UNKNOWN`, including a **new Windows implementation of host-injected image import** (currently missing on this branch) and SHA-256 readback.
 
 | ID | Owner & files (indicative) | Mode | Depends | Acceptance |
 | --- | --- | --- | --- | --- |
